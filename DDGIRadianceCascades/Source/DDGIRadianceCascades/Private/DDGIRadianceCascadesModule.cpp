@@ -1,11 +1,4 @@
-// Match the public UE4 include order used by RTXGI before RendererInterface.h.
-#include "CoreMinimal.h"
-#include "UObject/ObjectMacros.h"
-#include "Engine/EngineTypes.h"
-#include "Components/SceneComponent.h"
-#include "RHI.h"
-#include "RHIResources.h"
-#include "RendererInterface.h"
+#include "DDGIRadianceCascadesRendererBridge.h"
 
 #include "Modules/ModuleManager.h"
 #include "Interfaces/IPluginManager.h"
@@ -16,15 +9,8 @@
 #include "RenderGraphUtils.h"
 #include "RenderTargetPool.h"
 
-// Same renderer-private headers used by the working RTXGI integration.
 #include "SceneRendering.h"
 #include "ScenePrivate.h"
-
-// Renderer-private callback types are intentionally only referenced here.
-class FScene;
-class FViewInfo;
-class FRDGBuilder;
-struct FGlobalIlluminationExperimentalPluginResources;
 
 DEFINE_LOG_CATEGORY_STATIC(LogDDGIRadianceCascades, Log, All);
 
@@ -34,11 +20,10 @@ static TAutoConsoleVariable<int32> CVarDDGIRadianceCascades(
     TEXT("Enable DDGI Radiance Cascades. 0: disabled, 1: enabled."),
     ECVF_RenderThreadSafe);
 
-// Keeps the bootstrap output alive after the RDG graph executes. This is a
-// one-pixel validation target; it is not part of the final GI data layout.
 static TRefCountPtr<IPooledRenderTarget> GDDGIRadianceCascadesBootstrapOutput;
 static bool GDDGIRadianceCascadesBootstrapPassQueued = false;
-static FDelegateHandle GDDGIRadianceCascadesLightingDelegate;
+
+FDelegateHandle FDDGIRadianceCascadesRendererBridge::RenderDiffuseIndirectLightHandle;
 
 class FDDGIRadianceCascadesBootstrapCS : public FGlobalShader
 {
@@ -62,27 +47,18 @@ IMPLEMENT_GLOBAL_SHADER(
     "MainCS",
     SF_Compute);
 
-static void RenderDiffuseIndirectLight_RenderThread(
+void FDDGIRadianceCascadesRendererBridge::RenderDiffuseIndirectLight_RenderThread(
     const FScene& Scene,
     const FViewInfo& View,
     FRDGBuilder& GraphBuilder,
     FGlobalIlluminationExperimentalPluginResources& Resources)
 {
-    if (CVarDDGIRadianceCascades.GetValueOnRenderThread() == 0)
+    if (CVarDDGIRadianceCascades.GetValueOnRenderThread() == 0 ||
+        GDDGIRadianceCascadesBootstrapPassQueued)
     {
         return;
     }
 
-    // The first milestone only validates that our plugin callback, RDG
-    // allocation, shader registration and SM5 compute dispatch work. It
-    // deliberately does not touch SceneColor or alter the rendered image.
-    if (GDDGIRadianceCascadesBootstrapPassQueued)
-    {
-        return;
-    }
-
-    // Mark it before queuing: the callback can be invoked more than once
-    // while the same view family is being assembled, before extraction runs.
     GDDGIRadianceCascadesBootstrapPassQueued = true;
 
     FRDGTextureDesc OutputDesc = FRDGTextureDesc::Create2D(
@@ -111,16 +87,11 @@ static void RenderDiffuseIndirectLight_RenderThread(
         PassParameters,
         FIntVector(1, 1, 1));
 
-    // Extraction makes the otherwise unconsumed test output survive RDG
-    // culling and keeps it alive until the next frame.
     GraphBuilder.QueueTextureExtraction(
         OutputTexture,
         &GDDGIRadianceCascadesBootstrapOutput);
 
-    UE_LOG(
-        LogDDGIRadianceCascades,
-        Log,
-        TEXT("Bootstrap RDG compute dispatch queued."));
+    UE_LOG(LogDDGIRadianceCascades, Log, TEXT("Bootstrap RDG compute dispatch queued."));
 }
 
 class FDDGIRadianceCascadesModule : public IModuleInterface
@@ -140,27 +111,26 @@ public:
         const FString ShaderDirectory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Shaders"));
         AddShaderSourceDirectoryMapping(TEXT("/Plugin/DDGIRadianceCascades"), ShaderDirectory);
 
-        FGlobalIlluminationExperimentalPluginDelegates::FRenderDiffuseIndirectLight& Delegate =
+        FGlobalIlluminationExperimentalPluginDelegates::FRenderDiffuseIndirectLight& RDILDelegate =
             FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight();
 
-        GDDGIRadianceCascadesLightingDelegate =
-            Delegate.AddStatic(RenderDiffuseIndirectLight_RenderThread);
+        FDDGIRadianceCascadesRendererBridge::RenderDiffuseIndirectLightHandle =
+            RDILDelegate.AddStatic(
+                FDDGIRadianceCascadesRendererBridge::RenderDiffuseIndirectLight_RenderThread);
 
-        UE_LOG(
-            LogDDGIRadianceCascades,
-            Log,
-            TEXT("Module loaded and Experimental GI callback registered. Enable with r.GlobalIllumination.ExperimentalPlugin=1 and r.DDGIRadianceCascades=1."));
+        UE_LOG(LogDDGIRadianceCascades, Log,
+            TEXT("Experimental GI callback registered. Enable with r.GlobalIllumination.ExperimentalPlugin=1 and r.DDGIRadianceCascades=1."));
     }
 
     virtual void ShutdownModule() override
     {
-        if (GDDGIRadianceCascadesLightingDelegate.IsValid())
-        {
-            FGlobalIlluminationExperimentalPluginDelegates::FRenderDiffuseIndirectLight& Delegate =
-                FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight();
+        FGlobalIlluminationExperimentalPluginDelegates::FRenderDiffuseIndirectLight& RDILDelegate =
+            FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight();
 
-            Delegate.Remove(GDDGIRadianceCascadesLightingDelegate);
-            GDDGIRadianceCascadesLightingDelegate.Reset();
+        if (FDDGIRadianceCascadesRendererBridge::RenderDiffuseIndirectLightHandle.IsValid())
+        {
+            RDILDelegate.Remove(FDDGIRadianceCascadesRendererBridge::RenderDiffuseIndirectLightHandle);
+            FDDGIRadianceCascadesRendererBridge::RenderDiffuseIndirectLightHandle.Reset();
         }
 
         GDDGIRadianceCascadesBootstrapOutput.SafeRelease();
