@@ -3,8 +3,9 @@
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
 #include "GlobalShader.h"
-#include "ShaderParameterStruct.h"
 #include "RenderGraphUtils.h"
+#include "RendererInterface.h"
+#include "RHIResources.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDDGIRadianceCascades, Log, All);
 
@@ -13,6 +14,11 @@ static TAutoConsoleVariable<int32> CVarDDGIRadianceCascades(
     0,
     TEXT("Enable DDGI Radiance Cascades. 0: disabled, 1: enabled."),
     ECVF_RenderThreadSafe);
+
+// Keeps the bootstrap output alive after the RDG graph executes. This is a
+// one-pixel validation target; it is not part of the final GI data layout.
+static TRefCountPtr<IPooledRenderTarget> GDDGIRadianceCascadesBootstrapOutput;
+static FDelegateHandle GDDGIRadianceCascadesLightingDelegate;
 
 class FDDGIRadianceCascadesBootstrapCS : public FGlobalShader
 {
@@ -36,12 +42,73 @@ IMPLEMENT_GLOBAL_SHADER(
     "MainCS",
     SF_Compute);
 
+static void RenderDiffuseIndirectLight_RenderThread(
+    const FScene& Scene,
+    const FViewInfo& View,
+    FRDGBuilder& GraphBuilder,
+    FGlobalIlluminationExperimentalPluginResources& Resources)
+{
+    if (CVarDDGIRadianceCascades.GetValueOnRenderThread() == 0)
+    {
+        return;
+    }
+
+    // The first milestone only validates that our plugin callback, RDG
+    // allocation, shader registration and SM5 compute dispatch work. It
+    // deliberately does not touch SceneColor or alter the rendered image.
+    if (GDDGIRadianceCascadesBootstrapOutput.IsValid())
+    {
+        return;
+    }
+
+    FRDGTextureDesc OutputDesc = FRDGTextureDesc::Create2D(
+        FIntPoint(1, 1),
+        PF_FloatRGBA,
+        FClearValueBinding::Black,
+        TexCreate_ShaderResource | TexCreate_UAV);
+
+    FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(
+        OutputDesc,
+        TEXT("DDGIRadianceCascades_BootstrapOutput"));
+
+    FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
+    TShaderMapRef<FDDGIRadianceCascadesBootstrapCS> ComputeShader(GlobalShaderMap);
+
+    FDDGIRadianceCascadesBootstrapCS::FParameters* PassParameters =
+        GraphBuilder.AllocParameters<FDDGIRadianceCascadesBootstrapCS::FParameters>();
+
+    PassParameters->OutputTexture = GraphBuilder.CreateUAV(OutputTexture);
+    PassParameters->OutputSize = FIntPoint(1, 1);
+
+    FComputeShaderUtils::AddPass(
+        GraphBuilder,
+        RDG_EVENT_NAME("DDGI Radiance Cascades Bootstrap Dispatch"),
+        ComputeShader,
+        PassParameters,
+        FIntVector(1, 1, 1));
+
+    // Extraction makes the otherwise unconsumed test output survive RDG
+    // culling and keeps it alive until the next frame.
+    GraphBuilder.QueueTextureExtraction(
+        OutputTexture,
+        &GDDGIRadianceCascadesBootstrapOutput);
+
+    UE_LOG(
+        LogDDGIRadianceCascades,
+        Log,
+        TEXT("Bootstrap RDG compute dispatch queued. View %dx%d."),
+        View.ViewRect.Width(),
+        View.ViewRect.Height());
+}
+
 class FDDGIRadianceCascadesModule : public IModuleInterface
 {
 public:
     virtual void StartupModule() override
     {
-        const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("DDGIRadianceCascades"));
+        const TSharedPtr<IPlugin> Plugin =
+            IPluginManager::Get().FindPlugin(TEXT("DDGIRadianceCascades"));
+
         if (!Plugin.IsValid())
         {
             UE_LOG(LogDDGIRadianceCascades, Error, TEXT("Plugin descriptor could not be located."));
@@ -51,11 +118,30 @@ public:
         const FString ShaderDirectory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Shaders"));
         AddShaderSourceDirectoryMapping(TEXT("/Plugin/DDGIRadianceCascades"), ShaderDirectory);
 
-        UE_LOG(LogDDGIRadianceCascades, Log, TEXT("DDGI Radiance Cascades module loaded. Runtime toggle: r.DDGIRadianceCascades=1"));
+        FGlobalIlluminationExperimentalPluginDelegates::FRenderDiffuseIndirectLight& Delegate =
+            FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight();
+
+        GDDGIRadianceCascadesLightingDelegate =
+            Delegate.AddStatic(RenderDiffuseIndirectLight_RenderThread);
+
+        UE_LOG(
+            LogDDGIRadianceCascades,
+            Log,
+            TEXT("Module loaded and Experimental GI callback registered. Enable with r.GlobalIllumination.ExperimentalPlugin=1 and r.DDGIRadianceCascades=1."));
     }
 
     virtual void ShutdownModule() override
     {
+        if (GDDGIRadianceCascadesLightingDelegate.IsValid())
+        {
+            FGlobalIlluminationExperimentalPluginDelegates::FRenderDiffuseIndirectLight& Delegate =
+                FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight();
+
+            Delegate.Remove(GDDGIRadianceCascadesLightingDelegate);
+            GDDGIRadianceCascadesLightingDelegate.Reset();
+        }
+
+        GDDGIRadianceCascadesBootstrapOutput.SafeRelease();
     }
 };
 

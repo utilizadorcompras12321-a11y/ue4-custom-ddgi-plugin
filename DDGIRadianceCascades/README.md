@@ -2,20 +2,30 @@
 
 Independent Unreal Engine 4.27.2 Plus runtime plugin. The implementation target is DX11 / SM5 and does not require DXR, hardware ray tracing, or edits to Engine source.
 
-## Current status: bootstrap
+## Current status: Experimental GI callback + RDG bootstrap
 
 - Dedicated plugin descriptor and runtime module.
 - Runtime shader directory mapping: `/Plugin/DDGIRadianceCascades`.
-- Render-thread-safe toggle: `r.DDGIRadianceCascades` (default: 0).
-- Minimal SM5 compute shader registered to validate the plugin shader path.
+- Runtime-safe toggle: `r.DDGIRadianceCascades` (default: 0).
+- Registers `FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight()`.
+- Queues a one-pixel SM5 compute dispatch through RDG when enabled.
+- Extracts the tiny test output so the RDG pass remains live.
+- Does not read or modify SceneColor; the test must not change the rendered image.
 - No RTXGI probe grid or RTXGI runtime code is used by this bootstrap.
 - No engine files are modified.
 
-The bootstrap shader is intentionally not dispatched yet. The next integration step is to bind the plugin to the UE4.27.2 Plus Experimental Global Illumination callback and dispatch a tiny RDG compute pass there. The exact callback interface must be matched to the user's engine fork before implementation; guessing its signature would risk breaking compilation.
+Enable both engine and plugin gates:
+
+```
+r.GlobalIllumination.ExperimentalPlugin 1
+r.DDGIRadianceCascades 1
+```
+
+The callback and dispatch are implemented against the UE4.27 Experimental GI API used by the RTXGI 4.27 plugin. This source has not yet been compiled against the user's exact UE4.27.2 Plus fork, so API/build validation is still required.
 
 ## Planned architecture
 
-1. Validate the Experimental GI callback and DX11 RDG dispatch.
+1. Validate the callback and DX11 RDG compute dispatch.
 2. Build sparse surface representation and conservative visibility data.
 3. Implement deterministic 3D radiance cascades with ray splitting.
 4. Add software BVH traversal and first-bounce diffuse transport.
