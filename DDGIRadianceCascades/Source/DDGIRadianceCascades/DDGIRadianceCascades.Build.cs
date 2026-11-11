@@ -1,4 +1,5 @@
 using UnrealBuildTool;
+using System.IO;
 
 public class DDGIRadianceCascades : ModuleRules
 {
@@ -9,16 +10,24 @@ public class DDGIRadianceCascades : ModuleRules
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core",
-            "CoreUObject",
-            "Engine",
             "Projects"
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]
         {
+            "CoreUObject",
+            "Engine",
             "RenderCore",
-            "RHI",
-            "Renderer"
+            "Renderer",
+            "DeveloperSettings",
+            "RHI"
+        });
+
+        // Match the renderer include visibility used by the working RTXGI module.
+        PrivateIncludePaths.AddRange(new string[]
+        {
+            EngineDirectory + "/Source/Runtime/Renderer/Private",
+            EngineDirectory + "/Source/Runtime/RenderCore/Public"
         });
     }
 }

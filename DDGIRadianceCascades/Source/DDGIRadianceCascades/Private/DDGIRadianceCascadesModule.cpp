@@ -9,6 +9,10 @@
 #include "RHIResources.h"
 #include "RenderTargetPool.h"
 
+// Same renderer-private headers used by the working RTXGI integration.
+#include "SceneRendering.h"
+#include "ScenePrivate.h"
+
 // Renderer-private callback types are intentionally only referenced here.
 class FScene;
 class FViewInfo;
