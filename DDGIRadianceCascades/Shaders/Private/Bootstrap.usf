@@ -1,0 +1,15 @@
+RWTexture2D<float4> OutputTexture;
+int2 OutputSize;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    if (DispatchThreadId.x >= OutputSize.x || DispatchThreadId.y >= OutputSize.y)
+    {
+        return;
+    }
+
+    // Deliberately neutral output. This shader exists to validate plugin shader
+    // registration and the UE4.27 SM5 compute path before GI integration.
+    OutputTexture[DispatchThreadId.xy] = float4(0.0, 0.0, 0.0, 1.0);
+}
