@@ -3,10 +3,17 @@
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
 #include "GlobalShader.h"
+#include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
 #include "RendererInterface.h"
 #include "RHIResources.h"
 #include "RenderTargetPool.h"
+
+// Renderer-private callback types are intentionally only referenced here.
+class FScene;
+class FViewInfo;
+class FRDGBuilder;
+struct FGlobalIlluminationExperimentalPluginResources;
 
 DEFINE_LOG_CATEGORY_STATIC(LogDDGIRadianceCascades, Log, All);
 
