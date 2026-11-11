@@ -80,7 +80,7 @@ struct FDDGITextureLoadContext
 	}
 };
 
-class DDGIRadianceCascades_API FDDGIVolumeSceneProxy
+class DDGIRADIANCECASCADES_API FDDGIVolumeSceneProxy
 {
 public:
 
@@ -245,7 +245,7 @@ struct FProbeRelocation
 };
 
 UCLASS(HideCategories = (Tags, AssetUserData, Collision, Cooking, Transform, Rendering, Mobility, LOD))
-class DDGIRadianceCascades_API UDDGIVolumeComponent : public USceneComponent, public FSelfRegisteringExec
+class DDGIRADIANCECASCADES_API UDDGIVolumeComponent : public USceneComponent, public FSelfRegisteringExec
 {
 	GENERATED_UCLASS_BODY()
 

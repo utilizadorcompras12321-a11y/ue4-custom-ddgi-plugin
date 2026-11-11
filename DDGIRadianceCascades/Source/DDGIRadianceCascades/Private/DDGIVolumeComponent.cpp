@@ -639,7 +639,7 @@ void UDDGIVolumeComponent::InitializeComponent()
 }
 
 // Serialization version for stored DDGIVolume data
-struct DDGIRadianceCascades_API FDDGICustomVersion
+struct DDGIRADIANCECASCADES_API FDDGICustomVersion
 {
 	enum Type
 	{

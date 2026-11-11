@@ -19,7 +19,7 @@ class UBoxComponent;
 class UDDGIVolumeComponent;
 
 UCLASS(HideCategories = (Navigation, Physics, Collision, Rendering, Tags, Cooking, Replication, Input, Actor, HLOD, Mobile, LOD))
-class DDGIRadianceCascades_API ADDGIVolume : public AActor
+class DDGIRADIANCECASCADES_API ADDGIVolume : public AActor
 {
 	GENERATED_UCLASS_BODY()
 
