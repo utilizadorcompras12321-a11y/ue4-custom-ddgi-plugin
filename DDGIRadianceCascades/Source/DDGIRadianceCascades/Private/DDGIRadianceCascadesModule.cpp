@@ -6,6 +6,7 @@
 #include "RenderGraphUtils.h"
 #include "RendererInterface.h"
 #include "RHIResources.h"
+#include "RenderTargetPool.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDDGIRadianceCascades, Log, All);
 
