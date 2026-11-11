@@ -18,6 +18,7 @@ static TAutoConsoleVariable<int32> CVarDDGIRadianceCascades(
 // Keeps the bootstrap output alive after the RDG graph executes. This is a
 // one-pixel validation target; it is not part of the final GI data layout.
 static TRefCountPtr<IPooledRenderTarget> GDDGIRadianceCascadesBootstrapOutput;
+static bool GDDGIRadianceCascadesBootstrapPassQueued = false;
 static FDelegateHandle GDDGIRadianceCascadesLightingDelegate;
 
 class FDDGIRadianceCascadesBootstrapCS : public FGlobalShader
@@ -56,10 +57,14 @@ static void RenderDiffuseIndirectLight_RenderThread(
     // The first milestone only validates that our plugin callback, RDG
     // allocation, shader registration and SM5 compute dispatch work. It
     // deliberately does not touch SceneColor or alter the rendered image.
-    if (GDDGIRadianceCascadesBootstrapOutput.IsValid())
+    if (GDDGIRadianceCascadesBootstrapPassQueued)
     {
         return;
     }
+
+    // Mark it before queuing: the callback can be invoked more than once
+    // while the same view family is being assembled, before extraction runs.
+    GDDGIRadianceCascadesBootstrapPassQueued = true;
 
     FRDGTextureDesc OutputDesc = FRDGTextureDesc::Create2D(
         FIntPoint(1, 1),
@@ -142,6 +147,7 @@ public:
         }
 
         GDDGIRadianceCascadesBootstrapOutput.SafeRelease();
+        GDDGIRadianceCascadesBootstrapPassQueued = false;
     }
 };
 
