@@ -80,7 +80,7 @@ struct FDDGITextureLoadContext
 	}
 };
 
-class RTXGI_API FDDGIVolumeSceneProxy
+class DDGIRadianceCascades_API FDDGIVolumeSceneProxy
 {
 public:
 
@@ -122,10 +122,10 @@ public:
 	struct FComponentData
 	{
 		// A shared location cpp side for operational defines
-		static const bool c_RTXGI_DDGI_PROBE_CLASSIFICATION = true;
+		static const bool c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION = true;
 
 		// It considers this many volumes that pass frustum culling when sampling GI for the scene.
-		static const int c_RTXGI_DDGI_MAX_SHADING_VOLUMES = 12;
+		static const int c_DDGIRadianceCascades_DDGI_MAX_SHADING_VOLUMES = 12;
 
 		static const EPixelFormat c_pixelFormatRadianceLowBitDepth = EPixelFormat::PF_G32R32F;
 		static const EPixelFormat c_pixelFormatRadianceHighBitDepth = EPixelFormat::PF_A32B32G32R32F;
@@ -245,7 +245,7 @@ struct FProbeRelocation
 };
 
 UCLASS(HideCategories = (Tags, AssetUserData, Collision, Cooking, Transform, Rendering, Mobility, LOD))
-class RTXGI_API UDDGIVolumeComponent : public USceneComponent, public FSelfRegisteringExec
+class DDGIRadianceCascades_API UDDGIVolumeComponent : public USceneComponent, public FSelfRegisteringExec
 {
 	GENERATED_UCLASS_BODY()
 

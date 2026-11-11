@@ -40,16 +40,16 @@ RWTexture2D<float4> DDGIVolumeRayDataUAV;
 // Probe irradiance or filtered distance
 RWTexture2D<float4> DDGIVolumeProbeDataUAV;
 
-#if RTXGI_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
 // Probe states
 Texture2D<uint>     DDGIVolumeProbeStatesTexture;
 #endif
 
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
 RWTexture2D<uint>   DDGIProbeScrollSpace;
 #endif
 
-#if RTXGI_DDGI_SHARED_MEMORY
+#if DDGIRadianceCascades_DDGI_SHARED_MEMORY
 // Shared Memory (example for default settings):
 // Radiance (float3) x 144 rays/probe = 432 floats (~1.7 KB)
 // Distance (float) x 144 rays/probe = 144 floats (~0.56 KB)
@@ -65,7 +65,7 @@ RWTexture2D<uint>   DDGIProbeScrollSpace;
 //     Group threads load 144 ray distances / 196 threads = ~0.73 ray distance values / thread
 //     Group threads compute 144 ray directions / 196 threads = ~0.73 ray directions / thread
 
-#if RTXGI_DDGI_BLEND_RADIANCE
+#if DDGIRadianceCascades_DDGI_BLEND_RADIANCE
 groupshared float3 RayRadiance[RAYS_PER_PROBE];
 #endif
 groupshared float  RayDistance[RAYS_PER_PROBE];
@@ -89,7 +89,7 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
         exitEarly = true; // Probe doesn't exist
     }
 
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     int storageProbeIndex = DDGIGetProbeIndexOffset(probeIndex, DDGIVolume.probeGridCounts, DDGIVolume.probeScrollOffsets);
     int2 texelPosition = DDGIGetProbeTexelPosition(storageProbeIndex, DDGIVolume.probeGridCounts);
 
@@ -113,7 +113,7 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
 
     [branch] if (!exitEarly)
     {
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
         int storageProbeIndex = DDGIGetProbeIndexOffset(probeIndex, DDGIVolume.probeGridCounts, DDGIVolume.probeScrollOffsets);
         // Transform the probe index into probe texel coordinates
         // Offset 1 texel on X and Y to account for the 1 texel probe border
@@ -128,17 +128,17 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
         probeTexCoords.xy += (DispatchThreadID.xy / PROBE_NUM_TEXELS) * 2;
 #endif
 
-#if RTXGI_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
         int2 texelPosition = DDGIGetProbeTexelPosition(storageProbeIndex, DDGIVolume.probeGridCounts);
         int  probeState = DDGIVolumeProbeStatesTexture[texelPosition];
         if (probeState == PROBE_STATE_INACTIVE)
         {
             exitEarly = true; // If the probe is inactive, do not blend (it didn't shoot rays to get new radiance values)
         }
-#endif // RTXGI_DDGI_PROBE_CLASSIFICATION
+#endif // DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
     }
 
-#if RTXGI_DDGI_BLEND_RADIANCE && RTXGI_DDGI_DEBUG_PROBE_INDEXING && (RTXGI_DDGI_FORMAT_IRRADIANCE == 1)
+#if DDGIRadianceCascades_DDGI_BLEND_RADIANCE && DDGIRadianceCascades_DDGI_DEBUG_PROBE_INDEXING && (DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE == 1)
     // Visualize the probe index
     DDGIVolumeProbeDataUAV[probeTexCoords] = float4(probeIndex, 0, 0, 1);
     return;
@@ -146,7 +146,7 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
 
     float2 probeOctantUV = float2(0.f, 0.f);
 
-#if RTXGI_DDGI_BLEND_RADIANCE && RTXGI_DDGI_DEBUG_OCTAHEDRAL_INDEXING
+#if DDGIRadianceCascades_DDGI_BLEND_RADIANCE && DDGIRadianceCascades_DDGI_DEBUG_OCTAHEDRAL_INDEXING
     probeOctantUV = DDGIGetNormalizedOctahedralCoordinates(int2(DispatchThreadID.xy), PROBE_NUM_TEXELS);
     if (all(abs(probeOctantUV) <= 1.f))
     {
@@ -162,7 +162,7 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
     probeOctantUV = DDGIGetNormalizedOctahedralCoordinates(int2(DispatchThreadID.xy), PROBE_NUM_TEXELS);
     float3 probeRayDirection = DDGIGetOctahedralDirection(probeOctantUV);
 
-#if RTXGI_DDGI_SHARED_MEMORY
+#if DDGIRadianceCascades_DDGI_SHARED_MEMORY
     [branch] if (!exitEarly)
     {
         // Cooperatively load the ray traced radiance and hit distance values into shared memory
@@ -173,15 +173,15 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
             int rayIndex = (GroupIndex * totalIterations) + iteration;
             if (rayIndex >= RAYS_PER_PROBE) break;
 
-        #if RTXGI_DDGI_BLEND_RADIANCE
-            #if (RTXGI_DDGI_FORMAT_RADIANCE == 1)
+        #if DDGIRadianceCascades_DDGI_BLEND_RADIANCE
+            #if (DDGIRadianceCascades_DDGI_FORMAT_RADIANCE == 1)
                 RayRadiance[rayIndex] = DDGIVolumeRayDataUAV[int2(rayIndex, probeIndex)].rgb;
             #else
-                RayRadiance[rayIndex] = RTXGIUintToFloat3(asuint(DDGIVolumeRayDataUAV[int2(rayIndex, probeIndex)].r));
+                RayRadiance[rayIndex] = DDGIRadianceCascadesUintToFloat3(asuint(DDGIVolumeRayDataUAV[int2(rayIndex, probeIndex)].r));
             #endif
         #endif
 
-        #if (RTXGI_DDGI_FORMAT_RADIANCE == 1)
+        #if (DDGIRadianceCascades_DDGI_FORMAT_RADIANCE == 1)
             RayDistance[rayIndex] = DDGIVolumeRayDataUAV[int2(rayIndex, probeIndex)].a;
         #else
             RayDistance[rayIndex] = DDGIVolumeRayDataUAV[int2(rayIndex, probeIndex)].g;
@@ -193,14 +193,14 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
 
     // Wait for all threads in the group to finish shared memory operations
     GroupMemoryBarrierWithGroupSync();
-#endif // RTXGI_DDGI_SHARED_MEMORY
+#endif // DDGIRadianceCascades_DDGI_SHARED_MEMORY
 
     if (exitEarly)
     {
         return;
     }
 
-#if RTXGI_DDGI_BLEND_RADIANCE
+#if DDGIRadianceCascades_DDGI_BLEND_RADIANCE
     // Backface hits are ignored when blending radiance
     // Allow a maximum of 10% of the rays to hit backfaces. If that limit is exceeded, don't blend anything into this probe.
     uint backfaces = 0;
@@ -208,15 +208,15 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
 #endif
 
     int rayIndex = 0;
-#if RTXGI_DDGI_PROBE_RELOCATION || RTXGI_DDGI_PROBE_CLASSIFICATION
-    rayIndex = RTXGI_DDGI_NUM_FIXED_RAYS;
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION || DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
+    rayIndex = DDGIRadianceCascades_DDGI_NUM_FIXED_RAYS;
 #endif
 
     // Blend radiance or distance values from each ray to compute irradiance or fitered distance
     for ( /*rayIndex*/; rayIndex < DDGIVolume.numRaysPerProbe; rayIndex++)
     {
         // Get the direction for this probe ray
-    #if RTXGI_DDGI_SHARED_MEMORY
+    #if DDGIRadianceCascades_DDGI_SHARED_MEMORY
         float3 rayDirection = RayDirection[rayIndex];
     #else
         float3 rayDirection = DDGIGetProbeRayDirection(rayIndex, DDGIVolume.numRaysPerProbe, DDGIVolume.probeRayRotationTransform);
@@ -229,17 +229,17 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
         // The indices of the probe ray in the radiance buffer
         int2 probeRayIndex = int2(rayIndex, probeIndex);
 
-    #if RTXGI_DDGI_BLEND_RADIANCE
+    #if DDGIRadianceCascades_DDGI_BLEND_RADIANCE
         // Load the ray traced radiance and hit distance
-        #if RTXGI_DDGI_SHARED_MEMORY
+        #if DDGIRadianceCascades_DDGI_SHARED_MEMORY
             float3 probeRayRadiance = RayRadiance[rayIndex];
             float  probeRayDistance = RayDistance[rayIndex];
         #else
-            #if (RTXGI_DDGI_FORMAT_RADIANCE == 1)
+            #if (DDGIRadianceCascades_DDGI_FORMAT_RADIANCE == 1)
                 float3 probeRayRadiance = DDGIVolumeRayDataUAV[probeRayIndex].rgb;
                 float  probeRayDistance = DDGIVolumeRayDataUAV[probeRayIndex].a;
             #else
-                float3 probeRayRadiance = RTXGIUintToFloat3(asuint(DDGIVolumeRayDataUAV[int2(rayIndex, probeIndex)].r));
+                float3 probeRayRadiance = DDGIRadianceCascadesUintToFloat3(asuint(DDGIVolumeRayDataUAV[int2(rayIndex, probeIndex)].r));
                 float  probeRayDistance = DDGIVolumeRayDataUAV[probeRayIndex].g;
             #endif
         #endif
@@ -255,7 +255,7 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
         // Blend the ray's radiance
         result += float4(probeRayRadiance * weight, weight);
 
-    #else // !RTXGI_DDGI_BLEND_RADIANCE
+    #else // !DDGIRadianceCascades_DDGI_BLEND_RADIANCE
 
         // Initialize the probe hit distance to three quarters of the distance of the grid cell diagonal
         float probeMaxRayDistance = length(DDGIVolume.probeGridSpacing) * 0.75f;
@@ -264,11 +264,11 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
         weight = pow(weight, DDGIVolume.probeDistanceExponent);
 
         // Load the ray traced distance
-        #if RTXGI_DDGI_SHARED_MEMORY
+        #if DDGIRadianceCascades_DDGI_SHARED_MEMORY
             float probeRayDistance = min(abs(RayDistance[rayIndex]), probeMaxRayDistance);
         #else
             // HitT is negative on backface hits for the probe relocation, take the absolute value
-            #if (RTXGI_DDGI_FORMAT_RADIANCE == 1)
+            #if (DDGIRadianceCascades_DDGI_FORMAT_RADIANCE == 1)
                 float probeRayDistance = min(abs(DDGIVolumeRayDataUAV[probeRayIndex].a), probeMaxRayDistance);
             #else
                 float probeRayDistance = min(abs(DDGIVolumeRayDataUAV[probeRayIndex].g), probeMaxRayDistance);
@@ -290,14 +290,14 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
     float  hysteresis = DDGIVolume.probeHysteresis;
     float3 previous = DDGIVolumeProbeDataUAV[probeTexCoords].rgb;
 
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     uint3 probeSpace = uint3(0, 0, 0);
 
     int3 probeGridCoord = DDGIGetProbeCoords(probeIndex, DDGIVolume.probeGridCounts);
     probeSpace = (probeGridCoord + DDGIVolume.probeScrollOffsets) / (DDGIVolume.probeGridCounts);
     probeSpace = probeSpace % 2;
 
-#if (RTXGI_DDGI_BLEND_RADIANCE == 0) // distance blend is after irradiance blend. so write only in distance blend.
+#if (DDGIRadianceCascades_DDGI_BLEND_RADIANCE == 0) // distance blend is after irradiance blend. so write only in distance blend.
     if (DispatchThreadID.x % PROBE_NUM_TEXELS == 0 && DispatchThreadID.y % PROBE_NUM_TEXELS== 0)
     {
         uint probeSpacePacked = 0;
@@ -310,14 +310,14 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
 
 #endif
 
-#if RTXGI_DDGI_BLEND_RADIANCE
+#if DDGIRadianceCascades_DDGI_BLEND_RADIANCE
     // Tone-mapping gamma adjustment
     result.rgb = pow(result.rgb, DDGIVolume.probeInverseIrradianceEncodingGamma);
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     if (probeSpace.x == prevProbeSpace.x && probeSpace.y == prevProbeSpace.y && probeSpace.z == prevProbeSpace.z)
     {
 #endif
-        if (RTXGIMaxComponent(previous.rgb - result.rgb) > DDGIVolume.probeChangeThreshold)
+        if (DDGIRadianceCascadesMaxComponent(previous.rgb - result.rgb) > DDGIVolume.probeChangeThreshold)
         {
             // Lower the hysteresis when a large lighting change is detected
             hysteresis = max(0.f, hysteresis - 0.75f);
@@ -341,25 +341,25 @@ void DDGIProbeBlendingCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Grou
         // dark convergence.
         static const float c_threshold = 1.f / 1024.f;
         float3 lerpDelta = (1.f - hysteresis) * delta;
-        if (RTXGIMaxComponent(result.rgb) < RTXGIMaxComponent(previous.rgb))
+        if (DDGIRadianceCascadesMaxComponent(result.rgb) < DDGIRadianceCascadesMaxComponent(previous.rgb))
         {
             lerpDelta = min(max(c_threshold, abs(lerpDelta)), abs(delta)) * sign(lerpDelta);
         }
         result = float4(previous.rgb + lerpDelta, 1.f);
 
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     }
 #endif
 #else
 
     // Interpolate the new filtered distance with the existing filtered distance in the probe.
     // A high hysteresis value emphasizes the existing probe filtered distance.
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     if (probeSpace.x == prevProbeSpace.x && probeSpace.y == prevProbeSpace.y && probeSpace.z == prevProbeSpace.z)
     {
 #endif
        result = float4(lerp(result.rgb, previous.rgb, hysteresis), 1.f);
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     }
 #endif
 

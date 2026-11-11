@@ -12,7 +12,7 @@
 #include "DDGIVolume.h"
 #include "DDGIVolumeUpdate.h"
 
-#include "RTXGIPluginSettings.h"
+#include "DDGIRadianceCascadesPluginSettings.h"
 
 // UE4 Public Interfaces
 #include "ConvexVolume.h"
@@ -29,30 +29,30 @@
 
 #include "RenderGraphUtils.h"
 
-DECLARE_GPU_STAT_NAMED(RTXGI_Update, TEXT("RTXGI Update"));
-DECLARE_GPU_STAT_NAMED(RTXGI_ApplyLighting, TEXT("RTXGI Apply Lighting"));
-DECLARE_GPU_STAT_NAMED(RTXGI_UpscaleLighting, TEXT("RTXGI Upscale Lighting"));
+DECLARE_GPU_STAT_NAMED(DDGIRadianceCascades_Update, TEXT("DDGIRadianceCascades Update"));
+DECLARE_GPU_STAT_NAMED(DDGIRadianceCascades_ApplyLighting, TEXT("DDGIRadianceCascades Apply Lighting"));
+DECLARE_GPU_STAT_NAMED(DDGIRadianceCascades_UpscaleLighting, TEXT("DDGIRadianceCascades Upscale Lighting"));
 
 static TAutoConsoleVariable<bool> CVarUseDDGI(
-	TEXT("r.RTXGI.DDGI"),
+	TEXT("r.DDGIRadianceCascades.DDGI"),
 	true,
 	TEXT("If false, this will disable the lighting contribution and functionality of DDGI volumes.\n"),
 	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<float> CVarLightingPassScale(
-	TEXT("r.RTXGI.DDGI.LightingPass.Scale"),
+	TEXT("r.DDGIRadianceCascades.DDGI.LightingPass.Scale"),
 	1.0f,
 	TEXT("Scale for the lighting pass resolution between 0.25 - 1.0 (value is clamped to this range).\n"),
 	ECVF_RenderThreadSafe | ECVF_Cheat);
 
 static TAutoConsoleVariable<float> CVarRelativeDistanceThreshold(
-	TEXT("r.RTXGI.DDGI.LightingPass.RelativeDistanceThreshold"),
+	TEXT("r.DDGIRadianceCascades.DDGI.LightingPass.RelativeDistanceThreshold"),
 	0.01f,
 	TEXT("Relative distance threshold for geometry test in the lighting upscaler.\n"),
 	ECVF_RenderThreadSafe | ECVF_Cheat);
 
 static TAutoConsoleVariable<float> CVarNormalPower(
-	TEXT("r.RTXGI.DDGI.LightingPass.NormalPower"),
+	TEXT("r.DDGIRadianceCascades.DDGI.LightingPass.NormalPower"),
 	1.f,
 	TEXT("Normal power for geometry test in the lighting upscaler.\n"),
 	ECVF_RenderThreadSafe | ECVF_Cheat);
@@ -93,7 +93,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FApplyLightingDeferredShaderParameters, )
 	SHADER_PARAMETER(int32, ShouldUsePreExposure)
 	SHADER_PARAMETER(int32, NumVolumes)
 	// Volumes are sorted from densest probes to least dense probes
-	SHADER_PARAMETER_STRUCT_ARRAY(FVolumeData, DDGIVolume, [FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_MAX_SHADING_VOLUMES])
+	SHADER_PARAMETER_STRUCT_ARRAY(FVolumeData, DDGIVolume, [FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_MAX_SHADING_VOLUMES])
 	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 END_SHADER_PARAMETER_STRUCT()
 
@@ -121,10 +121,10 @@ public:
 	using FParameters = FApplyLightingDeferredShaderParameters;
 
 	class FLightingChannelsDim : SHADER_PERMUTATION_BOOL("USE_LIGHTING_CHANNELS");
-	class FEnableRelocation : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_PROBE_RELOCATION");
-	class FEnableScrolling : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_INFINITE_SCROLLING_VOLUME");
-	class FFormatRadiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_RADIANCE");
-	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_IRRADIANCE");
+	class FEnableRelocation : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_PROBE_RELOCATION");
+	class FEnableScrolling : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME");
+	class FFormatRadiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_RADIANCE");
+	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE");
 
 	using FPermutationDomain = TShaderPermutationDomain<FLightingChannelsDim, FEnableRelocation, FEnableScrolling, FFormatRadiance, FFormatIrradiance>;
 
@@ -133,11 +133,11 @@ public:
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
 		FString volumeMacroList;
-		for (int i = 0; i < FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_MAX_SHADING_VOLUMES; ++i)
+		for (int i = 0; i < FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_MAX_SHADING_VOLUMES; ++i)
 			volumeMacroList += FString::Printf(TEXT(" VOLUME_ENTRY(%i)"), i);
 		OutEnvironment.SetDefine(TEXT("VOLUME_LIST"), volumeMacroList.GetCharArray().GetData());
 
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
 
 		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
@@ -171,8 +171,8 @@ public:
 	}
 };
 
-IMPLEMENT_GLOBAL_SHADER(FApplyLightingDeferredShaderCS, "/Plugin/RTXGI/Private/ApplyLightingDeferred.usf", "MainCS", SF_Compute);
-IMPLEMENT_GLOBAL_SHADER(FUpscaleLightingShaderCS, "/Plugin/RTXGI/Private/UpscaleLighting.usf", "MainCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FApplyLightingDeferredShaderCS, "/Plugin/DDGIRadianceCascades/Private/ApplyLightingDeferred.usf", "MainCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FUpscaleLightingShaderCS, "/Plugin/DDGIRadianceCascades/Private/UpscaleLighting.usf", "MainCS", SF_Compute);
 
 // Delegate Handles
 FDelegateHandle FDDGIVolumeSceneProxy::RenderDiffuseIndirectVisualizationsHandle;
@@ -230,8 +230,8 @@ bool FDDGIVolumeSceneProxy::IntersectsViewFrustum(const FViewInfo& View)
 
 void FDDGIVolumeSceneProxy::OnIrradianceOrDistanceBitsChange()
 {
-	EDDGIIrradianceBits IrradianceBits = GetDefault<URTXGIPluginSettings>()->IrradianceBits;
-	EDDGIDistanceBits DistanceBits = GetDefault<URTXGIPluginSettings>()->DistanceBits;
+	EDDGIIrradianceBits IrradianceBits = GetDefault<UDDGIRadianceCascadesPluginSettings>()->IrradianceBits;
+	EDDGIDistanceBits DistanceBits = GetDefault<UDDGIRadianceCascadesPluginSettings>()->DistanceBits;
 
 	// tell all the proxies about the change
 	ENQUEUE_RENDER_COMMAND(DDGIOnIrradianceBitsChange)(
@@ -288,7 +288,7 @@ void FDDGIVolumeSceneProxy::ReallocateSurfaces_RenderThread(FRHICommandListImmed
 	}
 
 	// probe classifications
-	if (FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION)
+	if (FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION)
 	{
 		EPixelFormat Format = FDDGIVolumeSceneProxy::FComponentData::c_pixelFormatStates;
 
@@ -345,8 +345,8 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 	// This is especially true for situations like bIsSceneCapture, when bSceneCaptureUsesRayTracing is false, and it can make incorrect probe update results.
 	if (!View.bIsSceneCapture && !View.bIsReflectionCapture && !View.bIsPlanarReflection)
 	{
-		RDG_GPU_STAT_SCOPE(GraphBuilder, RTXGI_Update);
-		RDG_EVENT_SCOPE(GraphBuilder, "RTXGI Update");
+		RDG_GPU_STAT_SCOPE(GraphBuilder, DDGIRadianceCascades_Update);
+		RDG_EVENT_SCOPE(GraphBuilder, "DDGIRadianceCascades Update");
 		DDGIVolumeUpdate::DDGIUpdatePerFrame_RenderThread(Scene, View, GraphBuilder);
 	}
 
@@ -363,19 +363,19 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 	uint32 ScaledViewSizeY = FMath::Max(1, FMath::CeilToInt(View.ViewRect.Size().Y * ScreenScale));
 	FIntPoint ScaledViewSize = FIntPoint(ScaledViewSizeX, ScaledViewSizeY);
 
-	FRDGTextureDesc RTXGILightingPassOutputDesc = FRDGTextureDesc::Create2D(
+	FRDGTextureDesc DDGIRadianceCascadesLightingPassOutputDesc = FRDGTextureDesc::Create2D(
 		ScaledViewSize,
 		SceneColorTexture->Desc.Format,
 		FClearValueBinding::Transparent,
 		TexCreate_ShaderResource | TexCreate_UAV
 	);
 
-	FRDGTextureRef LightingPassTex = GraphBuilder.CreateTexture(RTXGILightingPassOutputDesc, TEXT("RTXGILightingPassOutput"));
+	FRDGTextureRef LightingPassTex = GraphBuilder.CreateTexture(DDGIRadianceCascadesLightingPassOutputDesc, TEXT("DDGIRadianceCascadesLightingPassOutput"));
 	FRDGTextureUAVRef LightingPassUAV = GraphBuilder.CreateUAV(LightingPassTex);
 
 	{
-		RDG_GPU_STAT_SCOPE(GraphBuilder, RTXGI_ApplyLighting);
-		RDG_EVENT_SCOPE(GraphBuilder, "RTXGI Apply Lighting");
+		RDG_GPU_STAT_SCOPE(GraphBuilder, DDGIRadianceCascades_ApplyLighting);
+		RDG_EVENT_SCOPE(GraphBuilder, "DDGIRadianceCascades Apply Lighting");
 
 		// DDGIVolume and useful metadata
 		struct FProxyEntry
@@ -431,7 +431,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 		});
 
 		// Get the number of relevant in-frustum volumes
-		int32 numVolumes = FMath::Min(volumes.Num(), FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_MAX_SHADING_VOLUMES);
+		int32 numVolumes = FMath::Min(volumes.Num(), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_MAX_SHADING_VOLUMES);
 
 		// Truncate the in-frustum volumes list to the maximum number of volumes supported
 		volumes.SetNum(numVolumes, true);
@@ -467,7 +467,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 
 			// Get the shader permutation
 			FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
-			bool highBitCount = (GetDefault<URTXGIPluginSettings>()->IrradianceBits == EDDGIIrradianceBits::n32);
+			bool highBitCount = (GetDefault<UDDGIRadianceCascadesPluginSettings>()->IrradianceBits == EDDGIIrradianceBits::n32);
 			FApplyLightingDeferredShaderCS::FPermutationDomain PermutationVector;
 			PermutationVector.Set<FApplyLightingDeferredShaderCS::FLightingChannelsDim>(Resources.LightingChannelsTexture != nullptr);
 			PermutationVector.Set<FApplyLightingDeferredShaderCS::FEnableRelocation>(enableRelocation);
@@ -538,7 +538,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 			}
 
 			// When there are fewer relevant volumes than the maximum supported, set the empty volume texture slots to dummy values
-			for (int32 volumeIndex = numVolumes; volumeIndex < FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_MAX_SHADING_VOLUMES; ++volumeIndex)
+			for (int32 volumeIndex = numVolumes; volumeIndex < FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_MAX_SHADING_VOLUMES; ++volumeIndex)
 			{
 				PassParameters->DDGIVolume[volumeIndex].ProbeIrradiance = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
 				PassParameters->DDGIVolume[volumeIndex].ProbeDistance = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
@@ -579,8 +579,8 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 
 	if (CVarLightingPassScale.GetValueOnRenderThread() < 1.0f)
 	{
-		RDG_GPU_STAT_SCOPE(GraphBuilder, RTXGI_UpscaleLighting);
-		RDG_EVENT_SCOPE(GraphBuilder, "RTXGI Upscale Lighting");
+		RDG_GPU_STAT_SCOPE(GraphBuilder, DDGIRadianceCascades_UpscaleLighting);
+		RDG_EVENT_SCOPE(GraphBuilder, "DDGIRadianceCascades Upscale Lighting");
 
 		// Set parameters for the Upsampler CS
 		FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
@@ -639,7 +639,7 @@ void UDDGIVolumeComponent::InitializeComponent()
 }
 
 // Serialization version for stored DDGIVolume data
-struct RTXGI_API FDDGICustomVersion
+struct DDGIRadianceCascades_API FDDGICustomVersion
 {
 	enum Type
 	{
@@ -824,7 +824,7 @@ void UDDGIVolumeComponent::Serialize(FArchive& Ar)
 		{
 			// Probe data can be optionally not saved depending on project settings.
 			bool bSeralizeProbesIsOptional = Ar.CustomVer(FDDGICustomVersion::GUID) >= FDDGICustomVersion::SaveLoadProbeDataIsOptional;
-			bool bProbesSerialized = bSeralizeProbesIsOptional ? GetDefault<URTXGIPluginSettings>()->SerializeProbes : true;
+			bool bProbesSerialized = bSeralizeProbesIsOptional ? GetDefault<UDDGIRadianceCascadesPluginSettings>()->SerializeProbes : true;
 			if (bSeralizeProbesIsOptional)
 				Ar << bProbesSerialized;
 
@@ -884,8 +884,8 @@ void UDDGIVolumeComponent::Serialize(FArchive& Ar)
 
 			if (bProbesSerialized)
 			{
-				EDDGIIrradianceBits IrradianceBits = GetDefault<URTXGIPluginSettings>()->IrradianceBits;
-				EDDGIDistanceBits DistanceBits = GetDefault<URTXGIPluginSettings>()->DistanceBits;
+				EDDGIIrradianceBits IrradianceBits = GetDefault<UDDGIRadianceCascadesPluginSettings>()->IrradianceBits;
+				EDDGIDistanceBits DistanceBits = GetDefault<UDDGIRadianceCascadesPluginSettings>()->DistanceBits;
 				bool bLoadFormat = Ar.CustomVer(FDDGICustomVersion::GUID) >= FDDGICustomVersion::SaveLoadProbeTexturesFmt;
 
 				// Read the volume texture data in and note that it's ready for load
@@ -1039,8 +1039,8 @@ void UDDGIVolumeComponent::UpdateRenderThreadData()
 		}
 
 		FDDGIVolumeSceneProxy* DDGIProxy = SceneProxy;
-		EDDGIIrradianceBits IrradianceBits = GetDefault<URTXGIPluginSettings>()->IrradianceBits;
-		EDDGIDistanceBits DistanceBits = GetDefault<URTXGIPluginSettings>()->DistanceBits;
+		EDDGIIrradianceBits IrradianceBits = GetDefault<UDDGIRadianceCascadesPluginSettings>()->IrradianceBits;
+		EDDGIDistanceBits DistanceBits = GetDefault<UDDGIRadianceCascadesPluginSettings>()->DistanceBits;
 
 		FDDGITextureLoadContext TextureLoadContext = LoadContext;
 		LoadContext.ReadyForLoad = false;

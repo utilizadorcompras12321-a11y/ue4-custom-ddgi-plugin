@@ -8,39 +8,39 @@
 * license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "RTXGIEditor.h"
+#include "DDGIRadianceCascadesEditor.h"
 #include "DDGIVolume.h"
 #include "IPlacementModeModule.h"
 #include "Interfaces/IPluginManager.h"
 #include "Styling/SlateStyleRegistry.h"
-#include "RTXGIDetails.h"
+#include "DDGIRadianceCascadesDetails.h"
 #include "PropertyEditorModule.h"
 
-#define LOCTEXT_NAMESPACE "FRTXGIEditor"
+#define LOCTEXT_NAMESPACE "FDDGIRadianceCascadesEditor"
 
-TSharedPtr<FSlateStyleSet> FRTXGIEditor::StyleSet;
+TSharedPtr<FSlateStyleSet> FDDGIRadianceCascadesEditor::StyleSet;
 
-void FRTXGIEditor::StartupModule()
+void FDDGIRadianceCascadesEditor::StartupModule()
 {
 	if (!StyleSet.IsValid())
 	{
-		StyleSet = MakeShared<FSlateStyleSet>(FName("RTXGIPlacementStyle"));
-		FString IconPath = IPluginManager::Get().FindPlugin(TEXT("RTXGI"))->GetBaseDir() + TEXT("/Resources/Icon40.png");
-		StyleSet->Set("RTXGIPlacement.ModesIcon", new FSlateImageBrush(IconPath, FVector2D(40.0f, 40.0f)));
+		StyleSet = MakeShared<FSlateStyleSet>(FName("DDGIRadianceCascadesPlacementStyle"));
+		FString IconPath = IPluginManager::Get().FindPlugin(TEXT("DDGIRadianceCascades"))->GetBaseDir() + TEXT("/Resources/Icon40.png");
+		StyleSet->Set("DDGIRadianceCascadesPlacement.ModesIcon", new FSlateImageBrush(IconPath, FVector2D(40.0f, 40.0f)));
 
 		FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
 	}
 
 	IPlacementModeModule& PlacementModeModule = IPlacementModeModule::Get();
-	PlacementModeModule.OnPlacementModeCategoryRefreshed().AddRaw(this, &FRTXGIEditor::OnPlacementModeRefresh);
+	PlacementModeModule.OnPlacementModeCategoryRefreshed().AddRaw(this, &FDDGIRadianceCascadesEditor::OnPlacementModeRefresh);
 
 	//Get the property module
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
 	//Register the custom details panel we have created
-	PropertyModule.RegisterCustomClassLayout(ADDGIVolume::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FRTXGIDetails::MakeInstance));
+	PropertyModule.RegisterCustomClassLayout(ADDGIVolume::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FDDGIRadianceCascadesDetails::MakeInstance));
 }
 
-void FRTXGIEditor::ShutdownModule()
+void FDDGIRadianceCascadesEditor::ShutdownModule()
 {
 	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
 	// we call this function before unloading the module.
@@ -57,7 +57,7 @@ void FRTXGIEditor::ShutdownModule()
 	}
 }
 
-void FRTXGIEditor::OnPlacementModeRefresh(FName CategoryName)
+void FDDGIRadianceCascadesEditor::OnPlacementModeRefresh(FName CategoryName)
 {
 	static FName VolumeName = FName(TEXT("Volumes"));
 	if (CategoryName == VolumeName)
@@ -65,10 +65,10 @@ void FRTXGIEditor::OnPlacementModeRefresh(FName CategoryName)
 		FPlaceableItem* DDGIVolumePlacement = new FPlaceableItem(
 			*UActorFactory::StaticClass(),
 			FAssetData(ADDGIVolume::StaticClass()),
-			FName("RTXGIPlacement.ModesIcon"),
+			FName("DDGIRadianceCascadesPlacement.ModesIcon"),
 			TOptional<FLinearColor>(),
 			TOptional<int32>(),
-			FText::FromString("RTXGI DDGI Volume")
+			FText::FromString("DDGIRadianceCascades DDGI Volume")
 		);
 
 		IPlacementModeModule::Get().RegisterPlaceableItem(CategoryName, MakeShareable(DDGIVolumePlacement));
@@ -77,4 +77,4 @@ void FRTXGIEditor::OnPlacementModeRefresh(FName CategoryName)
 
 #undef LOCTEXT_NAMESPACE
 
-IMPLEMENT_MODULE(FRTXGIEditor, RTXGIEditor)
+IMPLEMENT_MODULE(FDDGIRadianceCascadesEditor, DDGIRadianceCascadesEditor)

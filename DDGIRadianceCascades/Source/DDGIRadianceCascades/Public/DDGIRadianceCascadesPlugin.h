@@ -14,17 +14,16 @@
 #include "Modules/ModuleManager.h"
 #include "Features/IModularFeatures.h"
 #include "Modules/ModuleInterface.h"
-#include "Styling/SlateStyle.h"
 
 /**
-* The public interface of the RTXGIPlacement
+* The public interface of the IDDGIRadianceCascadesPlugin
 */
-class FRTXGIEditor : public IModuleInterface, public IModularFeature
+class FDDGIRadianceCascadesPlugin : public IModuleInterface, public IModularFeature
 {
 public:
 	static FString GetModularFeatureName()
 	{
-		static FString FeatureName = FString(TEXT("RTXGIEditor"));
+		static FString FeatureName = FString(TEXT("DDGIRadianceCascades"));
 		return FeatureName;
 	}
 
@@ -33,6 +32,6 @@ public:
 	virtual void ShutdownModule() override;
 
 private:
-	static TSharedPtr<FSlateStyleSet> StyleSet;
-	void OnPlacementModeRefresh(FName CategoryName);
+	void StartupDDGI();
+	void ShutdownDDGI();
 };

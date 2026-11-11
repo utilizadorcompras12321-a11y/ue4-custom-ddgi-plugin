@@ -8,40 +8,40 @@
 * license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "RTXGIPluginSettings.h"
-#include "RTXGIPlugin.h"
+#include "DDGIRadianceCascadesPluginSettings.h"
+#include "DDGIRadianceCascadesPlugin.h"
 #include "DDGIVolumeComponent.h"
 
-#define LOCTEXT_NAMESPACE "RTXGIPlugin"
+#define LOCTEXT_NAMESPACE "DDGIRadianceCascadesPlugin"
 
 #if WITH_EDITOR
 
-void URTXGIPluginSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
+void UDDGIRadianceCascadesPluginSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 	// tell the scene proxies about the bit depth change
 	if (PropertyChangedEvent.MemberProperty)
 	{
-		if (PropertyChangedEvent.MemberProperty->GetFName() == GET_MEMBER_NAME_CHECKED(URTXGIPluginSettings, IrradianceBits) ||
-			PropertyChangedEvent.MemberProperty->GetFName() == GET_MEMBER_NAME_CHECKED(URTXGIPluginSettings, DistanceBits))
+		if (PropertyChangedEvent.MemberProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UDDGIRadianceCascadesPluginSettings, IrradianceBits) ||
+			PropertyChangedEvent.MemberProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UDDGIRadianceCascadesPluginSettings, DistanceBits))
 		{
 			FDDGIVolumeSceneProxy::OnIrradianceOrDistanceBitsChange();
 		}
 	}
 }
 
-FText URTXGIPluginSettings::GetSectionText() const
+FText UDDGIRadianceCascadesPluginSettings::GetSectionText() const
 {
-	return LOCTEXT("SettingsDisplayName", "RTXGI");
+	return LOCTEXT("SettingsDisplayName", "DDGIRadianceCascades");
 }
 
 #endif	// WITH_EDITOR
 
-URTXGIPluginSettings::URTXGIPluginSettings()
+UDDGIRadianceCascadesPluginSettings::UDDGIRadianceCascadesPluginSettings()
 {
 	CategoryName = TEXT("Plugins");
-	SectionName  = TEXT("RTXGI");
+	SectionName  = TEXT("DDGIRadianceCascades");
 }
 
 #undef LOCTEXT_NAMESPACE

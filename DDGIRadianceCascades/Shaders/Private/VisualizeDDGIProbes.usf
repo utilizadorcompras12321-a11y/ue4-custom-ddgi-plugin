@@ -10,7 +10,7 @@
 
 #include "/Engine/Public/Platform.ush"
 
-#include "/Plugin/RTXGI/Private/SDK/ddgi/ProbeCommon.ush"
+#include "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/ProbeCommon.ush"
 
 Texture2D<float4> ProbeIrradianceTexture;
 Texture2D<float4> ProbeDistanceTexture;
@@ -49,8 +49,8 @@ void VisualizeDDGIProbesVS(
     out float4 OutPosition : SV_POSITION
 )
 {
-#if RTXGI_DDGI_PROBE_RELOCATION
-    #if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION
+    #if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
         float3 Translation = DDGIGetProbeWorldPositionWithOffset(InstanceId, VolumePosition, VolumeRotation, VolumeProbeGridCounts, VolumeProbeGridSpacing, VolumeProbeScrollOffsets, ProbeOffsets);
     #else
         float3 Translation = DDGIGetProbeWorldPositionWithOffset(InstanceId, VolumePosition, VolumeRotation, VolumeProbeGridCounts, VolumeProbeGridSpacing, ProbeOffsets);
@@ -83,7 +83,7 @@ void VisualizeDDGIProbesPS(
 
     float3 Output = float3(0.0f, 0.0f, 0.0f);
 
-    #if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+    #if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
         float2 ProbeUVDistance = DDGIGetProbeUV(Input.InstanceId, OctantCoordinates, VolumeProbeGridCounts, VolumeProbeNumDistanceTexels, VolumeProbeScrollOffsets);
         float2 ProbeUVIrradiance = DDGIGetProbeUV(Input.InstanceId, OctantCoordinates, VolumeProbeGridCounts, VolumeProbeNumIrradianceTexels, VolumeProbeScrollOffsets);
     #else
@@ -103,7 +103,7 @@ void VisualizeDDGIProbesPS(
         // Multiply by the area of the integration domain (2PI) to complete the irradiance estimate. Divide by PI to normalize for the display.
         Output *= 2.f;
 
-        #if !RTXGI_DDGI_FORMAT_IRRADIANCE
+        #if !DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE
             Output *= 1.0989f;    // Adjust for energy loss due to reduced precision in the R10G10B10A2 irradiance texture format
         #endif
 
@@ -126,9 +126,9 @@ void VisualizeDDGIProbesPS(
 
     Output *= ShouldUsePreExposure ? PreExposure : 1.0f;
 
-#if RTXGI_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
     {
-        #if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+        #if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
             int probeIndex = DDGIGetProbeIndexOffset(Input.InstanceId, VolumeProbeGridCounts, VolumeProbeScrollOffsets);
         #else
             int probeIndex = Input.InstanceId;

@@ -18,7 +18,7 @@
 class ADDGIVolume;
 class IDetailLayoutBuilder;
 
-class FRTXGIDetails : public IDetailCustomization
+class FDDGIRadianceCascadesDetails : public IDetailCustomization
 {
 public:
 	/** Makes a new instance of this detail layout class for a specific detail view requesting it */

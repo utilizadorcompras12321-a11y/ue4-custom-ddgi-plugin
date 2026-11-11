@@ -8,18 +8,18 @@
 * license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#ifndef RTXGI_DDGI_PROBE_COMMON_HLSL
-#define RTXGI_DDGI_PROBE_COMMON_HLSL
+#ifndef DDGIRadianceCascades_DDGI_PROBE_COMMON_HLSL
+#define DDGIRadianceCascades_DDGI_PROBE_COMMON_HLSL
 
 #include "../Common.ush"
 #include "../../SDKDefines.ush"
 #include "../DDGIVolumeDefines.ush"
 #include "../DDGIVolumeDescGPU.ush"
 
-#if RTXGI_DDGI_PROBE_RELOCATION || RTXGI_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION || DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
 // The number of fixed rays that are used for probe relocation and classification.
 // These rays do not vary to produce temporally stable results during relocation and classification.
-#define RTXGI_DDGI_NUM_FIXED_RAYS 32
+#define DDGIRadianceCascades_DDGI_NUM_FIXED_RAYS 32
 #endif
 
 //------------------------------------------------------------------------
@@ -31,9 +31,9 @@
 */
 int DDGIGetProbesPerPlane(int3 probeGridCounts)
 {
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT
     return (probeGridCounts.x * probeGridCounts.z);
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     return (probeGridCounts.x * probeGridCounts.y);
 #endif
 }
@@ -43,9 +43,9 @@ int DDGIGetProbesPerPlane(int3 probeGridCounts)
 */
 int DDGIGetPlaneIndex(uint2 threadCoords, int3 probeGridCounts, int probeNumTexels)
 {
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     return int(threadCoords.x / (probeGridCounts.x * probeNumTexels));
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     return int(threadCoords.x / (probeGridCounts.y * probeNumTexels));
 #endif
 }
@@ -55,9 +55,9 @@ int DDGIGetPlaneIndex(uint2 threadCoords, int3 probeGridCounts, int probeNumTexe
 */
 int DDGIGetProbeIndexInPlane(uint2 threadCoords, int planeIndex, int3 probeGridCounts, int probeNumTexels)
 {
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     return int(threadCoords.x / probeNumTexels) - (planeIndex * probeGridCounts.x) + (probeGridCounts.x * int(threadCoords.y / probeNumTexels));
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     return int(threadCoords.x / probeNumTexels) - (planeIndex * probeGridCounts.y) + (probeGridCounts.y * int(threadCoords.y / probeNumTexels));
 #endif
 }
@@ -72,11 +72,11 @@ int DDGIGetProbeIndexInPlane(uint2 threadCoords, int planeIndex, int3 probeGridC
 int2 DDGIGetProbeTexelPosition(int probeIndex, int3 probeGridCounts)
 {
     // Compute the probe index for this thread
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT
     return int2(probeIndex % (probeGridCounts.x * probeGridCounts.y), probeIndex / (probeGridCounts.x * probeGridCounts.y));
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     return int2(probeIndex % (probeGridCounts.y * probeGridCounts.z), probeIndex / (probeGridCounts.y * probeGridCounts.z));
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     return int2(probeIndex % (probeGridCounts.x * probeGridCounts.z), probeIndex / (probeGridCounts.x * probeGridCounts.z));
 #endif
 }
@@ -86,7 +86,7 @@ int2 DDGIGetProbeTexelPosition(int probeIndex, int3 probeGridCounts)
 * using the probe index, octant coordinates, probe grid counts,
 * and the number of texels used by a probe.
 */
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
 float2 DDGIGetProbeUV(uint probeIndex, float2 octantCoordinates, int3 probeGridCounts, int numTexels, int3 probeScrollOffsets)
 #else
 float2 DDGIGetProbeUV(uint probeIndex, float2 octantCoordinates, int3 probeGridCounts, int numTexels)
@@ -98,30 +98,30 @@ float2 DDGIGetProbeUV(uint probeIndex, float2 octantCoordinates, int3 probeGridC
     float probeInteriorTexels = float(numTexels);
     float probeTexels = (probeInteriorTexels + 2.f);
 
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT
     int gridSpaceX = (probeIndex % probeGridCounts.x);
     int gridSpaceY = (probeIndex / probeGridCounts.x);
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     gridSpaceX = (gridSpaceX + probeScrollOffsets.x) % probeGridCounts.x;
     gridSpaceY = (gridSpaceY + probeScrollOffsets.z) % probeGridCounts.z;
     planeIndex = (planeIndex + probeScrollOffsets.y) % probeGridCounts.y;
 #endif
     int x = gridSpaceX + (planeIndex * probeGridCounts.x);
     int y = gridSpaceY % probeGridCounts.z;
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     int gridSpaceX = (probeIndex % probeGridCounts.y);
     int gridSpaceY = (probeIndex / probeGridCounts.y);
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     gridSpaceX = (gridSpaceX + probeScrollOffsets.y) % probeGridCounts.y;
     gridSpaceY = (gridSpaceY + probeScrollOffsets.x) % probeGridCounts.x;
     planeIndex = (planeIndex + probeScrollOffsets.z) % probeGridCounts.z;
 #endif
     int x = gridSpaceX + (planeIndex * probeGridCounts.y);
     int y = gridSpaceY % probeGridCounts.x;
-#elif  RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#elif  DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     int gridSpaceX = (probeIndex % probeGridCounts.x);
     int gridSpaceY = (probeIndex / probeGridCounts.x);
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     gridSpaceX = (gridSpaceX + probeScrollOffsets.x) % probeGridCounts.x;
     gridSpaceY = (gridSpaceY + probeScrollOffsets.y) % probeGridCounts.y;
     planeIndex = (planeIndex + probeScrollOffsets.z) % probeGridCounts.z;
@@ -130,13 +130,13 @@ float2 DDGIGetProbeUV(uint probeIndex, float2 octantCoordinates, int3 probeGridC
     int y = gridSpaceY % probeGridCounts.y;
 #endif
 
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT
     float textureWidth = probeTexels * (probeGridCounts.x * probeGridCounts.y);
     float textureHeight = probeTexels * probeGridCounts.z;
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     float textureWidth = probeTexels * (probeGridCounts.y * probeGridCounts.z);
     float textureHeight = probeTexels * probeGridCounts.x;
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     float textureWidth = probeTexels * (probeGridCounts.x * probeGridCounts.z);
     float textureHeight = probeTexels * probeGridCounts.y;
 #endif
@@ -179,7 +179,7 @@ float3 DDGIGetOctahedralDirection(float2 coords)
     float3 direction = float3(coords.x, coords.y, 1.f - abs(coords.x) - abs(coords.y));
     if (direction.z < 0.f)
     {
-        direction.xy = (1.f - abs(direction.yx)) * RTXGISignNotZero(direction.xy);
+        direction.xy = (1.f - abs(direction.yx)) * DDGIRadianceCascadesSignNotZero(direction.xy);
     }
     return normalize(direction);
 }
@@ -194,7 +194,7 @@ float2 DDGIGetOctahedralCoordinates(float3 direction)
     float2 uv = direction.xy * (1.f / l1norm);
     if (direction.z < 0.f)
     {
-        uv = (1.f - abs(uv.yx)) * RTXGISignNotZero(uv.xy);
+        uv = (1.f - abs(uv.yx)) * DDGIRadianceCascadesSignNotZero(uv.xy);
     }
     return uv;
 }
@@ -211,7 +211,7 @@ float2 DDGIGetOctahedralCoordinates(float3 direction)
 float3 DDGISphericalFibonacci(float index, float numSamples)
 {
     const float b = (sqrt(5.f) * 0.5f + 0.5f) - 1.f;
-    float phi = RTXGI_2PI * frac(index * b);
+    float phi = DDGIRadianceCascades_2PI * frac(index * b);
     float cosTheta = 1.f - (2.f * index + 1.f) * (1.f / numSamples);
     float sinTheta = sqrt(saturate(1.f - (cosTheta * cosTheta)));
 
@@ -224,10 +224,10 @@ float3 DDGISphericalFibonacci(float index, float numSamples)
 */
 float3 DDGIGetProbeRayDirection(int rayIndex, int numRaysPerProbe, float4x4 rotationTransform)
 {
-#if RTXGI_DDGI_PROBE_RELOCATION || RTXGI_DDGI_PROBE_CLASSIFICATION
-    bool useFixedRays = rayIndex < RTXGI_DDGI_NUM_FIXED_RAYS;
-    int  adjustedRayIndex = useFixedRays ? rayIndex : rayIndex - RTXGI_DDGI_NUM_FIXED_RAYS;
-    int  adjustedNumRays = useFixedRays ? min(RTXGI_DDGI_NUM_FIXED_RAYS, numRaysPerProbe) : numRaysPerProbe - RTXGI_DDGI_NUM_FIXED_RAYS;
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION || DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
+    bool useFixedRays = rayIndex < DDGIRadianceCascades_DDGI_NUM_FIXED_RAYS;
+    int  adjustedRayIndex = useFixedRays ? rayIndex : rayIndex - DDGIRadianceCascades_DDGI_NUM_FIXED_RAYS;
+    int  adjustedNumRays = useFixedRays ? min(DDGIRadianceCascades_DDGI_NUM_FIXED_RAYS, numRaysPerProbe) : numRaysPerProbe - DDGIRadianceCascades_DDGI_NUM_FIXED_RAYS;
 
     float3 direction = DDGISphericalFibonacci(adjustedRayIndex, adjustedNumRays);
     if (useFixedRays)
@@ -251,11 +251,11 @@ float3 DDGIGetProbeRayDirection(int rayIndex, int numRaysPerProbe, float4x4 rota
 int DDGIGetProbeIndex(int2 texcoord, int3 probeGridCounts)
 {
     // Compute the probe index for this thread
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT
     return texcoord.x + (texcoord.y * (probeGridCounts.x * probeGridCounts.y));
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     return texcoord.x + (texcoord.y * (probeGridCounts.y * probeGridCounts.z));
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     return texcoord.x + (texcoord.y * (probeGridCounts.x * probeGridCounts.z));
 #endif
 }
@@ -266,11 +266,11 @@ int DDGIGetProbeIndex(int2 texcoord, int3 probeGridCounts)
 */
 int DDGIGetProbeIndex(int3 probeCoords, int3 probeGridCounts)
 {
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT
     return probeCoords.x + (probeGridCounts.x * probeCoords.z) + (probeGridCounts.x * probeGridCounts.z) * probeCoords.y;
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     return probeCoords.y + (probeGridCounts.y * probeCoords.x) + (probeGridCounts.y * probeGridCounts.x) * probeCoords.z;
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     return probeCoords.x + (probeGridCounts.x * probeCoords.y) + (probeGridCounts.x * probeGridCounts.y) * probeCoords.z;
 #endif
 }
@@ -298,9 +298,9 @@ uint2 DDGIGetThreadBaseCoords(int probeIndex, int3 probeGridCounts, int probeNum
     int probeIndexInPlane = probeIndex % probesPerPlane;
 
     // Get the top left texel for a given probe
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     int planeWidthInProbes = probeGridCounts.x;
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     int planeWidthInProbes = probeGridCounts.y;
 #endif
 
@@ -318,15 +318,15 @@ int3 DDGIGetProbeCoords(int probeIndex, int3 probeGridCounts)
 {
     int3 probeCoords;
 
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT
     probeCoords.x = probeIndex % probeGridCounts.x;
     probeCoords.y = probeIndex / (probeGridCounts.x * probeGridCounts.z);
     probeCoords.z = (probeIndex / probeGridCounts.x) % probeGridCounts.z;
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     probeCoords.x = (probeIndex / probeGridCounts.y) % probeGridCounts.x;
     probeCoords.y = probeIndex % probeGridCounts.y;
     probeCoords.z = probeIndex / (probeGridCounts.x * probeGridCounts.y);
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     probeCoords.x = probeIndex % probeGridCounts.x;
     probeCoords.y = (probeIndex / probeGridCounts.x) % probeGridCounts.y;
     probeCoords.z = probeIndex / (probeGridCounts.y * probeGridCounts.x);
@@ -343,7 +343,7 @@ int3 DDGIGetProbeCoords(int probeIndex, int3 probeGridCounts)
 int3 DDGIGetBaseProbeGridCoords(float3 worldPosition, float3 origin, float4 rotation, int3 probeGridCounts, float3 probeGridSpacing)
 {
     float3 position = worldPosition - origin;
-    position = RTXGIQuaternionRotate(position, RTXGIQuaternionConjugate(rotation));
+    position = DDGIRadianceCascadesQuaternionRotate(position, DDGIRadianceCascadesQuaternionConjugate(rotation));
 
     // Shift from [-n/2, n/2] to [0, n]
     position += (probeGridSpacing * (probeGridCounts - 1)) * 0.5f;
@@ -370,7 +370,7 @@ float3 DDGIGetProbeWorldPosition(int3 probeCoords, float3 origin, float4 rotatio
 
     // Compute the probe's world position
     float3 probeWorldPosition = probeGridWorldPosition - probeGridShift;
-    probeWorldPosition = RTXGIQuaternionRotate(probeWorldPosition, rotation);
+    probeWorldPosition = DDGIRadianceCascadesQuaternionRotate(probeWorldPosition, rotation);
     probeWorldPosition += origin;
     return probeWorldPosition;
 }
@@ -388,7 +388,7 @@ float3 DDGIGetProbeWorldPosition(int probeIndex, float3 origin, float4 rotation,
 // Probe Relocation
 //------------------------------------------------------------------------
 
-#if RTXGI_DDGI_PROBE_RELOCATION
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION
 
 /*
 * Reads the probe offset and transforms it into a world space offset.
@@ -417,11 +417,11 @@ void DDGIEncodeProbeOffset(int2 probeOffsetTexcoord, float3 probeGridSpacing, fl
 */
 float3 DDGIGetProbeWorldPositionWithOffset(int probeIndex, float3 origin, float4 rotation, int3 probeGridCounts, float3 probeGridSpacing, Texture2D<float4> probeOffsets)
 {
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT
     int textureWidth = (probeGridCounts.x * probeGridCounts.y);
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     int textureWidth = (probeGridCounts.y * probeGridCounts.z);
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     int textureWidth = (probeGridCounts.x * probeGridCounts.z);
 #endif
 
@@ -439,24 +439,24 @@ float3 DDGIGetProbeWorldPositionWithOffset(int3 probeCoords, float3 origin, floa
     return DDGIGetProbeWorldPositionWithOffset(probeIndex, origin, rotation, probeGridCounts, probeGridSpacing, probeOffsets);
 }
 
-#endif // RTXGI_DDGI_PROBE_RELOCATION
+#endif // DDGIRadianceCascades_DDGI_PROBE_RELOCATION
 
 //------------------------------------------------------------------------
 // Probe State Classification
 //------------------------------------------------------------------------
 
-#if RTXGI_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
 
 #define PROBE_STATE_ACTIVE      0   // probe shoots rays and may be sampled by a front facing surface or another probe (recursive irradiance)
 #define PROBE_STATE_INACTIVE    1   // probe doesn't need to shoot rays, it isn't near a front facing surface or another active probe
 
-#endif // RTXGI_DDGI_PROBE_CLASSIFICATION
+#endif // DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
 
 //------------------------------------------------------------------------
 // Volume Scrolling Movement
 //------------------------------------------------------------------------
 
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
 
 /**
 * Gets the index of a probe that is offset from a base probe
@@ -469,7 +469,7 @@ int DDGIGetProbeIndexOffset(int baseProbeIndex, int3 probeGridCounts, int3 probe
     return offsetProbeIndex;
 }
 
-#if RTXGI_DDGI_PROBE_RELOCATION
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION
 // Modified versions of the GetProbeWorldPositionWithOffset functions that account for probeScrollOffsets
 
 /*
@@ -477,11 +477,11 @@ int DDGIGetProbeIndexOffset(int baseProbeIndex, int3 probeGridCounts, int3 probe
 */
 float3 DDGIGetProbeWorldPositionWithOffset(int probeIndex, float3 origin, float4 rotation, int3 probeGridCounts, float3 probeGridSpacing, int3 probeScrollOffsets, Texture2D<float4> probeOffsets)
 {
-#if RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT || RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT
+#if DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT || DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT
     int textureWidth = (probeGridCounts.x * probeGridCounts.y);
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
     int textureWidth = (probeGridCounts.y * probeGridCounts.z);
-#elif RTXGI_COORDINATE_SYSTEM == RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP
+#elif DDGIRadianceCascades_COORDINATE_SYSTEM == DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP
     int textureWidth = (probeGridCounts.x * probeGridCounts.z);
 #endif
 
@@ -503,6 +503,6 @@ float3 DDGIGetProbeWorldPositionWithOffset(int3 probeCoords, float3 origin, floa
 }
 #endif
 
-#endif // RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#endif // DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
 
-#endif // RTXGI_DDGI_PROBE_COMMON_HLSL
+#endif // DDGIRadianceCascades_DDGI_PROBE_COMMON_HLSL

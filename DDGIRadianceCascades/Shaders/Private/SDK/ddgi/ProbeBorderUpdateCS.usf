@@ -52,7 +52,7 @@ void DDGIProbeBorderRowUpdateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     uint2 copyCoordinates = uint2(probeStart + offset, (threadCoordinates.y + 1));
 
-#if RTXGI_DDGI_DEBUG_BORDER_COPY_INDEXING && (RTXGI_DDGI_FORMAT_IRRADIANCE == 1)
+#if DDGIRadianceCascades_DDGI_DEBUG_BORDER_COPY_INDEXING && (DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE == 1)
     DDGIVolumeProbeDataUAV[threadCoordinates] = float4(threadCoordinates, copyCoordinates);
     threadCoordinates.y += probeSideLengthMinusOne;
     copyCoordinates = uint2(probeStart + offset, threadCoordinates.y - 1);
@@ -91,7 +91,7 @@ void DDGIProbeBorderColumnUpdateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         copyCoordinates.x = threadCoordinates.x + PROBE_NUM_TEXELS;
         copyCoordinates.y = threadCoordinates.y - sign(mod - 1) * PROBE_NUM_TEXELS;
 
-    #if RTXGI_DDGI_DEBUG_BORDER_COPY_INDEXING && (RTXGI_DDGI_FORMAT_IRRADIANCE == 1)
+    #if DDGIRadianceCascades_DDGI_DEBUG_BORDER_COPY_INDEXING && (DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE == 1)
         DDGIVolumeProbeDataUAV[threadCoordinates] = float4(threadCoordinates, copyCoordinates);
     #else
         DDGIVolumeProbeDataUAV[threadCoordinates] = DDGIVolumeProbeDataUAV[copyCoordinates];
@@ -101,7 +101,7 @@ void DDGIProbeBorderColumnUpdateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         threadCoordinates.x += probeSideLengthMinusOne;
         copyCoordinates.x = threadCoordinates.x - PROBE_NUM_TEXELS;
 
-    #if RTXGI_DDGI_DEBUG_BORDER_COPY_INDEXING & (RTXGI_DDGI_FORMAT_IRRADIANCE == 1)
+    #if DDGIRadianceCascades_DDGI_DEBUG_BORDER_COPY_INDEXING & (DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE == 1)
         DDGIVolumeProbeDataUAV[threadCoordinates] = float4(threadCoordinates, copyCoordinates);
     #else
         DDGIVolumeProbeDataUAV[threadCoordinates] = DDGIVolumeProbeDataUAV[copyCoordinates];
@@ -115,7 +115,7 @@ void DDGIProbeBorderColumnUpdateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     copyCoordinates = uint2(threadCoordinates.x + 1, probeStart + offset);
 
-#if RTXGI_DDGI_DEBUG_BORDER_COPY_INDEXING && (RTXGI_DDGI_FORMAT_IRRADIANCE == 1)
+#if DDGIRadianceCascades_DDGI_DEBUG_BORDER_COPY_INDEXING && (DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE == 1)
     DDGIVolumeProbeDataUAV[threadCoordinates] = float4(threadCoordinates, copyCoordinates);
     threadCoordinates.x += probeSideLengthMinusOne;
     copyCoordinates = uint2(threadCoordinates.x - 1, probeStart + offset);

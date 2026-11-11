@@ -13,7 +13,7 @@
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/DeveloperSettings.h"
-#include "RTXGIPluginSettings.generated.h"
+#include "DDGIRadianceCascadesPluginSettings.generated.h"
 
 UENUM()
 enum class EDDGIIrradianceBits : uint8
@@ -39,15 +39,15 @@ enum class EDDGIProbesVisulizationMode : uint8
 };
 
 /**
- * Configure the RTXGI plug-in.
+ * Configure the DDGIRadianceCascades plug-in.
  */
 UCLASS(config=Engine, defaultconfig)
-class URTXGIPluginSettings : public UDeveloperSettings
+class UDDGIRadianceCascadesPluginSettings : public UDeveloperSettings
 {
 	GENERATED_BODY()
 
 public:
-	URTXGIPluginSettings();
+	UDDGIRadianceCascadesPluginSettings();
 
 #if WITH_EDITOR
 	//~ UObject interface

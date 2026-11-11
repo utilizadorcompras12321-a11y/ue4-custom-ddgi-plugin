@@ -8,8 +8,8 @@
 * license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#ifndef RTXGI_DDGI_IRRADIANCE_HLSL
-#define RTXGI_DDGI_IRRADIANCE_HLSL
+#ifndef DDGIRadianceCascades_DDGI_IRRADIANCE_HLSL
+#define DDGIRadianceCascades_DDGI_IRRADIANCE_HLSL
 
 #include "ProbeCommon.ush"
 
@@ -17,10 +17,10 @@ struct DDGIVolumeResources
 {
     Texture2D<float4> probeIrradianceSRV;
     Texture2D<float4> probeDistanceSRV;
-#if RTXGI_DDGI_PROBE_RELOCATION
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION
     Texture2D<float4> probeOffsetsSRV;
 #endif
-#if RTXGI_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
     Texture2D<uint> probeStatesSRV;
 #endif
     SamplerState bilinearSampler;
@@ -45,7 +45,7 @@ float DDGIGetVolumeBlendWeight(float3 worldPosition, DDGIVolumeDescGPU volume)
     float volumeBlendWeight = 1.f;
 
     float3 position = worldPosition - volume.origin;
-    position = RTXGIQuaternionRotate(position, RTXGIQuaternionConjugate(volume.rotation));
+    position = DDGIRadianceCascadesQuaternionRotate(position, DDGIRadianceCascadesQuaternionConjugate(volume.rotation));
 
     // Shift from [-n/2, n/2] to [0, n]
     position += (volume.probeGridSpacing * (volume.probeGridCounts - 1)) * 0.5f;
@@ -88,7 +88,7 @@ float3 DDGIGetVolumeIrradiance(
     float3 baseProbeWorldPosition = DDGIGetProbeWorldPosition(baseProbeCoords, volume.origin, volume.rotation, volume.probeGridCounts, volume.probeGridSpacing);
 
     // Clamp the distance between the given point and the base probe's world position (on each axis) to [0, 1]
-    float3 distanceVolumeSpace = RTXGIQuaternionRotate(biasedWorldPosition - baseProbeWorldPosition, RTXGIQuaternionConjugate(volume.rotation));
+    float3 distanceVolumeSpace = DDGIRadianceCascadesQuaternionRotate(biasedWorldPosition - baseProbeWorldPosition, DDGIRadianceCascadesQuaternionConjugate(volume.rotation));
     float3 alpha = clamp((distanceVolumeSpace / volume.probeGridSpacing), float3(0.f, 0.f, 0.f), float3(1.f, 1.f, 1.f));
 
     // Iterate over the 8 closest probes and accumulate their contributions
@@ -103,8 +103,8 @@ float3 DDGIGetVolumeIrradiance(
         int3 adjacentProbeCoords = clamp(baseProbeCoords + adjacentProbeOffset, int3(0, 0, 0), volume.probeGridCounts - int3(1, 1, 1));
 
         // Get the adjacent probe's world position
-    #if RTXGI_DDGI_PROBE_RELOCATION
-        #if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+    #if DDGIRadianceCascades_DDGI_PROBE_RELOCATION
+        #if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
             float3 adjacentProbeWorldPosition = DDGIGetProbeWorldPositionWithOffset(adjacentProbeCoords, volume.origin, volume.rotation, volume.probeGridCounts, volume.probeGridSpacing, volume.probeScrollOffsets, resources.probeOffsetsSRV);
         #else
             float3 adjacentProbeWorldPosition = DDGIGetProbeWorldPositionWithOffset(adjacentProbeCoords, volume.origin, volume.rotation, volume.probeGridCounts, volume.probeGridSpacing, resources.probeOffsetsSRV);
@@ -116,9 +116,9 @@ float3 DDGIGetVolumeIrradiance(
         // Get the adjacent probe's index (used for texture lookups)
         int adjacentProbeIndex = DDGIGetProbeIndex(adjacentProbeCoords, volume.probeGridCounts);
 
-#if RTXGI_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
         {
-            #if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+            #if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
                 int probeIndex = DDGIGetProbeIndexOffset(adjacentProbeIndex, volume.probeGridCounts, volume.probeScrollOffsets);
             #else
                 int probeIndex = adjacentProbeIndex;
@@ -154,7 +154,7 @@ float3 DDGIGetVolumeIrradiance(
 
         // Compute the texture coordinates of this adjacent probe and sample the probe's filtered distance
         float2 octantCoords = DDGIGetOctahedralCoordinates(-biasedPosToAdjProbe);
-    #if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+    #if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
         float2 probeTextureCoords = DDGIGetProbeUV(adjacentProbeIndex, octantCoords, volume.probeGridCounts, volume.probeNumDistanceTexels, volume.probeScrollOffsets);
     #else
         float2 probeTextureCoords = DDGIGetProbeUV(adjacentProbeIndex, octantCoords, volume.probeGridCounts, volume.probeNumDistanceTexels);
@@ -195,7 +195,7 @@ float3 DDGIGetVolumeIrradiance(
 
         // Sample the probe irradiance
         octantCoords = DDGIGetOctahedralCoordinates(direction);
-    #if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+    #if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
         probeTextureCoords = DDGIGetProbeUV(adjacentProbeIndex, octantCoords, volume.probeGridCounts, volume.probeNumIrradianceTexels, volume.probeScrollOffsets);
     #else
         probeTextureCoords = DDGIGetProbeUV(adjacentProbeIndex, octantCoords, volume.probeGridCounts, volume.probeNumIrradianceTexels);
@@ -216,13 +216,13 @@ float3 DDGIGetVolumeIrradiance(
 
     irradiance *= (1.f / accumulatedWeights);   // Normalize by the accumulated weights
     irradiance *= irradiance;                   // Go back to linear irradiance
-    irradiance *= RTXGI_2PI;                    // Multiply by the area of the integration domain (hemisphere) to complete the Monte Carlo Estimator equation
+    irradiance *= DDGIRadianceCascades_2PI;                    // Multiply by the area of the integration domain (hemisphere) to complete the Monte Carlo Estimator equation
 
-#if (RTXGI_DDGI_FORMAT_IRRADIANCE == 0)
+#if (DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE == 0)
     irradiance *= 1.0989f;                      // Adjust for energy loss due to reduced precision in the R10G10B10A2 irradiance texture format
 #endif
 
     return irradiance;
 }
 
-#endif // RTXGI_DDGI_IRRADIANCE_HLSL
+#endif // DDGIRadianceCascades_DDGI_IRRADIANCE_HLSL

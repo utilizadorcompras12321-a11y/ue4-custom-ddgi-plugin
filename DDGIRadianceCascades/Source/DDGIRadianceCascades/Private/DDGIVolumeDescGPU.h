@@ -8,8 +8,8 @@
 * license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#ifndef RTXGI_DDGI_VOLUME_DESC_GPU_H
-#define RTXGI_DDGI_VOLUME_DESC_GPU_H
+#ifndef DDGIRadianceCascades_DDGI_VOLUME_DESC_GPU_H
+#define DDGIRadianceCascades_DDGI_VOLUME_DESC_GPU_H
 
 /**
  * DDGIVolumeDescGPU
@@ -41,4 +41,4 @@ BEGIN_UNIFORM_BUFFER_STRUCT(FDDGIVolumeDescGPU, )
 	SHADER_PARAMETER(float,         probeMinFrontfaceDistance)
 END_UNIFORM_BUFFER_STRUCT()
 
-#endif /* RTXGI_DDGI_VOLUME_DESC_GPU_H */
+#endif /* DDGIRadianceCascades_DDGI_VOLUME_DESC_GPU_H */

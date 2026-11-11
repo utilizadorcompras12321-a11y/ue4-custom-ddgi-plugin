@@ -11,9 +11,9 @@
 /*
 This shader shoots a viewport of rays so you can see what the volume sees, copying the logic of ProbeUpdateRGS.usf.
 
-r.RTXGI.DDGI.ProbesTextureVis 0 - turn it off
-r.RTXGI.DDGI.ProbesTextureVis 1 - render the scene color.  (VOLUME_DEBUG_VIEW == 0)
-r.RTXGI.DDGI.ProbesTextureVis 2 - render misses (blue), hits (green), back face hits (red).  (VOLUME_DEBUG_VIEW == 1)
+r.DDGIRadianceCascades.DDGI.ProbesTextureVis 0 - turn it off
+r.DDGIRadianceCascades.DDGI.ProbesTextureVis 1 - render the scene color.  (VOLUME_DEBUG_VIEW == 0)
+r.DDGIRadianceCascades.DDGI.ProbesTextureVis 2 - render misses (blue), hits (green), back face hits (red).  (VOLUME_DEBUG_VIEW == 1)
 
 then "vis DDGIProbesTexure" to see the texture
 */

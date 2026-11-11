@@ -11,7 +11,7 @@
 #include "DDGIVolumeComponent.h"
 #include "DDGIVolume.h"
 #include "DDGIVolumeUpdate.h"
-#include "RTXGIPluginSettings.h"
+#include "DDGIRadianceCascadesPluginSettings.h"
 #include "RenderGraphBuilder.h"
 #include "ShaderParameterStruct.h"
 #include "ShaderParameterUtils.h"
@@ -25,7 +25,7 @@
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
-DECLARE_GPU_STAT_NAMED(RTXGI_Visualizations, TEXT("RTXGI Visualizations"));
+DECLARE_GPU_STAT_NAMED(DDGIRadianceCascades_Visualizations, TEXT("DDGIRadianceCascades Visualizations"));
 
 BEGIN_SHADER_PARAMETER_STRUCT(FVolumeVisualizeShaderParameters, )
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbeIrradianceTexture)
@@ -60,15 +60,15 @@ public:
 
 	using FParameters = FVolumeVisualizeShaderParameters;
 
-	class FEnableRelocation : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_PROBE_RELOCATION");
-	class FEnableScrolling : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_INFINITE_SCROLLING_VOLUME");
+	class FEnableRelocation : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_PROBE_RELOCATION");
+	class FEnableScrolling : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME");
 
 	using FPermutationDomain = TShaderPermutationDomain<FEnableRelocation, FEnableScrolling>;
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
 
 		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
@@ -88,17 +88,17 @@ public:
 
 	using FParameters = FVolumeVisualizeShaderParameters;
 
-	class FEnableRelocation : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_PROBE_RELOCATION");
-	class FEnableScrolling : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_INFINITE_SCROLLING_VOLUME");
-	class FFormatRadiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_RADIANCE");
-	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_IRRADIANCE");
+	class FEnableRelocation : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_PROBE_RELOCATION");
+	class FEnableScrolling : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME");
+	class FFormatRadiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_RADIANCE");
+	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE");
 
 	using FPermutationDomain = TShaderPermutationDomain<FEnableRelocation, FEnableScrolling, FFormatRadiance, FFormatIrradiance>;
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
 
 		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
@@ -110,8 +110,8 @@ public:
 	}
 };
 
-IMPLEMENT_GLOBAL_SHADER(FVolumeVisualizeShaderVS, "/Plugin/RTXGI/Private/VisualizeDDGIProbes.usf", "VisualizeDDGIProbesVS", SF_Vertex);
-IMPLEMENT_GLOBAL_SHADER(FVolumeVisualizeShaderPS, "/Plugin/RTXGI/Private/VisualizeDDGIProbes.usf", "VisualizeDDGIProbesPS", SF_Pixel);
+IMPLEMENT_GLOBAL_SHADER(FVolumeVisualizeShaderVS, "/Plugin/DDGIRadianceCascades/Private/VisualizeDDGIProbes.usf", "VisualizeDDGIProbesVS", SF_Vertex);
+IMPLEMENT_GLOBAL_SHADER(FVolumeVisualizeShaderPS, "/Plugin/DDGIRadianceCascades/Private/VisualizeDDGIProbes.usf", "VisualizeDDGIProbesPS", SF_Pixel);
 
 /**
 * Probe sphere vertex buffer. Defines a sphere of unit size.
@@ -290,14 +290,14 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectVisualizations_RenderThread(
 {
 	check(IsInRenderingThread() || IsInParallelRenderingThread());
 
-	int mode = static_cast<int>(GetDefault<URTXGIPluginSettings>()->ProbesVisualization);
+	int mode = static_cast<int>(GetDefault<UDDGIRadianceCascadesPluginSettings>()->ProbesVisualization);
 	if (mode < 1 || mode > 3) return;
 
-	RDG_GPU_STAT_SCOPE(GraphBuilder, RTXGI_Visualizations);
-	RDG_EVENT_SCOPE(GraphBuilder, "RTXGI Visualizations");
+	RDG_GPU_STAT_SCOPE(GraphBuilder, DDGIRadianceCascades_Visualizations);
+	RDG_EVENT_SCOPE(GraphBuilder, "DDGIRadianceCascades Visualizations");
 
-	float probeRadius = GetDefault<URTXGIPluginSettings>()->DebugProbeRadius;
-	float depthScale = GetDefault<URTXGIPluginSettings>()->ProbesDepthScale;
+	float probeRadius = GetDefault<UDDGIRadianceCascadesPluginSettings>()->DebugProbeRadius;
+	float depthScale = GetDefault<UDDGIRadianceCascadesPluginSettings>()->ProbesDepthScale;
 
 	// Get other things we'll need for all proxies
 	FIntRect ViewRect = View.ViewRect;
@@ -326,7 +326,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectVisualizations_RenderThread(
 		FVolumeVisualizeShaderPS::FPermutationDomain PermutationVectorPS;
 		PermutationVectorPS.Set<FVolumeVisualizeShaderPS::FEnableRelocation>(proxy->ComponentData.EnableProbeRelocation);
 		PermutationVectorPS.Set<FVolumeVisualizeShaderPS::FEnableScrolling>(proxy->ComponentData.EnableProbeScrolling);
-		bool highBitCount = (GetDefault<URTXGIPluginSettings>()->IrradianceBits == EDDGIIrradianceBits::n32);
+		bool highBitCount = (GetDefault<UDDGIRadianceCascadesPluginSettings>()->IrradianceBits == EDDGIIrradianceBits::n32);
 		PermutationVectorPS.Set<FVolumeVisualizeShaderPS::FFormatRadiance>(highBitCount);
 		PermutationVectorPS.Set<FVolumeVisualizeShaderPS::FFormatIrradiance>(highBitCount);
 
@@ -421,7 +421,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectVisualizations_RenderThread(
 
 static bool MemoryUseExec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar)
 {
-	if (!FParse::Command(&Cmd, TEXT("r.RTXGI.MemoryUsed")))
+	if (!FParse::Command(&Cmd, TEXT("r.DDGIRadianceCascades.MemoryUsed")))
 		return false;
 
 	struct VolumeMemoryInfo
@@ -499,7 +499,7 @@ static bool MemoryUseExec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar)
 		}
 	}
 
-	UE_LOG(LogConsoleResponse, Log, TEXT("RTXGI Texture Memory Usage (NOTE: Does not include alignment padding, so actual memory usage could be higher):"));
+	UE_LOG(LogConsoleResponse, Log, TEXT("DDGIRadianceCascades Texture Memory Usage (NOTE: Does not include alignment padding, so actual memory usage could be higher):"));
 
 	int totalBytes = 0;
 	static const float c_oneMegabyte = 1024.0f * 1024.0f;

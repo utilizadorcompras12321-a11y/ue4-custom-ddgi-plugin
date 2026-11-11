@@ -8,7 +8,7 @@
 * license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "RTXGIDetails.h"
+#include "DDGIRadianceCascadesDetails.h"
 #include "DDGIVolume.h"
 #include "DDGIVolumeComponent.h"
 #include "Widgets/Input/SButton.h"
@@ -18,14 +18,14 @@
 #include "DetailCategoryBuilder.h"
 #include "IDetailsView.h"
 
-#define LOCTEXT_NAMESPACE "RTXGIDetails"
+#define LOCTEXT_NAMESPACE "DDGIRadianceCascadesDetails"
 
-TSharedRef<IDetailCustomization> FRTXGIDetails::MakeInstance()
+TSharedRef<IDetailCustomization> FDDGIRadianceCascadesDetails::MakeInstance()
 {
-	return MakeShareable(new FRTXGIDetails);
+	return MakeShareable(new FDDGIRadianceCascadesDetails);
 }
 
-void FRTXGIDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayout)
+void FDDGIRadianceCascadesDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayout)
 {
 	const TArray< TWeakObjectPtr<UObject> >& SelectedObjects = DetailLayout.GetSelectedObjects();
 	for (int32 ObjectIndex = 0; ObjectIndex < SelectedObjects.Num(); ++ObjectIndex)
@@ -48,18 +48,18 @@ void FRTXGIDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayout)
 		[
 			SNew(SButton)
 			.HAlign(HAlign_Center)
-			.OnClicked(this, &FRTXGIDetails::OnClearProbes)
+			.OnClicked(this, &FDDGIRadianceCascadesDetails::OnClearProbes)
 			[ SNew(STextBlock).Text(FText::FromString("Clear Probes")) ]
 		];
 }
 
-void FRTXGIDetails::CustomizeDetails(const TSharedPtr<IDetailLayoutBuilder>& DetailBuilder)
+void FDDGIRadianceCascadesDetails::CustomizeDetails(const TSharedPtr<IDetailLayoutBuilder>& DetailBuilder)
 {
 	CachedDetailBuilder = DetailBuilder;
 	CustomizeDetails(*DetailBuilder);
 }
 
-FReply FRTXGIDetails::OnClearProbes()
+FReply FDDGIRadianceCascadesDetails::OnClearProbes()
 {
 	UDDGIVolumeComponent* DDGIComponent = DDGIVolume.IsValid() ? DDGIVolume->DDGIVolumeComponent : nullptr;
 	if (DDGIComponent != nullptr)
@@ -69,7 +69,7 @@ FReply FRTXGIDetails::OnClearProbes()
 	return FReply::Handled();
 }
 
-void FRTXGIDetails::OnSourceTypeChanged()
+void FDDGIRadianceCascadesDetails::OnSourceTypeChanged()
 {
 	IDetailLayoutBuilder* DetailBuilder = CachedDetailBuilder.Pin().Get();
 	if (DetailBuilder)

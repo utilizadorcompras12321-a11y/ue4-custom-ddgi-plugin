@@ -18,7 +18,7 @@
 #include "RayGenShaderUtils.h"
 #include "ShaderParameterStruct.h"
 #include "GlobalShader.h"
-#include "RTXGIPluginSettings.h"
+#include "DDGIRadianceCascadesPluginSettings.h"
 
 // UE4 private interfaces
 #include "ReflectionEnvironment.h"
@@ -35,11 +35,11 @@
 #include "DDGIVolumeComponent.h"
 #include "DDGIVolumeDescGPU.h"
 
-#define LOCTEXT_NAMESPACE "FRTXGIPlugin"
+#define LOCTEXT_NAMESPACE "FDDGIRadianceCascadesPlugin"
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 static TAutoConsoleVariable<int> CVarDDGIProbesTextureVis(
-	TEXT("r.RTXGI.DDGI.ProbesTextureVis"),
+	TEXT("r.DDGIRadianceCascades.DDGI.ProbesTextureVis"),
 	0,
 	TEXT("If 1, will render what the probes see. If 2, will show misses (blue), hits (green), backfaces (red). \'vis DDGIProbesTexure\' to see the output.\n"),
 	ECVF_RenderThreadSafe);
@@ -89,18 +89,18 @@ static FMatrix ComputeRandomRotation()
 	);
 }
 
-class FRayTracingRTXGIProbeUpdateRGS : public FGlobalShader
+class FRayTracingDDGIRadianceCascadesProbeUpdateRGS : public FGlobalShader
 {
-	DECLARE_GLOBAL_SHADER(FRayTracingRTXGIProbeUpdateRGS)
-	SHADER_USE_ROOT_PARAMETER_STRUCT(FRayTracingRTXGIProbeUpdateRGS, FGlobalShader)
+	DECLARE_GLOBAL_SHADER(FRayTracingDDGIRadianceCascadesProbeUpdateRGS)
+	SHADER_USE_ROOT_PARAMETER_STRUCT(FRayTracingDDGIRadianceCascadesProbeUpdateRGS, FGlobalShader)
 
 	class FEnableTwoSidedGeometryDim : SHADER_PERMUTATION_BOOL("ENABLE_TWO_SIDED_GEOMETRY"); // If false, it will cull back face triangles. We want this on for probe relocation and to stop light leak.
 	class FEnableMaterialsDim : SHADER_PERMUTATION_BOOL("ENABLE_MATERIALS");                 // If false, forces the geo to opaque (no alpha test). We want this off for speed.
-	class FEnableRelocation : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_PROBE_RELOCATION");
-	class FFormatRadiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_RADIANCE");
-	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_IRRADIANCE");
-	class FEnableScrolling : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_INFINITE_SCROLLING_VOLUME");
-	class FSkyLight : SHADER_PERMUTATION_INT("RTXGI_DDGI_SKY_LIGHT_TYPE", 3);
+	class FEnableRelocation : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_PROBE_RELOCATION");
+	class FFormatRadiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_RADIANCE");
+	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE");
+	class FEnableScrolling : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME");
+	class FSkyLight : SHADER_PERMUTATION_INT("DDGIRadianceCascades_DDGI_SKY_LIGHT_TYPE", 3);
 
 	using FPermutationDomain = TShaderPermutationDomain<FEnableTwoSidedGeometryDim, FEnableMaterialsDim, FEnableRelocation, FFormatRadiance, FFormatIrradiance, FEnableScrolling, FSkyLight>;
 
@@ -108,7 +108,7 @@ class FRayTracingRTXGIProbeUpdateRGS : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
 
 		// Set to 1 to be able to visualize this in the editor by typing "vis DDGIVolumeUpdateDebug" and later "vis none" to make it go away.
 		// Set to 0 to disable and deadstrip everything related
@@ -152,14 +152,14 @@ class FRayTracingRTXGIProbeUpdateRGS : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
-IMPLEMENT_GLOBAL_SHADER(FRayTracingRTXGIProbeUpdateRGS, "/Plugin/RTXGI/Private/ProbeUpdateRGS.usf", "ProbeUpdateRGS", SF_RayGen);
+IMPLEMENT_GLOBAL_SHADER(FRayTracingDDGIRadianceCascadesProbeUpdateRGS, "/Plugin/DDGIRadianceCascades/Private/ProbeUpdateRGS.usf", "ProbeUpdateRGS", SF_RayGen);
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
-class FRayTracingRTXGIProbeViewRGS : public FGlobalShader
+class FRayTracingDDGIRadianceCascadesProbeViewRGS : public FGlobalShader
 {
-	DECLARE_GLOBAL_SHADER(FRayTracingRTXGIProbeViewRGS)
-	SHADER_USE_ROOT_PARAMETER_STRUCT(FRayTracingRTXGIProbeViewRGS, FGlobalShader)
+	DECLARE_GLOBAL_SHADER(FRayTracingDDGIRadianceCascadesProbeViewRGS)
+	SHADER_USE_ROOT_PARAMETER_STRUCT(FRayTracingDDGIRadianceCascadesProbeViewRGS, FGlobalShader)
 
 	class FEnableTwoSidedGeometryDim : SHADER_PERMUTATION_BOOL("ENABLE_TWO_SIDED_GEOMETRY"); // If false, it will cull back face triangles. We want this on for probe relocation and to stop light leak.
 	class FEnableMaterialsDim : SHADER_PERMUTATION_BOOL("ENABLE_MATERIALS");                 // If false, forces the geo to opaque (no alpha test). We want this off for speed.
@@ -171,8 +171,8 @@ class FRayTracingRTXGIProbeViewRGS : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_RELOCATION"), 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_RELOCATION"), 0);
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -204,7 +204,7 @@ class FRayTracingRTXGIProbeViewRGS : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
-IMPLEMENT_GLOBAL_SHADER(FRayTracingRTXGIProbeViewRGS, "/Plugin/RTXGI/Private/ProbeViewRGS.usf", "ProbeViewRGS", SF_RayGen);
+IMPLEMENT_GLOBAL_SHADER(FRayTracingDDGIRadianceCascadesProbeViewRGS, "/Plugin/DDGIRadianceCascades/Private/ProbeViewRGS.usf", "ProbeViewRGS", SF_RayGen);
 
 #endif // #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
@@ -221,10 +221,10 @@ class FDDGIIrradianceBlend : public FGlobalShader
 		int32(EDDGIRaysPerProbe::n720),
 		int32(EDDGIRaysPerProbe::n864),
 		int32(EDDGIRaysPerProbe::n1008));
-	class FEnableRelocation : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_PROBE_RELOCATION");
-	class FFormatRadiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_RADIANCE");
-	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_IRRADIANCE");
-	class FEnableScrolling : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_INFINITE_SCROLLING_VOLUME");
+	class FEnableRelocation : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_PROBE_RELOCATION");
+	class FFormatRadiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_RADIANCE");
+	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE");
+	class FEnableScrolling : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME");
 
 	using FPermutationDomain = TShaderPermutationDomain<FRaysPerProbeEnum, FEnableRelocation, FFormatRadiance, FFormatIrradiance, FEnableScrolling>;
 
@@ -232,10 +232,10 @@ class FDDGIIrradianceBlend : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
 
 		OutEnvironment.SetDefine(TEXT("PROBE_NUM_TEXELS"), FDDGIVolumeSceneProxy::FComponentData::c_NumTexelsIrradiance);
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_BLEND_RADIANCE"), 1);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_BLEND_RADIANCE"), 1);
 
 		// Set to 1 to be able to visualize this in the editor by typing "vis DDGIIrradianceBlendDebug" and later "vis none" to make it go away.
 		// Set to 0 to disable and deadstrip everything related
@@ -265,7 +265,7 @@ class FDDGIIrradianceBlend : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
-IMPLEMENT_GLOBAL_SHADER(FDDGIIrradianceBlend, "/Plugin/RTXGI/Private/SDK/ddgi/ProbeBlendingCS.usf", "DDGIProbeBlendingCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FDDGIIrradianceBlend, "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/ProbeBlendingCS.usf", "DDGIProbeBlendingCS", SF_Compute);
 
 class FDDGIDistanceBlend : public FGlobalShader
 {
@@ -280,10 +280,10 @@ class FDDGIDistanceBlend : public FGlobalShader
 		int32(EDDGIRaysPerProbe::n720),
 		int32(EDDGIRaysPerProbe::n864),
 		int32(EDDGIRaysPerProbe::n1008));
-	class FEnableRelocation : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_PROBE_RELOCATION");
-	class FFormatRadiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_RADIANCE");
-	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_IRRADIANCE");
-	class FEnableScrolling : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_INFINITE_SCROLLING_VOLUME");
+	class FEnableRelocation : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_PROBE_RELOCATION");
+	class FFormatRadiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_RADIANCE");
+	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE");
+	class FEnableScrolling : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME");
 
 	using FPermutationDomain = TShaderPermutationDomain<FRaysPerProbeEnum, FEnableRelocation, FFormatRadiance, FFormatIrradiance, FEnableScrolling>;
 
@@ -291,9 +291,9 @@ class FDDGIDistanceBlend : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
 		OutEnvironment.SetDefine(TEXT("PROBE_NUM_TEXELS"), FDDGIVolumeSceneProxy::FComponentData::c_NumTexelsDistance);
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_BLEND_RADIANCE"), 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_BLEND_RADIANCE"), 0);
 
 		// Set to 1 to be able to visualize this in the editor by typing "vis DDGIDistanceBlendDebug" and later "vis none" to make it go away.
 		// Set to 0 to disable and deadstrip everything related
@@ -323,7 +323,7 @@ class FDDGIDistanceBlend : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
-IMPLEMENT_GLOBAL_SHADER(FDDGIDistanceBlend, "/Plugin/RTXGI/Private/SDK/ddgi/ProbeBlendingCS.usf", "DDGIProbeBlendingCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FDDGIDistanceBlend, "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/ProbeBlendingCS.usf", "DDGIProbeBlendingCS", SF_Compute);
 
 class FDDGIBorderRowUpdate : public FGlobalShader
 {
@@ -354,7 +354,7 @@ class FDDGIBorderRowUpdate : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
-IMPLEMENT_GLOBAL_SHADER(FDDGIBorderRowUpdate, "/Plugin/RTXGI/Private/SDK/ddgi/ProbeBorderUpdateCS.usf", "DDGIProbeBorderRowUpdateCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FDDGIBorderRowUpdate, "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/ProbeBorderUpdateCS.usf", "DDGIProbeBorderRowUpdateCS", SF_Compute);
 
 class FDDGIBorderColumnUpdate : public FGlobalShader
 {
@@ -385,7 +385,7 @@ class FDDGIBorderColumnUpdate : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
-IMPLEMENT_GLOBAL_SHADER(FDDGIBorderColumnUpdate, "/Plugin/RTXGI/Private/SDK/ddgi/ProbeBorderUpdateCS.usf", "DDGIProbeBorderColumnUpdateCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FDDGIBorderColumnUpdate, "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/ProbeBorderUpdateCS.usf", "DDGIProbeBorderColumnUpdateCS", SF_Compute);
 
 IMPLEMENT_UNIFORM_BUFFER_STRUCT(FDDGIVolumeDescGPU, "DDGIVolume");
 
@@ -394,9 +394,9 @@ class FDDGIProbesRelocate : public FGlobalShader
 	DECLARE_GLOBAL_SHADER(FDDGIProbesRelocate)
 	SHADER_USE_PARAMETER_STRUCT(FDDGIProbesRelocate, FGlobalShader)
 
-	class FFormatRadiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_RADIANCE");
-	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_IRRADIANCE");
-	class FEnableScrolling : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_INFINITE_SCROLLING_VOLUME");
+	class FFormatRadiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_RADIANCE");
+	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE");
+	class FEnableScrolling : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME");
 
 	using FPermutationDomain = TShaderPermutationDomain<FFormatRadiance, FFormatIrradiance, FEnableScrolling>;
 
@@ -404,8 +404,8 @@ class FDDGIProbesRelocate : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_RELOCATION"), 1);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_RELOCATION"), 1);
 
 		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
@@ -427,17 +427,17 @@ class FDDGIProbesRelocate : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
-IMPLEMENT_GLOBAL_SHADER(FDDGIProbesRelocate, "/Plugin/RTXGI/Private/SDK/ddgi/ProbeRelocationCS.usf", "DDGIProbeRelocationCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FDDGIProbesRelocate, "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/ProbeRelocationCS.usf", "DDGIProbeRelocationCS", SF_Compute);
 
 class FDDGIProbesClassify : public FGlobalShader
 {
 	DECLARE_GLOBAL_SHADER(FDDGIProbesClassify)
 	SHADER_USE_PARAMETER_STRUCT(FDDGIProbesClassify, FGlobalShader)
 
-	class FEnableRelocation : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_PROBE_RELOCATION");
-	class FFormatRadiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_RADIANCE");
-	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_FORMAT_IRRADIANCE");
-	class FEnableScrolling : SHADER_PERMUTATION_BOOL("RTXGI_DDGI_INFINITE_SCROLLING_VOLUME");
+	class FEnableRelocation : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_PROBE_RELOCATION");
+	class FFormatRadiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_RADIANCE");
+	class FFormatIrradiance : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_FORMAT_IRRADIANCE");
+	class FEnableScrolling : SHADER_PERMUTATION_BOOL("DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME");
 
 	using FPermutationDomain = TShaderPermutationDomain<FEnableRelocation, FFormatRadiance, FFormatIrradiance, FEnableScrolling>;
 
@@ -445,7 +445,7 @@ class FDDGIProbesClassify : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		OutEnvironment.SetDefine(TEXT("RTXGI_DDGI_PROBE_CLASSIFICATION"), 1);
+		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), 1);
 
 		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
@@ -466,7 +466,7 @@ class FDDGIProbesClassify : public FGlobalShader
 	END_SHADER_PARAMETER_STRUCT()
 };
 
-IMPLEMENT_GLOBAL_SHADER(FDDGIProbesClassify, "/Plugin/RTXGI/Private/SDK/ddgi/ProbeStateClassifierCS.usf", "DDGIProbeStateClassifierCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FDDGIProbesClassify, "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/ProbeStateClassifierCS.usf", "DDGIProbeStateClassifierCS", SF_Compute);
 
 #endif // RHI_RAYTRACING
 
@@ -616,15 +616,15 @@ namespace DDGIVolumeUpdate
 		{
 			for (int j = 0; j < 3; ++j)
 			{
-				FRayTracingRTXGIProbeUpdateRGS::FPermutationDomain PermutationVector;
-				PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FEnableTwoSidedGeometryDim>(true);
-				PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FEnableMaterialsDim>(false);
-				PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FEnableRelocation>((i & 1) != 0 ? true : false);
-				PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FFormatRadiance>((i & 2) != 0 ? true : false);
-				PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FFormatIrradiance>((i & 2) != 0 ? true : false);
-				PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FEnableScrolling>((i & 4) != 0 ? true : false);
-				PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FSkyLight>(j);
-				TShaderMapRef<FRayTracingRTXGIProbeUpdateRGS> RayGenerationShader(ShaderMap, PermutationVector);
+				FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FPermutationDomain PermutationVector;
+				PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FEnableTwoSidedGeometryDim>(true);
+				PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FEnableMaterialsDim>(false);
+				PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FEnableRelocation>((i & 1) != 0 ? true : false);
+				PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FFormatRadiance>((i & 2) != 0 ? true : false);
+				PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FFormatIrradiance>((i & 2) != 0 ? true : false);
+				PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FEnableScrolling>((i & 4) != 0 ? true : false);
+				PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FSkyLight>(j);
+				TShaderMapRef<FRayTracingDDGIRadianceCascadesProbeUpdateRGS> RayGenerationShader(ShaderMap, PermutationVector);
 
 				OutRayGenShaders.Add(RayGenerationShader.GetRayTracingShader());
 			}
@@ -633,11 +633,11 @@ namespace DDGIVolumeUpdate
 		#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 		for (int i = 0; i < 2; ++i)
 		{
-			FRayTracingRTXGIProbeViewRGS::FPermutationDomain PermutationVector;
-			PermutationVector.Set<FRayTracingRTXGIProbeViewRGS::FEnableTwoSidedGeometryDim>(true);
-			PermutationVector.Set<FRayTracingRTXGIProbeViewRGS::FEnableMaterialsDim>(false);
-			PermutationVector.Set<FRayTracingRTXGIProbeViewRGS::FVolumeDebugView>((i & 1) != 0 ? true : false);
-			TShaderMapRef<FRayTracingRTXGIProbeViewRGS> RayGenerationShader(ShaderMap, PermutationVector);
+			FRayTracingDDGIRadianceCascadesProbeViewRGS::FPermutationDomain PermutationVector;
+			PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeViewRGS::FEnableTwoSidedGeometryDim>(true);
+			PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeViewRGS::FEnableMaterialsDim>(false);
+			PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeViewRGS::FVolumeDebugView>((i & 1) != 0 ? true : false);
+			TShaderMapRef<FRayTracingDDGIRadianceCascadesProbeViewRGS> RayGenerationShader(ShaderMap, PermutationVector);
 
 			OutRayGenShaders.Add(RayGenerationShader.GetRayTracingShader());
 		}
@@ -674,7 +674,7 @@ namespace DDGIVolumeUpdate
 		// Early out if ray tracing is not enabled
 		if (!ShouldDynamicUpdate(View)) return;
 
-		bool highBitCount = (GetDefault<URTXGIPluginSettings>()->IrradianceBits == EDDGIIrradianceBits::n32);
+		bool highBitCount = (GetDefault<UDDGIRadianceCascadesPluginSettings>()->IrradianceBits == EDDGIIrradianceBits::n32);
 
 		// ASSUMES RENDERTHREAD
 		check(IsInRenderingThread() || IsInParallelRenderingThread());
@@ -714,7 +714,7 @@ namespace DDGIVolumeUpdate
 			DDGIUpdateVolume_RenderThread_RelocateProbes(GraphBuilder, VolProxy, ProbeRayRotationTransform, ProbesRadianceUAV, highBitCount);
 		}
 
-		if (FDDGIVolumeSceneProxy::FComponentData::c_RTXGI_DDGI_PROBE_CLASSIFICATION)
+		if (FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION)
 		{
 			DDGIUpdateVolume_RenderThread_ClassifyProbes(GraphBuilder, VolProxy, ProbesRadianceUAV, highBitCount);
 		}
@@ -742,15 +742,15 @@ namespace DDGIVolumeUpdate
 		// get the shader
 		const auto FeatureLevel = GMaxRHIFeatureLevel;
 		auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
-		FRayTracingRTXGIProbeViewRGS::FPermutationDomain PermutationVector;
-		PermutationVector.Set<FRayTracingRTXGIProbeViewRGS::FEnableTwoSidedGeometryDim>(true);
-		PermutationVector.Set<FRayTracingRTXGIProbeViewRGS::FEnableMaterialsDim>(false);
-		PermutationVector.Set<FRayTracingRTXGIProbeViewRGS::FVolumeDebugView>(DDGIProbesTextureVis - 1);
-		TShaderMapRef<FRayTracingRTXGIProbeViewRGS> RayGenerationShader(ShaderMap, PermutationVector);
+		FRayTracingDDGIRadianceCascadesProbeViewRGS::FPermutationDomain PermutationVector;
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeViewRGS::FEnableTwoSidedGeometryDim>(true);
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeViewRGS::FEnableMaterialsDim>(false);
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeViewRGS::FVolumeDebugView>(DDGIProbesTextureVis - 1);
+		TShaderMapRef<FRayTracingDDGIRadianceCascadesProbeViewRGS> RayGenerationShader(ShaderMap, PermutationVector);
 
 		// fill out shader parameters
-		FRayTracingRTXGIProbeViewRGS::FParameters DefaultPassParameters;
-		FRayTracingRTXGIProbeViewRGS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRayTracingRTXGIProbeViewRGS::FParameters>();
+		FRayTracingDDGIRadianceCascadesProbeViewRGS::FParameters DefaultPassParameters;
+		FRayTracingDDGIRadianceCascadesProbeViewRGS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRayTracingDDGIRadianceCascadesProbeViewRGS::FParameters>();
 		*PassParameters = DefaultPassParameters;
 
 		PassParameters->DDGIVolume_PreExposure = View.PreExposure;
@@ -803,7 +803,7 @@ namespace DDGIVolumeUpdate
 	void DDGIUpdateVolume_RenderThread_RTRadiance(const FScene& Scene, const FViewInfo& View, FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy, const FMatrix& ProbeRayRotationTransform, FRDGTextureRef ProbesRadianceTex, FRDGTextureUAVRef ProbesRadianceUAV, bool highBitCount)
 	{
 		// Deal with probe ray budgets, and updating probes in a round robin fashion within the volume
-		int ProbeUpdateRayBudget = GetDefault<URTXGIPluginSettings>()->ProbeUpdateRayBudget;
+		int ProbeUpdateRayBudget = GetDefault<UDDGIRadianceCascadesPluginSettings>()->ProbeUpdateRayBudget;
 		if (ProbeUpdateRayBudget == 0)
 		{
 			VolProxy->ProbeIndexStart = 0;
@@ -825,18 +825,18 @@ namespace DDGIVolumeUpdate
 		const auto FeatureLevel = GMaxRHIFeatureLevel;
 		auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
 
-		FRayTracingRTXGIProbeUpdateRGS::FPermutationDomain PermutationVector;
-		PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FEnableTwoSidedGeometryDim>(true);
-		PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FEnableMaterialsDim>(false);
-		PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FEnableRelocation>(VolProxy->ComponentData.EnableProbeRelocation);
-		PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FFormatRadiance>(highBitCount);
-		PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FFormatIrradiance>(highBitCount);
-		PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FEnableScrolling>(VolProxy->ComponentData.EnableProbeScrolling);
-		PermutationVector.Set<FRayTracingRTXGIProbeUpdateRGS::FSkyLight>(int(VolProxy->ComponentData.SkyLightTypeOnRayMiss));
-		TShaderMapRef<FRayTracingRTXGIProbeUpdateRGS> RayGenerationShader(ShaderMap, PermutationVector);
+		FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FPermutationDomain PermutationVector;
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FEnableTwoSidedGeometryDim>(true);
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FEnableMaterialsDim>(false);
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FEnableRelocation>(VolProxy->ComponentData.EnableProbeRelocation);
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FFormatRadiance>(highBitCount);
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FFormatIrradiance>(highBitCount);
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FEnableScrolling>(VolProxy->ComponentData.EnableProbeScrolling);
+		PermutationVector.Set<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FSkyLight>(int(VolProxy->ComponentData.SkyLightTypeOnRayMiss));
+		TShaderMapRef<FRayTracingDDGIRadianceCascadesProbeUpdateRGS> RayGenerationShader(ShaderMap, PermutationVector);
 
-		FRayTracingRTXGIProbeUpdateRGS::FParameters DefaultPassParameters;
-		FRayTracingRTXGIProbeUpdateRGS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRayTracingRTXGIProbeUpdateRGS::FParameters>();
+		FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FParameters DefaultPassParameters;
+		FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRayTracingDDGIRadianceCascadesProbeUpdateRGS::FParameters>();
 		*PassParameters = DefaultPassParameters;
 
 		PassParameters->TLAS = View.RayTracingScene.RayTracingSceneRHI->GetShaderResourceView();

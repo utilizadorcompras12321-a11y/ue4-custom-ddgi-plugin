@@ -11,8 +11,8 @@
 #include "/Engine/Private/HairStrands/HairStrandsVoxelPageCommonStruct.ush"
 #include "/Engine/Private/Common.ush"
 
-// RTXGI SDK
-#include "/Plugin/RTXGI/Private/SDK/ddgi/Irradiance.ush"
+// DDGIRadianceCascades SDK
+#include "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/Irradiance.ush"
 
 // needed by DeferredLightingCommon included indirectly
 #define SUPPORT_CONTACT_SHADOWS 0
@@ -70,33 +70,33 @@ SamplerState        Sky_TextureSampler;
 
 float3 GetEnvironmentalRadiance(in float3 direction)
 {
-#if RTXGI_DDGI_SKY_LIGHT_TYPE == 0 // None
+#if DDGIRadianceCascades_DDGI_SKY_LIGHT_TYPE == 0 // None
     return 0.f;
-#elif RTXGI_DDGI_SKY_LIGHT_TYPE == 1 // Raster
+#elif DDGIRadianceCascades_DDGI_SKY_LIGHT_TYPE == 1 // Raster
     return Sky_Color * GetSkySHDiffuse(direction);
-#else // RTXGI_DDGI_SKY_LIGHT_TYPE == 2 // Ray Tracing
+#else // DDGIRadianceCascades_DDGI_SKY_LIGHT_TYPE == 2 // Ray Tracing
     return Sky_Color * TextureCubeSampleLevel(Sky_Texture, Sky_TextureSampler, direction, 0).rgb;
 #endif
 }
 
 void WriteRadianceOutput(uint2 DispatchIndex, float4 value)
 {
-#if !RTXGI_DDGI_FORMAT_RADIANCE
+#if !DDGIRadianceCascades_DDGI_FORMAT_RADIANCE
     static const float c_threshold = 1.f / 255.f;
-    if (RTXGIMaxComponent(value.rgb) <= c_threshold) value.rgb = float3(0.f, 0.f, 0.f);
+    if (DDGIRadianceCascadesMaxComponent(value.rgb) <= c_threshold) value.rgb = float3(0.f, 0.f, 0.f);
 #endif
 
     // Radiance / irradiance is multipled by this when stored, but divided by this when recalled.
     // This feature is to avoid clipping when using the 10 bit texture format.
     value.rgb *= DDGIVolume_IrradianceScalar;
 
-#if RTXGI_DDGI_FORMAT_RADIANCE
+#if DDGIRadianceCascades_DDGI_FORMAT_RADIANCE
     // Use R32G32B32A32_FLOAT format. Store color components and hit distance as 32-bit float values.
     RadianceOutput[DispatchIndex.xy] = value;
 #else
     // Use R32G32_FLOAT format (don't use R32G32_UINT since hit distance needs to be negative sometimes).
     // Pack color as R10G10B10 in R32 and store hit distance in G32.
-    RadianceOutput[DispatchIndex.xy] = float4(asfloat(RTXGIFloat3ToUint(clamp(value.rgb, 0.0f, 1.0f))), value.w, 0.f, 0.f);
+    RadianceOutput[DispatchIndex.xy] = float4(asfloat(DDGIRadianceCascadesFloat3ToUint(clamp(value.rgb, 0.0f, 1.0f))), value.w, 0.f, 0.f);
 #endif
 
 #if DDGIVolumeUpdateDebug != 0
@@ -123,23 +123,23 @@ RAY_TRACING_ENTRY_RAYGEN(ProbeUpdateRGS)
             return;
     }
 
-#if RTXGI_DDGI_PROBE_CLASSIFICATION
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     int storageProbeIndex = DDGIGetProbeIndexOffset(probeIndex, DDGIVolume_probeGridCounts, DDGIVolume_probeScrollOffsets);
 #else
     int storageProbeIndex = probeIndex;
 #endif
     int2 texelPosition = DDGIGetProbeTexelPosition(storageProbeIndex, DDGIVolume_probeGridCounts);
     int  probeState = DDGIVolume_ProbeStates.Load(int3(texelPosition, 0));
-    if (probeState == PROBE_STATE_INACTIVE && rayIndex >= RTXGI_DDGI_NUM_FIXED_RAYS)
+    if (probeState == PROBE_STATE_INACTIVE && rayIndex >= DDGIRadianceCascades_DDGI_NUM_FIXED_RAYS)
     {
        // if the probe is inactive, do not shoot rays, unless it is one of the fixed rays that could potentially reactivate the probe
        return;
     }
 #endif
 
-#if RTXGI_DDGI_PROBE_RELOCATION
-    #if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION
+    #if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     float3 probeWorldPosition = DDGIGetProbeWorldPositionWithOffset(probeIndex, DDGIVolume_origin, DDGIVolume_rotation, DDGIVolume_probeGridCounts, DDGIVolume_probeGridSpacing, DDGIVolume_probeScrollOffsets, DDGIVolume_ProbeOffsets);
     #else
     float3 probeWorldPosition = DDGIGetProbeWorldPositionWithOffset(probeIndex, DDGIVolume_origin, DDGIVolume_rotation, DDGIVolume_probeGridCounts, DDGIVolume_probeGridSpacing, DDGIVolume_ProbeOffsets);
@@ -217,7 +217,7 @@ RAY_TRACING_ENTRY_RAYGEN(ProbeUpdateRGS)
         return;
     }
 
-#if RTXGI_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
     // hit a frontface, but probe is inactive, so this ray will only be used for reclassification, don't need any lighting
     if (probeState == PROBE_STATE_INACTIVE)
     {
@@ -236,10 +236,10 @@ RAY_TRACING_ENTRY_RAYGEN(ProbeUpdateRGS)
             resources.probeIrradianceSRV = DDGIVolume_ProbeIrradiance;
             resources.probeDistanceSRV = DDGIVolume_ProbeDistance;
             resources.bilinearSampler = DDGIVolume_LinearClampSampler;
-#if RTXGI_DDGI_PROBE_RELOCATION
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION
             resources.probeOffsetsSRV = DDGIVolume_ProbeOffsets;
 #endif
-#if RTXGI_DDGI_PROBE_CLASSIFICATION
+#if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
             resources.probeStatesSRV = DDGIVolume_ProbeStates;
 #endif
         }
@@ -274,7 +274,7 @@ RAY_TRACING_ENTRY_RAYGEN(ProbeUpdateRGS)
         // albedo to a maximum value to account for the energy loss at each bounce.
         float maxAlbedo = 0.9f;
 
-        probeLighting = irradiance * (min(albedo, maxAlbedo) / RTXGI_PI);
+        probeLighting = irradiance * (min(albedo, maxAlbedo) / DDGIRadianceCascades_PI);
         probeLighting /= DDGIVolume_IrradianceScalar;
 
         // don't apply volume lighting outside the volume

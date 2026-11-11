@@ -41,7 +41,7 @@ void DDGIProbeStateClassifierCS(uint3 DispatchThreadID : SV_DispatchThreadID, ui
             return;
     }
 
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     int storageProbeIndex = DDGIGetProbeIndexOffset(probeIndex, DDGIVolume.probeGridCounts, DDGIVolume.probeScrollOffsets);
 #else
     int storageProbeIndex = probeIndex;
@@ -54,7 +54,7 @@ void DDGIProbeStateClassifierCS(uint3 DispatchThreadID : SV_DispatchThreadID, ui
     // Conservatively increase the geometry search area
     geometryBounds *= 2.f;
 
-#if RTXGI_DDGI_PROBE_RELOCATION
+#if DDGIRadianceCascades_DDGI_PROBE_RELOCATION
     // A conservative bound that assumes the maximum offset value for this probe
     geometryBounds *= 1.45f;
 #endif
@@ -63,7 +63,7 @@ void DDGIProbeStateClassifierCS(uint3 DispatchThreadID : SV_DispatchThreadID, ui
     int   backfaceCount = 0;
 
     // Get the number of ray samples to inspect
-    int numRays = min(DDGIVolume.numRaysPerProbe, RTXGI_DDGI_NUM_FIXED_RAYS);
+    int numRays = min(DDGIVolume.numRaysPerProbe, DDGIRadianceCascades_DDGI_NUM_FIXED_RAYS);
 
     // Iterate over the rays cast for this probe
     for (int rayIndex = 0; rayIndex < numRays; rayIndex++)
@@ -71,7 +71,7 @@ void DDGIProbeStateClassifierCS(uint3 DispatchThreadID : SV_DispatchThreadID, ui
         int2 rayTexCoord = int2(rayIndex, probeIndex);
 
         // Load the hit distance from the ray cast
-    #if (RTXGI_DDGI_FORMAT_RADIANCE == 1)
+    #if (DDGIRadianceCascades_DDGI_FORMAT_RADIANCE == 1)
         float hitDistance = DDGIVolumeRayDataUAV[rayTexCoord].a;
     #else
         float hitDistance = DDGIVolumeRayDataUAV[rayTexCoord].g;

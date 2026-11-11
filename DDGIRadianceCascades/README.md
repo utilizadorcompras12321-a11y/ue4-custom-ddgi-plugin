@@ -1,10 +1,10 @@
-# RTXGI Unreal Engine 4 Plugin
+# DDGI Radiance Cascades Plugin for Unreal Engine 4
 
-To bring the advantages of RTXGI to as many developers as possible, all
-RTXGI 1.1 features are now available in Unreal Engine 4 through the
-RTXGI UE4 plugin.
+To bring the advantages of DDGIRadianceCascades to as many developers as possible, all
+DDGIRadianceCascades 1.1 features are now available in Unreal Engine 4 through the
+DDGIRadianceCascades UE4 plugin.
 
-To use the RTXGI UE4 plugin, you'll first need to meet the following
+To use the DDGIRadianceCascades UE4 plugin, you'll first need to meet the following
 software and hardware requirements:
 
 <b>Software:</b> <br>
@@ -19,9 +19,9 @@ software and hardware requirements:
 
 | **Note** |
 | -------- |
-| **RTXGI v1.1.40 (and later) is available in UE4.26.2+** |
-| Use RTXGI v1.1.30 with earlier versions of UE4.26.
-| Use RTXGI v1.1.23 with UE4.25. |
+| **DDGIRadianceCascades v1.1.40 (and later) is available in UE4.26.2+** |
+| Use DDGIRadianceCascades v1.1.30 with earlier versions of UE4.26.
+| Use DDGIRadianceCascades v1.1.23 with UE4.25. |
 
 <b>Hardware:</b> <br>
 
@@ -34,13 +34,13 @@ software and hardware requirements:
 
 | **Note** |
 | -------- |
-| **Problems, Feedback, and Bugs** If you encounter any problems, have feedback, or would like to report a bug, please contact: <rtxgi-support-service@nvidia.com> |
+| **Problems, Feedback, and Bugs** If you encounter any problems, have feedback, or would like to report a bug, please contact: <ddgiradiancecascades-support-service@nvidia.com> |
 
 ## Getting Started in NvRTX
 
-The fastest and easiest way to get started with RTXGI in UE4 is to download the latest version of the [NVIDIA RTX branch of UE4](https://github.com/NvRTX/UnrealEngine/tree/rtx-dlss-4.26) (also known as NvRTX).
+The fastest and easiest way to get started with DDGIRadianceCascades in UE4 is to download the latest version of the [NVIDIA RTX branch of UE4](https://github.com/NvRTX/UnrealEngine/tree/rtx-dlss-4.26) (also known as NvRTX).
 
-**The latest RTXGI plugin comes pre-installed in NvRTX 4.26.2 (goodbye patches!)**.
+**The latest DDGIRadianceCascades plugin comes pre-installed in NvRTX 4.26.2 (goodbye patches!)**.
 
 | **Note** |
 | -------- |
@@ -55,7 +55,7 @@ default RHI to DirectX 12 and enable Ray Tracing** in the project settings. At t
 -   Go to *Project Settings-&gt;Engine-&gt;Rendering-&gt;Ray Tracing*
     and check the box next to Ray Tracing.
 -   (Optional) Enable *Force No Precomputed Lighting* to avoid doubling
-    lighting contributions (i.e. mixing RTXGI and precomputed indirect
+    lighting contributions (i.e. mixing DDGIRadianceCascades and precomputed indirect
     lighting).
     -   To disable precomputed lighting in the current level, select
         *World Settings-&gt;Lightmass-&gt;Force No Precomputed
@@ -65,7 +65,7 @@ default RHI to DirectX 12 and enable Ray Tracing** in the project settings. At t
         Lighting*.
 
 Next, navigate to the plugins area and **enable the RTX Global
-Illumination (RTXGI) plugin**.
+Illumination (DDGIRadianceCascades) plugin**.
 
 -   In the editor, go to *Settings-&gt;Plugins*.
 -   In the plugins dialog, go to *Built-In-&gt;Rendering*.
@@ -75,27 +75,27 @@ Illumination (RTXGI) plugin**.
 -   Set the `r.GlobalIllumination.ExperimentalPlugin` cvar to `1` to
     enable global illumination plugins (set in `.ini` files, on the
     console, or in blueprints).
--   Set the `r.RTXGI.DDGI` cvar to `1` to enable RTXGI (set in `.ini`
+-   Set the `r.DDGIRadianceCascades.DDGI` cvar to `1` to enable DDGIRadianceCascades (set in `.ini`
     files, on the console, or in blueprints).
 -   Place DDGIVolume actors in the scene and to use RTX Global
     Illumination within the volume.
--   That's it. Go make something great with RTXGI! Learn more about
-    RTXGI [Functionality](#functionality) and usage in the [Artist
+-   That's it. Go make something great with DDGIRadianceCascades! Learn more about
+    DDGIRadianceCascades [Functionality](#functionality) and usage in the [Artist
     Overview](#artist-overview). 
 ![](Images/editor-ddgi-volume.png)
 
 # Functionality
 
-RTXGI implements the *Dynamic Diffuse Global Illumination (DDGI)*
+DDGIRadianceCascades implements the *Dynamic Diffuse Global Illumination (DDGI)*
 algorithm to compute diffuse global illumination. DDGI uses ray tracing
 to gather irradiance and distance data on a regular grid of probes. This
 is similar to existing irradiance probe solutions you may already be
 familiar with, but irradiance and distance calculations now occur in
-real time. RTXGI probes temporally accumulate data and use a
+real time. DDGIRadianceCascades probes temporally accumulate data and use a
 statistics-based method to resolve visibility and prevent light leaking.
 
-**To use RTXGI in UE4, place DDGIVolume actor(s) in the scene**. These
-volumes contain a grid of probes that RTXGI updates with ray tracing.
+**To use DDGIRadianceCascades in UE4, place DDGIVolume actor(s) in the scene**. These
+volumes contain a grid of probes that DDGIRadianceCascades updates with ray tracing.
 One `DDGIVolume` is updated per frame in a weighted round robin fashion
 using the volume's **Update Priority** property.
 
@@ -106,22 +106,22 @@ properties are discussed in the [Artist Overview](#artist-overview).
 | -------- |
 |Probes temporally accumulate bounce lighting after a `DDGIVolume` is placed in the world.|
 
-Several new console variables ("cvars") are available to use with RTXGI.
+Several new console variables ("cvars") are available to use with DDGIRadianceCascades.
 These are described in the table below.
 
-### RTXGI Console Variables
+### DDGIRadianceCascades Console Variables
 
 | Command                           | Options    | Description                                                                                                                                                                                                        |
 |-----------------------------------|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `r.RTXGI.DDGI`                    | 0, 1       | Toggles RTXGI on or off.                                                                                                                                                                                           |
-| `r.RTXGI.DDGI.LightingPass.Scale` | 0.25 - 1.0 | Scale for the lighting pass resolution between 0.25 - 1.0 (value is clamped to this range).                                                                                                                        |
-| `r.RTXGI.DDGI.ProbesTextureVis`   | 0, 1, 2    | Toggles probe visualization. This allows the user to see what the probes see from the camera's point of view. In mode 2, it shows ray misses in blue, ray hits in green and ray back face hits in red.             |
-| `r.RTXGI.MemoryUsed`              | None       | Shows the summary and details of video memory being used by RTXGI in the output log.                                                                                                                               |
-| `Vis DDGIProbesTexture`           | None       | Allows the user to see the texture from the `r.RTXGI.DDGI.ProbesTextureVis` command. This helps diagnose inaccuracies in the probes due to lighting or geometry not being configured to be visible to ray tracing. |
+| `r.DDGIRadianceCascades.DDGI`                    | 0, 1       | Toggles DDGIRadianceCascades on or off.                                                                                                                                                                                           |
+| `r.DDGIRadianceCascades.DDGI.LightingPass.Scale` | 0.25 - 1.0 | Scale for the lighting pass resolution between 0.25 - 1.0 (value is clamped to this range).                                                                                                                        |
+| `r.DDGIRadianceCascades.DDGI.ProbesTextureVis`   | 0, 1, 2    | Toggles probe visualization. This allows the user to see what the probes see from the camera's point of view. In mode 2, it shows ray misses in blue, ray hits in green and ray back face hits in red.             |
+| `r.DDGIRadianceCascades.MemoryUsed`              | None       | Shows the summary and details of video memory being used by DDGIRadianceCascades in the output log.                                                                                                                               |
+| `Vis DDGIProbesTexture`           | None       | Allows the user to see the texture from the `r.DDGIRadianceCascades.DDGI.ProbesTextureVis` command. This helps diagnose inaccuracies in the probes due to lighting or geometry not being configured to be visible to ray tracing. |
 
 **Project Settings:**
 <br>
-The RTXGI plugin has several settings in UE4's project settings dialog.
+The DDGIRadianceCascades plugin has several settings in UE4's project settings dialog.
 <br>
 ![](Images/settings-project.png)
 <br>
@@ -140,23 +140,23 @@ The RTXGI plugin has several settings in UE4's project settings dialog.
 - **Serialize Probes** - by default probes data is serialized in the .umap file. It is possible with this option to disable the serialization to have smaller map files on disk. Re-saving map with this option is disabled will wipe any existing data stored previously.
 
 **Limitations:**
-   - RTXGI lighting does not work with UE4's forward rendering path.
-   - RTXGI lighting does not work with UE4's other ray traced effects (for example, ray traced reflections).
+   - DDGIRadianceCascades lighting does not work with UE4's forward rendering path.
+   - DDGIRadianceCascades lighting does not work with UE4's other ray traced effects (for example, ray traced reflections).
 
 
 # Artist Overview
 
-RTXGI adds a high performance option to ray traced global illumination in UE4. As implied by the name, RTXGI requires ray tracing to be enabled and the plugin to be active.
+DDGIRadianceCascades adds a high performance option to ray traced global illumination in UE4. As implied by the name, DDGIRadianceCascades requires ray tracing to be enabled and the plugin to be active.
 
-If ray tracing is not available, the RTXGI plugin loads probe textures that were previously stored to disk from a platform that has ray tracing (i.e. DirectX 12).
+If ray tracing is not available, the DDGIRadianceCascades plugin loads probe textures that were previously stored to disk from a platform that has ray tracing (i.e. DirectX 12).
 
 | **Note** |
 | -------- |
 | When ray tracing is not available, for example in DirectX 11 or Vulkan RHIs, ``DDGIVolumes`` can be used but operate in a static mode where the probes do not update at runtime.|
 
-## RTXGI Volume Placement in UE4
+## DDGIRadianceCascades Volume Placement in UE4
 
-You can find the ``RTXGI DDGI Volume`` actor under **Volumes** (shown below) and place it in a level.
+You can find the ``DDGIRadianceCascades DDGI Volume`` actor under **Volumes** (shown below) and place it in a level.
 
 ![](Images/volume-actor.png)
 
@@ -164,9 +164,9 @@ All of UE4's native transform gizmos (translation, rotation, and scale) can be u
 
 ![](Images/transform-gizmos.png)
 
-## Using RTXGI in UE4
+## Using DDGIRadianceCascades in UE4
 
-Dynamic indirect lighting is generated inside the volume with RTXGI. The `DDGIVolume` has many properties that can be tweaked (shown below on the right), but the default values should work well for many situations.
+Dynamic indirect lighting is generated inside the volume with DDGIRadianceCascades. The `DDGIVolume` has many properties that can be tweaked (shown below on the right), but the default values should work well for many situations.
 
 | GI Volume `DDGIVolume` Properties |
 |-----------------------------------|
@@ -215,7 +215,7 @@ Dynamic indirect lighting is generated inside the volume with RTXGI. The `DDGIVo
 | 10-bit Irradiance Scalar   | A \[0,1\] value that is used to scale lighting magnitudes before storage when using 10-bit irradiance texture formats. Scaled values are reconstituted after reading, allowing for larger irradiance values to be stored in 10-bit texture formats. This saves memory at the cost of some precision. |
 
 ## Blueprints Overview
-RTXGI exposes several functionalities to Blueprints. This allows implementing logic using the blueprint editor for controlling different DDGI Volume properties in run-time.
+DDGIRadianceCascades exposes several functionalities to Blueprints. This allows implementing logic using the blueprint editor for controlling different DDGI Volume properties in run-time.
 All functions are grouped under the 'DDGI' category as shown below:
 
 ![](Images/bp-category.png)
@@ -243,7 +243,7 @@ sparser and still get good results!
 
 | **Note** |
 | -------- |
-|By design, RTXGI does **not** generate high frequency detail. Increasing probe density can help to an extent, but it won't produce precise or sharp lighting and shadow at any density. For high frequency details, use other forms of lighting such as point lighting with shadows or screen-space global illumination (SSGI).|
+|By design, DDGIRadianceCascades does **not** generate high frequency detail. Increasing probe density can help to an extent, but it won't produce precise or sharp lighting and shadow at any density. For high frequency details, use other forms of lighting such as point lighting with shadows or screen-space global illumination (SSGI).|
 
 You can have multiple `DDGIVolumes` with varying probe densities. The system will always make use of the probes in the denser volume. You might do this if you need a more precision in a specific area. It may not take an expensive volume to achieve more precise sampling. The volume on the bottom right is a 5x5x5 `DDGIVolume` set to the default 288 rays per probe. A volume like this is relatively inexpensive and can help achieve the result you want!
 
@@ -251,7 +251,7 @@ You can have multiple `DDGIVolumes` with varying probe densities. The system wil
 |---------------------------|----------------------------------|
 | ![](Images/probes.png)    | ![](Images/probe-density.png)|
 
-### Emissive Surfaces are Light Sources with RTXGI
+### Emissive Surfaces are Light Sources with DDGIRadianceCascades
 
 In this example of the NVIDIA Attic scene, there are large emissive
 meshes outside the windows to generate extra indirect light.
@@ -260,9 +260,9 @@ meshes outside the windows to generate extra indirect light.
 _Emissive meshes added outside the NVIDIA Attic to add indirect lighting._
 
 
-_Any emissive surface can be a light source with RTXGI._ The larger and more physically available the light emissive mesh is to RTXGI probes, the greater the lighting contribution. Emissive surface values can also be turned up to generate more light. With this approach, you might find it's better to switch from 10-bit irradiance to 32-bit irradiance, since this provides a more detailed range of light contributions. **32-bit irradiance should be used with caution** though, since it increases the memory cost 3x. Only enable 32-bit irradiance when absolutely necessary!
+_Any emissive surface can be a light source with DDGIRadianceCascades._ The larger and more physically available the light emissive mesh is to DDGIRadianceCascades probes, the greater the lighting contribution. Emissive surface values can also be turned up to generate more light. With this approach, you might find it's better to switch from 10-bit irradiance to 32-bit irradiance, since this provides a more detailed range of light contributions. **32-bit irradiance should be used with caution** though, since it increases the memory cost 3x. Only enable 32-bit irradiance when absolutely necessary!
 
-With RTXGI, it is now possible to light a scene with fewer point lights, spot lights, and/or area lights. Instead, you can rely on a combination of a few lights and emissive surfaces. This change will not only improve workflow and iteration time, but it can improve performance (due to fewer lights). You may find it's better to take on the small fixed cost of RTXGI instead of using many shadow casting lights. **Lighting a scene in this way is a different approach, but may produce a result that runs faster and is easier to create**.
+With DDGIRadianceCascades, it is now possible to light a scene with fewer point lights, spot lights, and/or area lights. Instead, you can rely on a combination of a few lights and emissive surfaces. This change will not only improve workflow and iteration time, but it can improve performance (due to fewer lights). You may find it's better to take on the small fixed cost of DDGIRadianceCascades instead of using many shadow casting lights. **Lighting a scene in this way is a different approach, but may produce a result that runs faster and is easier to create**.
 
 **Here's a practical example:** 
 <br>
@@ -272,15 +272,15 @@ Emissive meshes generate extra light without being a visible part of the scene. 
 |-----------------------------------------------|-----------------------------------|
 | ![](Images/emissive-surfaces2.png)            | ![](Images/green-lights.png)      |
 
-### Make sure RTXGI is contributing light where you want
+### Make sure DDGIRadianceCascades is contributing light where you want
 
-RTXGI doesn’t automatically make every surface brighter. It can require
+DDGIRadianceCascades doesn’t automatically make every surface brighter. It can require
 some fine tuning and the final result is a combination of your
 materials, overall lighting, postprocess settings, and other choices. A
 handy way to start developing your baseline for the global illumination
 contribution is to look at your scene in `Lightingonly` mode.
 `Lightingonly` is useful in this case because it displays all surfaces
-with a flat 50% gray color. When turning RTXGI on and off, you'll get a
+with a flat 50% gray color. When turning DDGIRadianceCascades on and off, you'll get a
 clear understanding of the true global illumination contribution being
 made by various lighting sources.
 
@@ -288,9 +288,9 @@ made by various lighting sources.
 | -------- |
 |Even though the surfaces display as 50% gray, they still contribute color lighting and bounce, so you are getting a good look at what the lighting is doing.|
 
-| Lightingonly mode, with direct lighting only | Lightingonly mode, with direct lighting and RTXGI |
+| Lightingonly mode, with direct lighting only | Lightingonly mode, with direct lighting and DDGIRadianceCascades |
 |----------------------------------------------|---------------------------------------------------|
-| ![](Images/direct-only.png)                  | ![](Images/direct+rtxgi.png)                      |
+| ![](Images/direct-only.png)                  | ![](Images/direct+ddgiradiancecascades.png)                      |
 
 As you can imagine, dark surfaces don't reflect light well (very dark surfaces don't reflect light at all!). If your textures are dark (typically below the 50% brightness threshold), they will have less bounce light and a smaller global illumination contribution. This is not necessarily a bad result. If objects are meant to be very dark then the lighting is as intended and still physically based. Brighter surfaces will contribute more obvious bounce light (since they reflect it). Think of the visual look of a game like Mirror's Edge - with it's very bright and colorful surfaces and how much indirect bounce lighting it shows off.
 
@@ -298,7 +298,7 @@ As you can imagine, dark surfaces don't reflect light well (very dark surfaces d
 
 Think about your surfaces and how they relate to global lighting. If your goal is to make sure you have a lot of indirect light in your scene, even small value changes can have an impact on the final indirect lighting result. It may not take much of a shift in some cases to get the result you want.
 
-![](Images/direct+rtxgi+texture.png)
+![](Images/direct+ddgiradiancecascades+texture.png)
 
 [direct]: ../images/ue4-plugin/direct-only.png
-[indirect]: ../images/ue4-plugin/direct+rtxgi.png
+[indirect]: ../images/ue4-plugin/direct+ddgiradiancecascades.png

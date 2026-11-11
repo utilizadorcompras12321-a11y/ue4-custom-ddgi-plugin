@@ -11,7 +11,7 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Engine/Private/DeferredShadingCommon.ush"
 
-#include "/Plugin/RTXGI/Private/SDK/ddgi/Irradiance.ush"
+#include "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/Irradiance.ush"
 
 // VOLUME_LIST is defined by DDGIVolumeComponent.cpp and is a macro list like: VOLUME_ENTRY(0), VOLUME_ENTRY(1), etc
 
@@ -84,7 +84,7 @@ float4 ApplyVolumeLightingContribution(
 
     // Ignore the DDGIVolume if the pixel is outside of the DDGIVolume
     float3 RelPos = WorldPosition - Volume.origin;
-    RelPos = abs(RTXGIQuaternionRotate(RelPos, RTXGIQuaternionConjugate(Volume.rotation)));
+    RelPos = abs(DDGIRadianceCascadesQuaternionRotate(RelPos, DDGIRadianceCascadesQuaternionConjugate(Volume.rotation)));
     if ((RelPos.x > VolumeRadius.x || RelPos.y > VolumeRadius.y || RelPos.z > VolumeRadius.z))
         return 0.f;
 
@@ -99,10 +99,10 @@ float4 ApplyVolumeLightingContribution(
             Resources.probeIrradianceSRV = ProbeIrradiance;
             Resources.probeDistanceSRV = ProbeDistance;
             Resources.bilinearSampler = LinearClampSampler;
-        #if RTXGI_DDGI_PROBE_RELOCATION
+        #if DDGIRadianceCascades_DDGI_PROBE_RELOCATION
             Resources.probeOffsetsSRV = ProbeOffsets;
         #endif
-        #if RTXGI_DDGI_PROBE_CLASSIFICATION
+        #if DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION
             Resources.probeStatesSRV = ProbeStates;
         #endif
         }
@@ -116,7 +116,7 @@ float4 ApplyVolumeLightingContribution(
             Resources
         );
 
-        LightWeight.rgb = Irradiance * (Albedo / RTXGI_PI) / IrradianceScalar;
+        LightWeight.rgb = Irradiance * (Albedo / DDGIRadianceCascades_PI) / IrradianceScalar;
     }
     else
     {

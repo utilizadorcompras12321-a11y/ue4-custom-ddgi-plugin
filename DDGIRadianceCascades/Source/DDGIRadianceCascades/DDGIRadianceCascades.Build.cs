@@ -11,14 +11,14 @@
 using UnrealBuildTool;
 using System.IO;
 
-public class RTXGIEditor : ModuleRules
+public class DDGIRadianceCascades : ModuleRules
 {
 	private string ModulePath
 	{
 		get { return ModuleDirectory; }
 	}
 
-	public RTXGIEditor(ReadOnlyTargetRules Target) : base(Target)
+	public DDGIRadianceCascades(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
@@ -26,18 +26,27 @@ public class RTXGIEditor : ModuleRules
 		{
 			"CoreUObject",
 			"Engine",
-			"PropertyEditor",
-			"Slate",
-			"SlateCore",
-			"UnrealEd",
-			"PlacementMode",
-			"RTXGI",
+			"RenderCore",
+			"Renderer",
+			"DeveloperSettings",
+			"RHI",
+		});
+
+		PrivateIncludePaths.AddRange(new string[]
+		{
+			EngineDirectory + "/Source/Runtime/Renderer/Private",
+			EngineDirectory + "/Source/Runtime/RenderCore/Public",
 		});
 
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
 			"Projects"
+		});
+
+		PublicIncludePaths.AddRange(new string[]
+		{
+			"../Shaders/Shared"
 		});
 	}
 }

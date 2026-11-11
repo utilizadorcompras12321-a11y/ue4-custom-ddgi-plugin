@@ -42,7 +42,7 @@ void DDGIProbeRelocationCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Gr
             return;
     }
 
-#if RTXGI_DDGI_INFINITE_SCROLLING_VOLUME
+#if DDGIRadianceCascades_DDGI_INFINITE_SCROLLING_VOLUME
     int storageProbeIndex = DDGIGetProbeIndexOffset(probeIndex, DDGIVolume.probeGridCounts, DDGIVolume.probeScrollOffsets);
 #else
     int storageProbeIndex = probeIndex;
@@ -62,7 +62,7 @@ void DDGIProbeRelocationCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Gr
     float backfaceCount = 0.f;
 
     // Get the number of ray samples to inspect
-    int numRays = min(DDGIVolume.numRaysPerProbe, RTXGI_DDGI_NUM_FIXED_RAYS);
+    int numRays = min(DDGIVolume.numRaysPerProbe, DDGIRadianceCascades_DDGI_NUM_FIXED_RAYS);
 
     // Iterate over the rays cast for this probe to find the number of backfaces and closest/farthest distances to the probe
     for (int rayIndex = 0; rayIndex < numRays; rayIndex++)
@@ -70,7 +70,7 @@ void DDGIProbeRelocationCS(uint3 DispatchThreadID : SV_DispatchThreadID, uint Gr
         int2 rayTexCoord = int2(rayIndex, probeIndex);
 
         // Load the hit distance from the ray cast
-    #if (RTXGI_DDGI_FORMAT_RADIANCE == 1)
+    #if (DDGIRadianceCascades_DDGI_FORMAT_RADIANCE == 1)
         float hitDistance = DDGIVolumeRayDataUAV[rayTexCoord].a;
     #else
         float hitDistance = DDGIVolumeRayDataUAV[rayTexCoord].g;

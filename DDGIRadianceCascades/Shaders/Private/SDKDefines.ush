@@ -8,24 +8,24 @@
 * license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#ifndef RTXGI_DEFINES_H
-#define RTXGI_DEFINES_H
+#ifndef DDGIRadianceCascades_DEFINES_H
+#define DDGIRadianceCascades_DEFINES_H
 
-#ifndef RTXGI_NAME_D3D_OBJECTS
-#define RTXGI_NAME_D3D_OBJECTS 1
+#ifndef DDGIRadianceCascades_NAME_D3D_OBJECTS
+#define DDGIRadianceCascades_NAME_D3D_OBJECTS 1
 #endif
 
-#ifndef RTXGI_PERF_MARKERS
-#define RTXGI_PERF_MARKERS 1
+#ifndef DDGIRadianceCascades_PERF_MARKERS
+#define DDGIRadianceCascades_PERF_MARKERS 1
 #endif
 
-#define RTXGI_COORDINATE_SYSTEM_LEFT 0
-#define RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP 1
-#define RTXGI_COORDINATE_SYSTEM_RIGHT 2
-#define RTXGI_COORDINATE_SYSTEM_RIGHT_Z_UP 3
+#define DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT 0
+#define DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP 1
+#define DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT 2
+#define DDGIRadianceCascades_COORDINATE_SYSTEM_RIGHT_Z_UP 3
 
-#ifndef RTXGI_COORDINATE_SYSTEM
-#define RTXGI_COORDINATE_SYSTEM RTXGI_COORDINATE_SYSTEM_LEFT_Z_UP
+#ifndef DDGIRadianceCascades_COORDINATE_SYSTEM
+#define DDGIRadianceCascades_COORDINATE_SYSTEM DDGIRadianceCascades_COORDINATE_SYSTEM_LEFT_Z_UP
 #endif
 
-#endif /* RTXGI_DEFINES_H */
+#endif /* DDGIRadianceCascades_DEFINES_H */

@@ -8,7 +8,7 @@
 * license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "RTXGIPlugin.h"
+#include "DDGIRadianceCascadesPlugin.h"
 
 #include "Modules/ModuleManager.h"
 #include "Interfaces/IPluginManager.h"
@@ -19,21 +19,21 @@
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
 
-#define LOCTEXT_NAMESPACE "FRTXGIPlugin"
+#define LOCTEXT_NAMESPACE "FDDGIRadianceCascadesPlugin"
 
-void FRTXGIPlugin::StartupDDGI()
+void FDDGIRadianceCascadesPlugin::StartupDDGI()
 {
 	DDGIVolumeUpdate::Startup();
 	UDDGIVolumeComponent::Startup();
 }
 
-void FRTXGIPlugin::ShutdownDDGI()
+void FDDGIRadianceCascadesPlugin::ShutdownDDGI()
 {
 	DDGIVolumeUpdate::Shutdown();
 	UDDGIVolumeComponent::Shutdown();
 }
 
-void FRTXGIPlugin::StartupModule()
+void FDDGIRadianceCascadesPlugin::StartupModule()
 {
 	// Get the base directory of this plugin
 	FString BaseDir = IPluginManager::Get().FindPlugin(GetModularFeatureName())->GetBaseDir();
@@ -46,7 +46,7 @@ void FRTXGIPlugin::StartupModule()
 	StartupDDGI();
 }
 
-void FRTXGIPlugin::ShutdownModule()
+void FDDGIRadianceCascadesPlugin::ShutdownModule()
 {
 	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
 	// we call this function before unloading the module.
@@ -56,4 +56,4 @@ void FRTXGIPlugin::ShutdownModule()
 
 #undef LOCTEXT_NAMESPACE
 
-IMPLEMENT_MODULE(FRTXGIPlugin, RTXGI)
+IMPLEMENT_MODULE(FDDGIRadianceCascadesPlugin, DDGIRadianceCascades)
