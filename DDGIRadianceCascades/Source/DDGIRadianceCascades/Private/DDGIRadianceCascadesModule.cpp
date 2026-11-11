@@ -109,9 +109,7 @@ static void RenderDiffuseIndirectLight_RenderThread(
     UE_LOG(
         LogDDGIRadianceCascades,
         Log,
-        TEXT("Bootstrap RDG compute dispatch queued. View %dx%d."),
-        View.ViewRect.Width(),
-        View.ViewRect.Height());
+        TEXT("Bootstrap RDG compute dispatch queued."));
 }
 
 class FDDGIRadianceCascadesModule : public IModuleInterface
