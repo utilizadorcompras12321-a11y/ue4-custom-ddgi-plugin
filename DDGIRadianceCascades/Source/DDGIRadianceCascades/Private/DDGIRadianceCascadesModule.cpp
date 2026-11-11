@@ -1,4 +1,12 @@
+// Match the public UE4 include order used by RTXGI before RendererInterface.h.
 #include "CoreMinimal.h"
+#include "UObject/ObjectMacros.h"
+#include "Engine/EngineTypes.h"
+#include "Components/SceneComponent.h"
+#include "RHI.h"
+#include "RHIResources.h"
+#include "RendererInterface.h"
+
 #include "Modules/ModuleManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
@@ -6,8 +14,6 @@
 #include "GlobalShader.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
-#include "RendererInterface.h"
-#include "RHIResources.h"
 #include "RenderTargetPool.h"
 
 // Same renderer-private headers used by the working RTXGI integration.
