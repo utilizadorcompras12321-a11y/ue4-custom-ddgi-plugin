@@ -9,6 +9,7 @@
 */
 
 #include "DDGIRadianceCascadesEditor.h"
+#include "DDGIMasterActor.h"
 #include "DDGIVolume.h"
 #include "IPlacementModeModule.h"
 #include "Interfaces/IPluginManager.h"
@@ -34,16 +35,14 @@ void FDDGIRadianceCascadesEditor::StartupModule()
 	IPlacementModeModule& PlacementModeModule = IPlacementModeModule::Get();
 	PlacementModeModule.OnPlacementModeCategoryRefreshed().AddRaw(this, &FDDGIRadianceCascadesEditor::OnPlacementModeRefresh);
 
-	//Get the property module
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-	//Register the custom details panel we have created
-	PropertyModule.RegisterCustomClassLayout(ADDGIVolume::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FDDGIRadianceCascadesDetails::MakeInstance));
+	PropertyModule.RegisterCustomClassLayout(
+		ADDGIVolume::StaticClass()->GetFName(),
+		FOnGetDetailCustomizationInstance::CreateStatic(&FDDGIRadianceCascadesDetails::MakeInstance));
 }
 
 void FDDGIRadianceCascadesEditor::ShutdownModule()
 {
-	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
-	// we call this function before unloading the module.
 	if (StyleSet.IsValid())
 	{
 		FSlateStyleRegistry::UnRegisterSlateStyle(*StyleSet.Get());
@@ -59,20 +58,33 @@ void FDDGIRadianceCascadesEditor::ShutdownModule()
 
 void FDDGIRadianceCascadesEditor::OnPlacementModeRefresh(FName CategoryName)
 {
-	static FName VolumeName = FName(TEXT("Volumes"));
-	if (CategoryName == VolumeName)
+	static const FName VolumeName(TEXT("Volumes"));
+	if (CategoryName != VolumeName)
 	{
-		FPlaceableItem* DDGIVolumePlacement = new FPlaceableItem(
-			*UActorFactory::StaticClass(),
-			FAssetData(ADDGIVolume::StaticClass()),
-			FName("DDGIRadianceCascadesPlacement.ModesIcon"),
-			TOptional<FLinearColor>(),
-			TOptional<int32>(),
-			FText::FromString("DDGIRadianceCascades DDGI Volume")
-		);
-
-		IPlacementModeModule::Get().RegisterPlaceableItem(CategoryName, MakeShareable(DDGIVolumePlacement));
+		return;
 	}
+
+	FPlaceableItem* DDGIMasterPlacement = new FPlaceableItem(
+		*UActorFactory::StaticClass(),
+		FAssetData(ADDGIMasterActor::StaticClass()),
+		FName("DDGIRadianceCascadesPlacement.ModesIcon"),
+		TOptional<FLinearColor>(),
+		TOptional<int32>(),
+		FText::FromString("DDGI Master Actor")
+	);
+	IPlacementModeModule::Get().RegisterPlaceableItem(CategoryName, MakeShareable(DDGIMasterPlacement));
+
+	// Keep the old volume available while the renderer is being migrated away from
+	// per-volume probe storage. It is deliberately labelled as legacy.
+	FPlaceableItem* DDGIVolumePlacement = new FPlaceableItem(
+		*UActorFactory::StaticClass(),
+		FAssetData(ADDGIVolume::StaticClass()),
+		FName("DDGIRadianceCascadesPlacement.ModesIcon"),
+		TOptional<FLinearColor>(),
+		TOptional<int32>(),
+		FText::FromString("DDGI Volume (Legacy - temporary)")
+	);
+	IPlacementModeModule::Get().RegisterPlaceableItem(CategoryName, MakeShareable(DDGIVolumePlacement));
 }
 
 #undef LOCTEXT_NAMESPACE
