@@ -33,6 +33,7 @@ float4              ScaledViewSizeAndInvSize;
 uint                ShouldUsePreExposure;
 uint                NumVolumes;
 int                 EnableStaticBackground;
+int                 AddStaticBackground;
 float4              StaticBackgroundColor;
 float               StaticBackgroundIntensity;
 float               BackgroundTransitionStart;
@@ -260,8 +261,13 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             BackgroundWeight = (CameraDistance >= BackgroundTransitionEnd) ? 1.0f : 0.0f;
         }
 
-        float3 StaticGI = StaticBackgroundColor.rgb * StaticBackgroundIntensity * (Albedo / DDGIRadianceCascades_PI);
-        FinalGI = lerp(DynamicGI, StaticGI, BackgroundWeight);
+        DynamicGI *= (1.0f - BackgroundWeight);
+        FinalGI = DynamicGI;
+        if (AddStaticBackground != 0)
+        {
+            float3 StaticGI = StaticBackgroundColor.rgb * StaticBackgroundIntensity * (Albedo / DDGIRadianceCascades_PI);
+            FinalGI += StaticGI * BackgroundWeight;
+        }
     }
 
     LightingPassUAV[PixelIndex] += float4(FinalGI * PreExposure, 0.f);

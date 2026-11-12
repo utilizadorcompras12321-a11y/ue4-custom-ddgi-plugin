@@ -94,6 +94,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FApplyLightingDeferredShaderParameters, )
 	SHADER_PARAMETER(int32, ShouldUsePreExposure)
 	SHADER_PARAMETER(int32, NumVolumes)
 	SHADER_PARAMETER(int32, EnableStaticBackground)
+	SHADER_PARAMETER(int32, AddStaticBackground)
 	SHADER_PARAMETER(FVector4, StaticBackgroundColor)
 	SHADER_PARAMETER(float, StaticBackgroundIntensity)
 	SHADER_PARAMETER(float, BackgroundTransitionStart)
@@ -481,8 +482,9 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 			}
 
 			// Force one pass when the static background is enabled, even if no volume matches.
-			const bool bApplyStaticBackgroundThisPass = bMasterStaticBackgroundEnabled && !bStaticBackgroundApplied;
-			if (!foundAMatch && !bApplyStaticBackgroundThisPass) continue;
+			const bool bUseStaticBackgroundThisPass = bMasterStaticBackgroundEnabled;
+			const bool bAddStaticBackgroundThisPass = bUseStaticBackgroundThisPass && !bStaticBackgroundApplied;
+			if (!foundAMatch && !bAddStaticBackgroundThisPass) continue;
 
 			// Get the shader permutation
 			FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
@@ -508,14 +510,15 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 			PassParameters->LinearClampSampler = TStaticSamplerState<SF_Trilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 			PassParameters->ShouldUsePreExposure = View.Family->EngineShowFlags.Tonemapper;
 			PassParameters->NumVolumes = numVolumes;
-			PassParameters->EnableStaticBackground = bApplyStaticBackgroundThisPass ? 1 : 0;
-			PassParameters->StaticBackgroundColor = bApplyStaticBackgroundThisPass
+			PassParameters->EnableStaticBackground = bUseStaticBackgroundThisPass ? 1 : 0;
+			PassParameters->AddStaticBackground = bAddStaticBackgroundThisPass ? 1 : 0;
+			PassParameters->StaticBackgroundColor = bUseStaticBackgroundThisPass
 				? FVector4(MasterConfig.StaticBackgroundColor.R, MasterConfig.StaticBackgroundColor.G, MasterConfig.StaticBackgroundColor.B, 1.0f)
 				: FVector4(0.0f, 0.0f, 0.0f, 1.0f);
-			PassParameters->StaticBackgroundIntensity = bApplyStaticBackgroundThisPass ? MasterConfig.StaticBackgroundIntensity : 0.0f;
-			PassParameters->BackgroundTransitionStart = bApplyStaticBackgroundThisPass ? MasterConfig.BackgroundTransitionStart : 0.0f;
-			PassParameters->BackgroundTransitionEnd = bApplyStaticBackgroundThisPass ? MasterConfig.BackgroundTransitionEnd : 0.0f;
-			if (bApplyStaticBackgroundThisPass) bStaticBackgroundApplied = true;
+			PassParameters->StaticBackgroundIntensity = bUseStaticBackgroundThisPass ? MasterConfig.StaticBackgroundIntensity : 0.0f;
+			PassParameters->BackgroundTransitionStart = bUseStaticBackgroundThisPass ? MasterConfig.BackgroundTransitionStart : 0.0f;
+			PassParameters->BackgroundTransitionEnd = bUseStaticBackgroundThisPass ? MasterConfig.BackgroundTransitionEnd : 0.0f;
+			if (bAddStaticBackgroundThisPass) bStaticBackgroundApplied = true;
 
 			// Set the shader parameters for the relevant volumes
 			for (int32 volumeIndex = 0; volumeIndex < numVolumes; ++volumeIndex)
