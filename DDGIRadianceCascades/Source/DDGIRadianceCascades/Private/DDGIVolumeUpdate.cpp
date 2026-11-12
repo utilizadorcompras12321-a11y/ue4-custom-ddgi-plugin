@@ -33,6 +33,7 @@
 
 // local includes
 #include "DDGIVolumeComponent.h"
+#include "DDGIMasterSubsystem.h"
 #include "DDGIVolumeDescGPU.h"
 
 #define LOCTEXT_NAMESPACE "FDDGIRadianceCascadesPlugin"
@@ -803,7 +804,11 @@ namespace DDGIVolumeUpdate
 	void DDGIUpdateVolume_RenderThread_RTRadiance(const FScene& Scene, const FViewInfo& View, FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy, const FMatrix& ProbeRayRotationTransform, FRDGTextureRef ProbesRadianceTex, FRDGTextureUAVRef ProbesRadianceUAV, bool highBitCount)
 	{
 		// Deal with probe ray budgets, and updating probes in a round robin fashion within the volume
-		int ProbeUpdateRayBudget = GetDefault<UDDGIRadianceCascadesPluginSettings>()->ProbeUpdateRayBudget;
+		FDDGIMasterConfig MasterConfig;
+		const bool bHasMasterConfig = DDGIGetMasterConfig_RenderThread(&Scene, MasterConfig);
+		int ProbeUpdateRayBudget = bHasMasterConfig
+			? MasterConfig.ProbeUpdateBudget
+			: GetDefault<UDDGIRadianceCascadesPluginSettings>()->ProbeUpdateRayBudget;
 		if (ProbeUpdateRayBudget == 0)
 		{
 			VolProxy->ProbeIndexStart = 0;
