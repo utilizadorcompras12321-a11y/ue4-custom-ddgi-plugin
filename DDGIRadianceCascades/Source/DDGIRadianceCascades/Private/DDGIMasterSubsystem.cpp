@@ -1,5 +1,27 @@
 #include "DDGIMasterSubsystem.h"
 #include "DDGIMasterActor.h"
+#include "Engine/World.h"
+#include "RenderingThread.h"
+#include "RHICommandList.h"
+
+namespace
+{
+	/** Accessed only on the render thread. */
+	TMap<const FSceneInterface*, FDDGIMasterConfig> GDDGIMasterConfigs_RenderThread;
+}
+
+bool DDGIGetMasterConfig_RenderThread(const FSceneInterface* Scene, FDDGIMasterConfig& OutConfig)
+{
+	check(IsInRenderingThread());
+
+	if (const FDDGIMasterConfig* FoundConfig = GDDGIMasterConfigs_RenderThread.Find(Scene))
+	{
+		OutConfig = *FoundConfig;
+		return true;
+	}
+
+	return false;
+}
 
 void UDDGIMasterSubsystem::RegisterMasterActor(ADDGIMasterActor* InActor)
 {
@@ -28,6 +50,7 @@ void UDDGIMasterSubsystem::UnregisterMasterActor(ADDGIMasterActor* InActor)
 
 	ActiveMasterActor.Reset();
 	Config = FDDGIMasterConfig();
+	PublishConfig(false);
 }
 
 void UDDGIMasterSubsystem::RefreshConfig(ADDGIMasterActor* InActor)
@@ -58,4 +81,30 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.StaticBackgroundIntensity = FMath::Max(0.0f, InActor->StaticBackgroundIntensity);
 	Config.BackgroundTransitionStart = FMath::Max(0.0f, InActor->BackgroundTransitionStart);
 	Config.BackgroundTransitionEnd = FMath::Max(Config.BackgroundTransitionStart, InActor->BackgroundTransitionEnd);
+
+	PublishConfig(true);
+}
+
+void UDDGIMasterSubsystem::PublishConfig(bool bHasConfig)
+{
+	UWorld* World = GetWorld();
+	FSceneInterface* Scene = World ? World->Scene : nullptr;
+	if (!Scene)
+	{
+		return;
+	}
+
+	const FDDGIMasterConfig ConfigCopy = Config;
+	ENQUEUE_RENDER_COMMAND(DDGIPublishMasterConfig)(
+		[Scene, bHasConfig, ConfigCopy](FRHICommandListImmediate& RHICmdList)
+		{
+			if (bHasConfig)
+			{
+				GDDGIMasterConfigs_RenderThread.Add(Scene, ConfigCopy);
+			}
+			else
+			{
+				GDDGIMasterConfigs_RenderThread.Remove(Scene);
+			}
+		});
 }

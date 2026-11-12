@@ -5,8 +5,9 @@
 #include "DDGIMasterSubsystem.generated.h"
 
 class ADDGIMasterActor;
+class FSceneInterface;
 
-/** Immutable-style game-thread snapshot consumed by the DDGI runtime. */
+/** Snapshot of the level-wide DDGI configuration. */
 USTRUCT()
 struct FDDGIMasterConfig
 {
@@ -46,10 +47,12 @@ struct FDDGIMasterConfig
 	float BackgroundTransitionEnd = 10000.0f;
 };
 
-/**
- * Per-world owner/registry for the single DDGI Master Actor.
- * This is the game-thread handoff point; renderer integration is a separate step.
- */
+/** Returns the published configuration for a scene. Must be called on the render thread. */
+DDGIRADIANCECASCADES_API bool DDGIGetMasterConfig_RenderThread(
+	const FSceneInterface* Scene,
+	FDDGIMasterConfig& OutConfig);
+
+/** Per-world owner/registry for the single DDGI Master Actor. */
 UCLASS()
 class DDGIRADIANCECASCADES_API UDDGIMasterSubsystem : public UWorldSubsystem
 {
@@ -66,6 +69,7 @@ public:
 
 private:
 	void CopyConfigFromActor(const ADDGIMasterActor* InActor);
+	void PublishConfig(bool bHasConfig);
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<ADDGIMasterActor> ActiveMasterActor;
