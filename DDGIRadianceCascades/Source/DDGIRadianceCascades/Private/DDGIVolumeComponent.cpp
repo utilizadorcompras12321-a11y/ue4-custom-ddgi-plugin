@@ -93,6 +93,11 @@ BEGIN_SHADER_PARAMETER_STRUCT(FApplyLightingDeferredShaderParameters, )
 	SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
 	SHADER_PARAMETER(int32, ShouldUsePreExposure)
 	SHADER_PARAMETER(int32, NumVolumes)
+	SHADER_PARAMETER(int32, EnableStaticBackground)
+	SHADER_PARAMETER(FVector4, StaticBackgroundColor)
+	SHADER_PARAMETER(float, StaticBackgroundIntensity)
+	SHADER_PARAMETER(float, BackgroundTransitionStart)
+	SHADER_PARAMETER(float, BackgroundTransitionEnd)
 	// Volumes are sorted from densest probes to least dense probes
 	SHADER_PARAMETER_STRUCT_ARRAY(FVolumeData, DDGIVolume, [FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_MAX_SHADING_VOLUMES])
 	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
@@ -425,8 +430,9 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 			volumes.Add(FProxyEntry{ ProxyPosition, ProxyRotation, ProxyScale, ProxyDensity, ProxyLightingChannelMask, volumeProxy });
 		}
 
-		// Early out if no volumes contribute light to the current view
-		if (volumes.Num() == 0) return;
+		// Static background can run without any DDGI volumes.
+		const bool bMasterStaticBackgroundEnabled = bHasMasterConfig && MasterConfig.bEnableStaticBackground;
+		if (volumes.Num() == 0 && !bMasterStaticBackgroundEnabled) return;
 
 		// TODO: manage in-frustum volumes in a more sophisticated way
 		// Support a large number of volumes by culling volumes based on spatial data, projected view area, and/or other heuristics
@@ -456,6 +462,9 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 			AddClearUAVPass(GraphBuilder, LightingPassUAV, FLinearColor::Transparent);
 		}
 
+		// Static background is evaluated once, in the first dispatched permutation.
+		bool bStaticBackgroundApplied = false;
+
 		// Loop over the shader permutations to render indirect light from relevant volumes
 		for (int permutationIndex = 0; permutationIndex < 4; ++permutationIndex)
 		{
@@ -471,8 +480,9 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 				if (foundAMatch) break;
 			}
 
-			// Skip this shader permutation if there are no volumes that match its feature set
-			if (!foundAMatch) continue;
+			// Force one pass when the static background is enabled, even if no volume matches.
+			const bool bApplyStaticBackgroundThisPass = bMasterStaticBackgroundEnabled && !bStaticBackgroundApplied;
+			if (!foundAMatch && !bApplyStaticBackgroundThisPass) continue;
 
 			// Get the shader permutation
 			FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
@@ -498,6 +508,14 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 			PassParameters->LinearClampSampler = TStaticSamplerState<SF_Trilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 			PassParameters->ShouldUsePreExposure = View.Family->EngineShowFlags.Tonemapper;
 			PassParameters->NumVolumes = numVolumes;
+			PassParameters->EnableStaticBackground = bApplyStaticBackgroundThisPass ? 1 : 0;
+			PassParameters->StaticBackgroundColor = bApplyStaticBackgroundThisPass
+				? FVector4(MasterConfig.StaticBackgroundColor.R, MasterConfig.StaticBackgroundColor.G, MasterConfig.StaticBackgroundColor.B, 1.0f)
+				: FVector4(0.0f, 0.0f, 0.0f, 1.0f);
+			PassParameters->StaticBackgroundIntensity = bApplyStaticBackgroundThisPass ? MasterConfig.StaticBackgroundIntensity : 0.0f;
+			PassParameters->BackgroundTransitionStart = bApplyStaticBackgroundThisPass ? MasterConfig.BackgroundTransitionStart : 0.0f;
+			PassParameters->BackgroundTransitionEnd = bApplyStaticBackgroundThisPass ? MasterConfig.BackgroundTransitionEnd : 0.0f;
+			if (bApplyStaticBackgroundThisPass) bStaticBackgroundApplied = true;
 
 			// Set the shader parameters for the relevant volumes
 			for (int32 volumeIndex = 0; volumeIndex < numVolumes; ++volumeIndex)
