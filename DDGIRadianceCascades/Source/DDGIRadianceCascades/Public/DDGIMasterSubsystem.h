@@ -1,0 +1,55 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Subsystems/WorldSubsystem.h"
+#include "DDGIMasterSubsystem.generated.h"
+
+class ADDGIMasterActor;
+class FSceneInterface;
+
+USTRUCT()
+struct FDDGIMasterConfig
+{
+	GENERATED_BODY()
+
+	UPROPERTY() bool bEnableDynamicGI = true;
+	UPROPERTY() float GIIntensity = 1.0f;
+	UPROPERTY() float DynamicGIDistance = 10000.0f;
+	UPROPERTY() float ProbeSpacing = 200.0f;
+	UPROPERTY() int32 MaxActiveProbes = 32768;
+	UPROPERTY() int32 ProbeUpdateBudget = 50000;
+	UPROPERTY() bool bEnableStaticBackground = true;
+	UPROPERTY() FLinearColor StaticBackgroundColor = FLinearColor(0.025f, 0.035f, 0.055f, 1.0f);
+	UPROPERTY() float StaticBackgroundIntensity = 1.0f;
+	UPROPERTY() float BackgroundTransitionStart = 8000.0f;
+	UPROPERTY() float BackgroundTransitionEnd = 10000.0f;
+};
+
+DDGIRADIANCECASCADES_API bool DDGIGetMasterConfig_RenderThread(
+	const FSceneInterface* Scene,
+	FDDGIMasterConfig& OutConfig);
+
+UCLASS()
+class DDGIRADIANCECASCADES_API UDDGIMasterSubsystem : public UWorldSubsystem
+{
+	GENERATED_BODY()
+
+public:
+	void RegisterMasterActor(ADDGIMasterActor* InActor);
+	void UnregisterMasterActor(ADDGIMasterActor* InActor);
+	void RefreshConfig(ADDGIMasterActor* InActor);
+
+	const FDDGIMasterConfig& GetConfig() const { return Config; }
+	ADDGIMasterActor* GetMasterActor() const { return ActiveMasterActor.Get(); }
+	bool HasMasterActor() const { return ActiveMasterActor.IsValid(); }
+
+private:
+	void CopyConfigFromActor(const ADDGIMasterActor* InActor);
+	void PublishConfig(bool bHasConfig);
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<ADDGIMasterActor> ActiveMasterActor;
+
+	UPROPERTY(Transient)
+	FDDGIMasterConfig Config;
+};
