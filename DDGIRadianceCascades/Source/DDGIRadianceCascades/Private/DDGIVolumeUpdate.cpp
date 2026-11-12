@@ -209,6 +209,8 @@ IMPLEMENT_GLOBAL_SHADER(FRayTracingDDGIRadianceCascadesProbeViewRGS, "/Plugin/DD
 
 #endif // #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
+#endif // RHI_RAYTRACING
+
 class FDDGIIrradianceBlend : public FGlobalShader
 {
 	DECLARE_GLOBAL_SHADER(FDDGIIrradianceBlend)
@@ -469,30 +471,25 @@ class FDDGIProbesClassify : public FGlobalShader
 
 IMPLEMENT_GLOBAL_SHADER(FDDGIProbesClassify, "/Plugin/DDGIRadianceCascades/Private/SDK/ddgi/ProbeStateClassifierCS.usf", "DDGIProbeStateClassifierCS", SF_Compute);
 
-#endif // RHI_RAYTRACING
-
 namespace DDGIVolumeUpdate
 {
 #if RHI_RAYTRACING
 	FDelegateHandle AnyRayTracingPassEnabledHandle;
 	FDelegateHandle PrepareRayTracingHandle;
-
 	void DDGIUpdateVolume_RenderThread(const FScene& Scene, const FViewInfo& View, FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy);
-
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	void DDGIUpdateVolume_RenderThread_DDGIProbesTextureVis(const FScene& Scene, const FViewInfo& View, FRDGBuilder& GraphBuilder);
-#endif 
-
+#endif
 	void DDGIUpdateVolume_RenderThread_RTRadiance(const FScene& Scene, const FViewInfo& View, FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy, const FMatrix& ProbeRayRotationTransform, FRDGTextureRef ProbesRadianceTex, FRDGTextureUAVRef ProbesRadianceUAV, bool highBitCount);
+	void PrepareRayTracingShaders(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
+#endif // RHI_RAYTRACING
+
 	void DDGIUpdateVolume_RenderThread_IrradianceBlend(const FViewInfo& View, FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy, const FMatrix& ProbeRayRotationTransform, FRDGTextureUAVRef ProbesRadianceUAV, bool highBitCount);
 	void DDGIUpdateVolume_RenderThread_DistanceBlend(const FViewInfo& View, FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy, const FMatrix& ProbeRayRotationTransform, FRDGTextureUAVRef ProbesRadianceUAV, bool highBitCount);
 	void DDGIUpdateVolume_RenderThread_IrradianceBorderUpdate(const FViewInfo& View, FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy);
 	void DDGIUpdateVolume_RenderThread_DistanceBorderUpdate(const FViewInfo& View, FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy);
 	void DDGIUpdateVolume_RenderThread_RelocateProbes(FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy, const FMatrix& ProbeRayRotationTransform, FRDGTextureUAVRef ProbesRadianceUAV, bool highBitCount);
 	void DDGIUpdateVolume_RenderThread_ClassifyProbes(FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy, FRDGTextureUAVRef ProbesRadianceUAV, bool highBitCount);
-
-	void PrepareRayTracingShaders(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
-#endif // RHI_RAYTRACING
 
 	// ---------------------- IMPLEMENTATION ------------------
 
@@ -935,6 +932,8 @@ namespace DDGIVolumeUpdate
 		);
 	}
 
+#endif // RHI_RAYTRACING
+
 	void DDGIUpdateVolume_RenderThread_IrradianceBlend(const FViewInfo& View, FRDGBuilder& GraphBuilder, FDDGIVolumeSceneProxy* VolProxy, const FMatrix& ProbeRayRotationTransform, FRDGTextureUAVRef ProbesRadianceUAV, bool highBitCount)
 	{
 		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
@@ -1314,8 +1313,6 @@ namespace DDGIVolumeUpdate
 			FIntVector(numGroupsX, numGroupsY, 1)
 		);
 	}
-
-#endif // RHI_RAYTRACING
 
 } // namespace DDGIVolumeUpdate
 
