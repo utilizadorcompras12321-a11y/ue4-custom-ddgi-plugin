@@ -11,6 +11,7 @@
 #include "DDGIVolumeComponent.h"
 #include "DDGIVolume.h"
 #include "DDGIVolumeUpdate.h"
+#include "DDGIMasterSubsystem.h"
 
 #include "DDGIRadianceCascadesPluginSettings.h"
 
@@ -340,6 +341,14 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 	// Early out if DDGI is disabled
 	if (!CVarUseDDGI.GetValueOnRenderThread()) return;
 
+	FDDGIMasterConfig MasterConfig;
+	const bool bHasMasterConfig = DDGIGetMasterConfig_RenderThread(&Scene, MasterConfig);
+	if (bHasMasterConfig && !MasterConfig.bEnableDynamicGI)
+	{
+		return;
+	}
+	const float MasterGIIntensity = bHasMasterConfig ? MasterConfig.GIIntensity : 1.0f;
+
 	// Update DDGIVolumes when rendering a main view and when ray tracing is available.
 	// Other views can use DDGIVolumes for lighting, but don't need to update the volumes.
 	// This is especially true for situations like bIsSceneCapture, when bSceneCaptureUsesRayTracing is false, and it can make incorrect probe update results.
@@ -531,7 +540,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 				applyLighting = applyLighting && (enableRelocation == volumeProxy->ComponentData.EnableProbeRelocation);
 				applyLighting = applyLighting && (enableScrolling == volumeProxy->ComponentData.EnableProbeScrolling);
 				PassParameters->DDGIVolume[volumeIndex].ApplyLighting = applyLighting;
-				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar = volumeProxy->ComponentData.IrradianceScalar;
+				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar = volumeProxy->ComponentData.IrradianceScalar * MasterGIIntensity;
 
 				// Apply the lighting multiplier to artificially lighten or darken the indirect light from the volume
 				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar /= volumeProxy->ComponentData.LightingMultiplier;
