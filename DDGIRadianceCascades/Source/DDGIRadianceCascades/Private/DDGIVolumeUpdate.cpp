@@ -55,6 +55,7 @@ class FDDGIRadianceCascadeInitializeCS : public FGlobalShader
         SHADER_PARAMETER(float, MaxTraceDistance)
         SHADER_PARAMETER(uint32, TextureWidth)
         SHADER_PARAMETER(uint32, TotalTexels)
+        SHADER_PARAMETER(uint32, DispatchGroupsX)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, DirectionsUAV)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RadianceUAV)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, HitDistanceUAV)
@@ -564,9 +565,9 @@ namespace DDGIVolumeUpdate
         FDDGIMasterConfig RadianceCascadeConfig;
         if (DDGIGetMasterConfig_RenderThread(&Scene, RadianceCascadeConfig))
         {
-            FRDGTexture* DirectionsTexture = nullptr;
-            FRDGTexture* RadianceTexture = nullptr;
-            FRDGTexture* HitDistanceTexture = nullptr;
+            FRDGTextureRef DirectionsTexture = nullptr;
+            FRDGTextureRef RadianceTexture = nullptr;
+            FRDGTextureRef HitDistanceTexture = nullptr;
             if (DDGIGetRadianceCascadeInitializationTextures_RenderThread(
                 GraphBuilder, &Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture))
             {
@@ -582,14 +583,16 @@ namespace DDGIVolumeUpdate
                 PassParameters->MaxTraceDistance = RadianceCascadeConfig.RadianceCascades.MaxTraceDistance;
                 PassParameters->TextureWidth = 4096;
                 PassParameters->TotalTexels = PassParameters->NumProbes * PassParameters->TotalRaysPerProbe;
+                PassParameters->DispatchGroupsX = FMath::Min(FMath::DivideAndRoundUp(PassParameters->TotalTexels, 64u), 65535u);
                 PassParameters->DirectionsUAV = GraphBuilder.CreateUAV(DirectionsTexture);
                 PassParameters->RadianceUAV = GraphBuilder.CreateUAV(RadianceTexture);
                 PassParameters->HitDistanceUAV = GraphBuilder.CreateUAV(HitDistanceTexture);
 
                 TShaderMapRef<FDDGIRadianceCascadeInitializeCS> ComputeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-                const uint32 GroupCount = FMath::DivideAndRoundUp(PassParameters->TotalTexels, 64u);
+                const uint32 GroupCountY = FMath::DivideAndRoundUp(
+                    FMath::DivideAndRoundUp(PassParameters->TotalTexels, 64u), PassParameters->DispatchGroupsX);
                 FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("DDGI Radiance Cascades Initialize"),
-                    ComputeShader, PassParameters, FIntVector(GroupCount, 1, 1));
+                    ComputeShader, PassParameters, FIntVector(PassParameters->DispatchGroupsX, GroupCountY, 1));
             }
         }
 

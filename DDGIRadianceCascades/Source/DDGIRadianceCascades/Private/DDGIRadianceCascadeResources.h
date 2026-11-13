@@ -1,10 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "RenderGraph.h"
 
 class FSceneInterface;
-class FRDGBuilder;
-class FRDGTexture;
 struct FDDGIMasterConfig;
 class FRHICommandListImmediate;
 
@@ -19,6 +18,6 @@ void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Sce
 bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     FRDGBuilder& GraphBuilder,
     const FSceneInterface* Scene,
-    FRDGTexture*& OutDirections,
-    FRDGTexture*& OutRadiance,
-    FRDGTexture*& OutHitDistance);
+    FRDGTextureRef& OutDirections,
+    FRDGTextureRef& OutRadiance,
+    FRDGTextureRef& OutHitDistance);

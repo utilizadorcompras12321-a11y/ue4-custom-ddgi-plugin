@@ -10,6 +10,7 @@ float CascadeScale;
 float MaxTraceDistance;
 uint TextureWidth;
 uint TotalTexels;
+uint DispatchGroupsX;
 
 RWTexture2D<float4> DirectionsUAV;
 RWTexture2D<float4> RadianceUAV;
@@ -27,7 +28,7 @@ float3 DDGIRadianceCascadeBaseDirection(uint RayIndex, uint RayCount)
 [numthreads(64, 1, 1)]
 void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-    uint LinearIndex = DispatchThreadId.x;
+    uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
     if (LinearIndex >= TotalTexels || TotalRaysPerProbe == 0u)
     {
         return;
@@ -60,7 +61,6 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     float3 Direction = DDGIRadianceCascadeBaseDirection(BaseRayIndex, BaseRayCount);
     uint PreviousCascadeRayCount = BaseRayCount;
-    uint ChildScale = 1u;
 
     [loop]
     for (uint Level = 1u; Level <= CascadeIndex; ++Level)
