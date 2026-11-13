@@ -13,6 +13,12 @@ struct FDDGISoftwareBVHBuildStats
 	int32 SkippedInvalidTriangles = 0;
 	int32 TriangleCount = 0;
 	int32 NodeCount = 0;
+	int32 MaxDepth = 0;
+	int32 LeafCount = 0;
+	int32 MinLeafTriangleCount = 0;
+	int32 MaxLeafTriangleCount = 0;
+	float AverageLeafTriangleCount = 0.0f;
+	float EstimatedSAHCost = 0.0f;
 };
 
 namespace DDGISoftwareBVH

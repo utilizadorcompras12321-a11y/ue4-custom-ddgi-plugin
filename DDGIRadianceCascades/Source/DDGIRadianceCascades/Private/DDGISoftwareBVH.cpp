@@ -230,6 +230,38 @@ namespace
 		Node.BoundsMax = BoundsMax;
 		Node.LeftChild = LeftChild;
 		Node.RightChild = RightChild;
+		return NodeIndex;
+	}
+
+	void GatherBuildStatistics(
+		const TArray<FDDGISoftwareBVHNode>& Nodes,
+		int32 NodeIndex,
+		int32 Depth,
+		int32& OutMaxDepth,
+		int32& OutLeafCount,
+		int32& OutMinLeafTriangles,
+		int32& OutMaxLeafTriangles,
+		int64& OutLeafTriangleTotal,
+		float& OutWeightedArea)
+	{
+		if (!Nodes.IsValidIndex(NodeIndex)) return;
+		const FDDGISoftwareBVHNode& Node = Nodes[NodeIndex];
+		OutMaxDepth = FMath::Max(OutMaxDepth, Depth);
+		if (Node.TriangleCount > 0)
+		{
+			++OutLeafCount;
+			OutMinLeafTriangles = FMath::Min(OutMinLeafTriangles, Node.TriangleCount);
+			OutMaxLeafTriangles = FMath::Max(OutMaxLeafTriangles, Node.TriangleCount);
+			OutLeafTriangleTotal += Node.TriangleCount;
+			const FVector Size = Node.BoundsMax - Node.BoundsMin;
+			const float Area = 2.0f * (Size.X * Size.Y + Size.Y * Size.Z + Size.Z * Size.X);
+			OutWeightedArea += Area * Node.TriangleCount;
+			return;
+		}
+		GatherBuildStatistics(Nodes, Node.LeftChild, Depth + 1, OutMaxDepth, OutLeafCount,
+			OutMinLeafTriangles, OutMaxLeafTriangles, OutLeafTriangleTotal, OutWeightedArea);
+		GatherBuildStatistics(Nodes, Node.RightChild, Depth + 1, OutMaxDepth, OutLeafCount,
+			OutMinLeafTriangles, OutMaxLeafTriangles, OutLeafTriangleTotal, OutWeightedArea);
 	}
 
 	FVector4 PackVector(const FVector& Value)
@@ -472,4 +504,20 @@ void DDGISoftwareBVH::BuildStaticWorld(
 	}
 
 	OutStats.NodeCount = Nodes.Num();
+	int64 LeafTriangleTotal = 0;
+	float WeightedLeafArea = 0.0f;
+	OutStats.MinLeafTriangleCount = MAX_int32;
+	GatherBuildStatistics(Nodes, 0, 0, OutStats.MaxDepth, OutStats.LeafCount,
+		OutStats.MinLeafTriangleCount, OutStats.MaxLeafTriangleCount, LeafTriangleTotal, WeightedLeafArea);
+	if (OutStats.LeafCount > 0)
+	{
+		OutStats.AverageLeafTriangleCount = static_cast<float>(LeafTriangleTotal) / OutStats.LeafCount;
+		const FVector RootSize = Nodes[0].BoundsMax - Nodes[0].BoundsMin;
+		const float RootArea = 2.0f * (RootSize.X * RootSize.Y + RootSize.Y * RootSize.Z + RootSize.Z * RootSize.X);
+		OutStats.EstimatedSAHCost = RootArea > SMALL_NUMBER ? WeightedLeafArea / RootArea : 0.0f;
+	}
+	else
+	{
+		OutStats.MinLeafTriangleCount = 0;
+	}
 }
