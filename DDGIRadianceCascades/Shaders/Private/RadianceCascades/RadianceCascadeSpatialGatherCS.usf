@@ -12,6 +12,30 @@ StructuredBuffer<float4> BVHTriangles;
 StructuredBuffer<float4> ProbeSpatialHash;
 RWTexture2D<float4> OutputRadianceUAV;
 
+// Match the tracing shader's scale-aware normal calculation so gather
+// filtering remains stable for very small and very large triangles.
+float3 ComputeGatherTriangleNormal(float3 A, float3 B, float3 C)
+{
+    float3 EdgeAB = B - A;
+    float3 EdgeAC = C - A;
+    float EdgeScale = max(
+        max(max(abs(EdgeAB.x), abs(EdgeAB.y)), abs(EdgeAB.z)),
+        max(max(abs(EdgeAC.x), abs(EdgeAC.y)), abs(EdgeAC.z)));
+    if (!(EdgeScale > 0.0f) || !isfinite(EdgeScale))
+    {
+        return 0.0f;
+    }
+
+    float3 ScaledCross = cross(EdgeAB / EdgeScale, EdgeAC / EdgeScale);
+    float NormalLengthSquared = dot(ScaledCross, ScaledCross);
+    if (!(NormalLengthSquared > 1.0e-12f) || !isfinite(NormalLengthSquared))
+    {
+        return 0.0f;
+    }
+
+    return ScaledCross * rsqrt(NormalLengthSquared);
+}
+
 uint DDGIHashProbeCell(int3 Cell)
 {
     uint Hash = asuint(Cell.x) * 0x8DA6B343u;
@@ -74,9 +98,10 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             return;
         }
         uint CenterTriangleBase = CenterTriangleIndex * 4u;
-        CenterNormal = normalize(cross(
-            BVHTriangles[CenterTriangleBase + 1u].xyz - BVHTriangles[CenterTriangleBase].xyz,
-            BVHTriangles[CenterTriangleBase + 2u].xyz - BVHTriangles[CenterTriangleBase].xyz));
+        CenterNormal = ComputeGatherTriangleNormal(
+            BVHTriangles[CenterTriangleBase + 0u].xyz,
+            BVHTriangles[CenterTriangleBase + 1u].xyz,
+            BVHTriangles[CenterTriangleBase + 2u].xyz);
         if (dot(CenterNormal, CenterDirection) > 0.0f) CenterNormal = -CenterNormal;
     }
     float WeightSum = 1.0f;
@@ -110,9 +135,10 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             uint NeighborTriangleIndex = NeighborTriangleTag - 1u;
             if (NeighborTriangleIndex >= TriangleCount) continue;
             uint NeighborTriangleBase = NeighborTriangleIndex * 4u;
-            float3 NeighborNormal = normalize(cross(
-                BVHTriangles[NeighborTriangleBase + 1u].xyz - BVHTriangles[NeighborTriangleBase].xyz,
-                BVHTriangles[NeighborTriangleBase + 2u].xyz - BVHTriangles[NeighborTriangleBase].xyz));
+            float3 NeighborNormal = ComputeGatherTriangleNormal(
+                BVHTriangles[NeighborTriangleBase + 0u].xyz,
+                BVHTriangles[NeighborTriangleBase + 1u].xyz,
+                BVHTriangles[NeighborTriangleBase + 2u].xyz);
             if (dot(NeighborNormal, NeighborDirection) > 0.0f) NeighborNormal = -NeighborNormal;
             if (dot(CenterNormal, NeighborNormal) < 0.85f) continue;
         }
