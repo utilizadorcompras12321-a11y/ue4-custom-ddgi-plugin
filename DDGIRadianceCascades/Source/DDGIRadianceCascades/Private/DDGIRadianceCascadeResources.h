@@ -34,6 +34,14 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
 	FTexture2DRHIRef& OutProbePositions,
 	uint32& OutProbeCount);
 
+/** Returns the uploaded static-scene BVH buffers for GPU traversal. */
+bool DDGIGetSoftwareBVHResources_RenderThread(
+	const FSceneInterface* Scene,
+	FShaderResourceViewRHIRef& OutNodesSRV,
+	FShaderResourceViewRHIRef& OutTrianglesSRV,
+	uint32& OutNodeCount,
+	uint32& OutTriangleCount);
+
 /** Returns the uploaded sparse probe-origin texture for later tracing passes. */
 bool DDGIGetRadianceCascadeProbePositions_RenderThread(
 	FRDGBuilder& GraphBuilder,

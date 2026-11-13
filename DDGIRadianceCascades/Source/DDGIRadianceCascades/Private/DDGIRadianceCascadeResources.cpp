@@ -6,6 +6,7 @@
 #include "RenderGraph.h"
 #include "PostProcess/SceneRenderTargets.h"
 #include "SceneInterface.h"
+#include "Containers/ResourceArray.h"
 
 namespace
 {
@@ -19,6 +20,13 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> RayOrigins;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
+		FBufferRHIRef BVHNodes;
+		FShaderResourceViewRHIRef BVHNodesSRV;
+		FBufferRHIRef BVHTriangles;
+		FShaderResourceViewRHIRef BVHTrianglesSRV;
+		const FDDGISoftwareBVHData* BVHDataIdentity = nullptr;
+		uint32 BVHNodeCount = 0;
+		uint32 BVHTriangleCount = 0;
 		bool bNeedsInitialization = true;
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
 		int32 TotalRaysPerProbe = 0;
@@ -33,6 +41,13 @@ namespace
 			HitDistance.SafeRelease();
 			RayOrigins.SafeRelease();
 			ProbePositions.SafeRelease();
+			BVHNodes.SafeRelease();
+			BVHNodesSRV.SafeRelease();
+			BVHTriangles.SafeRelease();
+			BVHTrianglesSRV.SafeRelease();
+			BVHDataIdentity = nullptr;
+			BVHNodeCount = 0;
+			BVHTriangleCount = 0;
 			Dimensions = FIntPoint::ZeroValue;
 			ProbePositionDimensions = FIntPoint::ZeroValue;
 			UploadedProbeCount = 0;
@@ -170,6 +185,66 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no 2D RHI resource."));
     }
 }
+    // Upload the immutable CPU BVH once per snapshot. Master Actor movement
+    // republishes probe origins but keeps the same shared BVH pointer.
+    const FDDGISoftwareBVHData* CurrentBVH = Config.SoftwareBVH.Get();
+    if (Storage.BVHDataIdentity != CurrentBVH)
+    {
+        Storage.BVHNodes.SafeRelease();
+        Storage.BVHNodesSRV.SafeRelease();
+        Storage.BVHTriangles.SafeRelease();
+        Storage.BVHTrianglesSRV.SafeRelease();
+        Storage.BVHNodeCount = 0;
+        Storage.BVHTriangleCount = 0;
+        Storage.BVHDataIdentity = CurrentBVH;
+
+        if (CurrentBVH && CurrentBVH->PackedNodes.Num() >= 3 && CurrentBVH->PackedTriangles.Num() >= 3)
+        {
+            TResourceArray<FVector4> NodeData;
+            NodeData.Append(CurrentBVH->PackedNodes);
+            FRHIResourceCreateInfo NodeCreateInfo(TEXT("DDGIRadianceCascade_SoftwareBVHNodes"));
+            NodeCreateInfo.ResourceArray = &NodeData;
+            Storage.BVHNodes = RHICreateStructuredBuffer(
+                sizeof(FVector4),
+                static_cast<uint32>(NodeData.GetResourceDataSize()),
+                BUF_ShaderResource,
+                NodeCreateInfo);
+
+            TResourceArray<FVector4> TriangleData;
+            TriangleData.Append(CurrentBVH->PackedTriangles);
+            FRHIResourceCreateInfo TriangleCreateInfo(TEXT("DDGIRadianceCascade_SoftwareBVHTriangles"));
+            TriangleCreateInfo.ResourceArray = &TriangleData;
+            Storage.BVHTriangles = RHICreateStructuredBuffer(
+                sizeof(FVector4),
+                static_cast<uint32>(TriangleData.GetResourceDataSize()),
+                BUF_ShaderResource,
+                TriangleCreateInfo);
+
+            if (Storage.BVHNodes.IsValid() && Storage.BVHTriangles.IsValid())
+            {
+                Storage.BVHNodesSRV = RHICreateShaderResourceView(Storage.BVHNodes);
+                Storage.BVHTrianglesSRV = RHICreateShaderResourceView(Storage.BVHTriangles);
+                if (Storage.BVHNodesSRV.IsValid() && Storage.BVHTrianglesSRV.IsValid())
+                {
+                    Storage.BVHNodeCount = static_cast<uint32>(CurrentBVH->NodeCount);
+                    Storage.BVHTriangleCount = static_cast<uint32>(CurrentBVH->TriangleCount);
+                }
+                else
+                {
+                    Storage.BVHNodes.SafeRelease();
+                    Storage.BVHNodesSRV.SafeRelease();
+                    Storage.BVHTriangles.SafeRelease();
+                    Storage.BVHTrianglesSRV.SafeRelease();
+                    UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create BVH structured-buffer SRVs."));
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate BVH structured buffers."));
+            }
+        }
+    }
+
 void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Scene)
 {
 	check(IsInRenderingThread() || IsInParallelRenderingThread());
@@ -260,6 +335,34 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
 
 	return OutDirections.IsValid() && OutRadiance.IsValid() &&
 		OutHitDistance.IsValid() && OutRayOrigins.IsValid() && OutProbePositions.IsValid();
+}
+
+
+bool DDGIGetSoftwareBVHResources_RenderThread(
+	const FSceneInterface* Scene,
+	FShaderResourceViewRHIRef& OutNodesSRV,
+	FShaderResourceViewRHIRef& OutTrianglesSRV,
+	uint32& OutNodeCount,
+	uint32& OutTriangleCount)
+{
+	check(IsInRenderingThread() || IsInParallelRenderingThread());
+	OutNodesSRV.SafeRelease();
+	OutTrianglesSRV.SafeRelease();
+	OutNodeCount = 0;
+	OutTriangleCount = 0;
+
+	const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+	if (!Storage || !Storage->BVHNodesSRV.IsValid() || !Storage->BVHTrianglesSRV.IsValid() ||
+		Storage->BVHNodeCount == 0 || Storage->BVHTriangleCount == 0)
+	{
+		return false;
+	}
+
+	OutNodesSRV = Storage->BVHNodesSRV;
+	OutTrianglesSRV = Storage->BVHTrianglesSRV;
+	OutNodeCount = Storage->BVHNodeCount;
+	OutTriangleCount = Storage->BVHTriangleCount;
+	return true;
 }
 
 bool DDGIGetRadianceCascadeProbePositions_RenderThread(
