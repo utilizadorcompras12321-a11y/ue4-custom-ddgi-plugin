@@ -399,6 +399,7 @@ void DDGISoftwareBVH::BuildStaticWorld(
 
 	TArray<FDDGISoftwareTriangle> Triangles;
 	Triangles.Reserve(FMath::Min(MaxTriangleCount, 65536));
+	bool bHasWorldOrigin = false;
 
 	for (TActorIterator<AActor> ActorIt(World); ActorIt; ++ActorIt)
 	{
@@ -456,9 +457,10 @@ void DDGISoftwareBVH::BuildStaticWorld(
 			// Keep one immutable coordinate frame for this BVH. Choosing the first
 			// CPU-readable static mesh component avoids adding local vertex offsets
 			// to large absolute world coordinates before packing them as float.
-			if (Triangles.Num() == 0 && OutWorldOrigin.IsZero())
+			if (!bHasWorldOrigin)
 			{
 				OutWorldOrigin = ComponentTransform.GetLocation();
+				bHasWorldOrigin = true;
 			}
 			const FVector ComponentRelativeLocation = ComponentTransform.GetLocation() - OutWorldOrigin;
 			const int32 ComponentTriangleCount = static_cast<int32>(IndexCount / 3);
