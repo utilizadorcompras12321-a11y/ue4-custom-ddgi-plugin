@@ -268,6 +268,87 @@ namespace
 			OutMinLeafTriangles, OutMaxLeafTriangles, OutLeafTriangleTotal, OutWeightedArea);
 	}
 
+
+	bool ValidateBVH(
+		const TArray<FDDGISoftwareBVHNode>& Nodes,
+		int32 TriangleCount)
+	{
+		if (Nodes.Num() == 0 || TriangleCount <= 0)
+		{
+			return false;
+		}
+
+		TArray<uint8> VisitedNodes;
+		VisitedNodes.Init(0, Nodes.Num());
+		TArray<uint8> CoveredTriangles;
+		CoveredTriangles.Init(0, TriangleCount);
+		TArray<int32> PendingNodes;
+		TArray<int32> PendingDepths;
+		PendingNodes.Add(0);
+		PendingDepths.Add(0);
+		int32 VisitedCount = 0;
+		int32 CoveredCount = 0;
+
+		while (PendingNodes.Num() > 0)
+		{
+			const int32 LastIndex = PendingNodes.Num() - 1;
+			const int32 NodeIndex = PendingNodes[LastIndex];
+			const int32 Depth = PendingDepths[LastIndex];
+			PendingNodes.RemoveAt(LastIndex, 1, false);
+			PendingDepths.RemoveAt(LastIndex, 1, false);
+
+			if (!Nodes.IsValidIndex(NodeIndex) || Depth > 48 || VisitedNodes[NodeIndex] != 0)
+			{
+				return false;
+			}
+
+			VisitedNodes[NodeIndex] = 1;
+			++VisitedCount;
+			const FDDGISoftwareBVHNode& Node = Nodes[NodeIndex];
+			if (!IsFiniteVector(Node.BoundsMin) || !IsFiniteVector(Node.BoundsMax) ||
+				Node.BoundsMin.X > Node.BoundsMax.X ||
+				Node.BoundsMin.Y > Node.BoundsMax.Y ||
+				Node.BoundsMin.Z > Node.BoundsMax.Z)
+			{
+				return false;
+			}
+
+			if (Node.TriangleCount > 0)
+			{
+				if (Node.LeftChild != INDEX_NONE || Node.RightChild != INDEX_NONE ||
+					Node.FirstTriangle < 0 || Node.FirstTriangle > TriangleCount - Node.TriangleCount)
+				{
+					return false;
+				}
+
+				for (int32 TriangleIndex = Node.FirstTriangle;
+					TriangleIndex < Node.FirstTriangle + Node.TriangleCount; ++TriangleIndex)
+				{
+					if (CoveredTriangles[TriangleIndex] != 0)
+					{
+						return false;
+					}
+					CoveredTriangles[TriangleIndex] = 1;
+					++CoveredCount;
+				}
+			}
+			else
+			{
+				if (!Nodes.IsValidIndex(Node.LeftChild) || !Nodes.IsValidIndex(Node.RightChild) ||
+					Node.LeftChild == Node.RightChild || Node.FirstTriangle != 0)
+				{
+					return false;
+				}
+				PendingNodes.Add(Node.RightChild);
+				PendingDepths.Add(Depth + 1);
+				PendingNodes.Add(Node.LeftChild);
+				PendingDepths.Add(Depth + 1);
+			}
+		}
+
+		return VisitedCount == Nodes.Num() && CoveredCount == TriangleCount;
+	}
+
 	FVector4 PackVector(const FVector& Value)
 	{
 		return FVector4(Value.X, Value.Y, Value.Z, 0.0f);
@@ -485,6 +566,12 @@ void DDGISoftwareBVH::BuildStaticWorld(
 	TArray<FDDGISoftwareBVHNode> Nodes;
 	Nodes.Reserve(Triangles.Num() / 2);
 	BuildNode(Triangles, 0, Triangles.Num(), Nodes);
+	if (!ValidateBVH(Nodes, Triangles.Num()))
+	{
+		UE_LOG(LogTemp, Error, TEXT("DDGI: Software BVH validation failed; geometry upload was skipped."));
+		OutStats.TriangleCount = 0;
+		return;
+	}
 
 	// Each triangle occupies four float4 entries in the shader buffer.
 	OutPackedTriangles.Reserve(Triangles.Num() * 4);
