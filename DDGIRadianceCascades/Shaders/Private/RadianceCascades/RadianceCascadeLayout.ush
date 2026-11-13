@@ -87,13 +87,51 @@ uint DDGIRadianceCascadeRayStorageIndex(
 		min(RayIndex, Count - 1u);
 }
 
-// This is the parent grouping in the hierarchy. It is not yet the
-// angular child-direction generator; that will be implemented separately.
+// Child rays are stored contiguously per parent. This returns the parent
+// direction group for a child-ray index.
 uint DDGIRadianceCascadeParentRayIndex(
 	uint ChildRayIndex,
 	uint RaySplitFactor)
 {
 	return ChildRayIndex / max(RaySplitFactor, 1u);
+}
+
+// Deterministically distributes the children inside the angular footprint
+// of their parent. ParentConeHalfAngleRadians must describe the parent ray's
+// angular coverage; the caller derives it from the base direction set.
+float3 DDGIRadianceCascadeChildRayDirection(
+	float3 ParentDirection,
+	uint ChildRayIndex,
+	uint RaySplitFactor,
+	float ParentConeHalfAngleRadians,
+	uint ParentRayIndex)
+{
+	uint SafeSplit = clamp(RaySplitFactor, 1u, 4u);
+	uint ChildInGroup = ChildRayIndex % SafeSplit;
+
+	float3 Axis = normalize(ParentDirection);
+	float3 ReferenceUp = (abs(Axis.z) < 0.999f)
+		? float3(0.0f, 0.0f, 1.0f)
+		: float3(0.0f, 1.0f, 0.0f);
+	float3 Tangent = normalize(cross(ReferenceUp, Axis));
+	float3 Bitangent = normalize(cross(Axis, Tangent));
+
+	const float GoldenAngle = 2.39996322972865332f;
+	float ParentRotation = frac(
+		sin((float)ParentRayIndex * 12.9898f + 78.233f) * 43758.5453f);
+	float Azimuth = 6.283185307179586f *
+		frac(ParentRotation + (float)ChildInGroup * (GoldenAngle / 6.283185307179586f));
+
+	float RadialSample = sqrt(((float)ChildInGroup + 0.5f) / (float)SafeSplit);
+	float MaxConeAngle = clamp(ParentConeHalfAngleRadians, 0.0f, 1.57079632679f);
+	float CosTheta = lerp(1.0f, cos(MaxConeAngle), RadialSample);
+	float SinTheta = sqrt(saturate(1.0f - CosTheta * CosTheta));
+
+	float3 RadialDirection =
+		Tangent * cos(Azimuth) +
+		Bitangent * sin(Azimuth);
+
+	return normalize(Axis * CosTheta + RadialDirection * SinTheta);
 }
 
 #endif // DDGI_RADIANCE_CASCADE_LAYOUT_USH
