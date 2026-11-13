@@ -34,10 +34,21 @@ RWTexture2D<uint> HitTriangleIndexUAV;
 
 bool IntersectBounds(float3 Origin, float3 Direction, float3 BoundsMin, float3 BoundsMax, float MaxDistance)
 {
+    // A nearly parallel ray can only intersect this slab when its origin
+    // already lies inside the slab. Reject the other case explicitly instead
+    // of relying on a large reciprocal that can overflow or misclassify it.
+    const float DirectionEpsilon = 1.0e-8f;
+    if ((abs(Direction.x) < DirectionEpsilon && (Origin.x < BoundsMin.x || Origin.x > BoundsMax.x)) ||
+        (abs(Direction.y) < DirectionEpsilon && (Origin.y < BoundsMin.y || Origin.y > BoundsMax.y)) ||
+        (abs(Direction.z) < DirectionEpsilon && (Origin.z < BoundsMin.z || Origin.z > BoundsMax.z)))
+    {
+        return false;
+    }
+
     float3 SafeDirection = Direction;
-    SafeDirection.x = abs(SafeDirection.x) < 1.0e-8f ? 1.0e-8f : SafeDirection.x;
-    SafeDirection.y = abs(SafeDirection.y) < 1.0e-8f ? 1.0e-8f : SafeDirection.y;
-    SafeDirection.z = abs(SafeDirection.z) < 1.0e-8f ? 1.0e-8f : SafeDirection.z;
+    SafeDirection.x = abs(SafeDirection.x) < DirectionEpsilon ? (SafeDirection.x < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.x;
+    SafeDirection.y = abs(SafeDirection.y) < DirectionEpsilon ? (SafeDirection.y < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.y;
+    SafeDirection.z = abs(SafeDirection.z) < DirectionEpsilon ? (SafeDirection.z < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.z;
     float3 InverseDirection = rcp(SafeDirection);
     float3 T0 = (BoundsMin - Origin) * InverseDirection;
     float3 T1 = (BoundsMax - Origin) * InverseDirection;
@@ -57,10 +68,19 @@ bool IntersectBoundsWithNear(
     float MaxDistance,
     out float NearDistance)
 {
+    const float DirectionEpsilon = 1.0e-8f;
+    if ((abs(Direction.x) < DirectionEpsilon && (Origin.x < BoundsMin.x || Origin.x > BoundsMax.x)) ||
+        (abs(Direction.y) < DirectionEpsilon && (Origin.y < BoundsMin.y || Origin.y > BoundsMax.y)) ||
+        (abs(Direction.z) < DirectionEpsilon && (Origin.z < BoundsMin.z || Origin.z > BoundsMax.z)))
+    {
+        NearDistance = 0.0f;
+        return false;
+    }
+
     float3 SafeDirection = Direction;
-    SafeDirection.x = abs(SafeDirection.x) < 1.0e-8f ? (SafeDirection.x < 0.0f ? -1.0e-8f : 1.0e-8f) : SafeDirection.x;
-    SafeDirection.y = abs(SafeDirection.y) < 1.0e-8f ? (SafeDirection.y < 0.0f ? -1.0e-8f : 1.0e-8f) : SafeDirection.y;
-    SafeDirection.z = abs(SafeDirection.z) < 1.0e-8f ? (SafeDirection.z < 0.0f ? -1.0e-8f : 1.0e-8f) : SafeDirection.z;
+    SafeDirection.x = abs(SafeDirection.x) < DirectionEpsilon ? (SafeDirection.x < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.x;
+    SafeDirection.y = abs(SafeDirection.y) < DirectionEpsilon ? (SafeDirection.y < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.y;
+    SafeDirection.z = abs(SafeDirection.z) < DirectionEpsilon ? (SafeDirection.z < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.z;
     float3 InverseDirection = rcp(SafeDirection);
     float3 T0 = (BoundsMin - Origin) * InverseDirection;
     float3 T1 = (BoundsMax - Origin) * InverseDirection;
@@ -108,6 +128,11 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
 
 bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint IgnoreTriangleIndex)
 {
+    if (NodeCount == 0u || TriangleCount == 0u || MaxDistance <= 0.0f)
+    {
+        return false;
+    }
+
     uint Stack[64];
     uint StackSize = 0u;
     uint IterationCount = 0u;
@@ -180,7 +205,11 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
                     BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
                     MaxDistance, RightNear);
             }
-            if (bHitLeft && bHitRight && StackSize + 2u <= 64u)
+            // The CPU builder rejects BVHs deeper than 48 levels. A depth-first
+            // traversal therefore needs at most 49 stack entries, leaving room
+            // for both children in this 64-entry stack. Never silently discard
+            // a hit child because of a defensive capacity branch.
+            if (bHitLeft && bHitRight)
             {
                 if (LeftNear <= RightNear)
                 {
@@ -193,11 +222,11 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
                     Stack[StackSize++] = RightChild;
                 }
             }
-            else if (bHitLeft && StackSize < 64u)
+            else if (bHitLeft)
             {
                 Stack[StackSize++] = LeftChild;
             }
-            else if (bHitRight && StackSize < 64u)
+            else if (bHitRight)
             {
                 Stack[StackSize++] = RightChild;
             }
@@ -297,7 +326,11 @@ bool TraceClosestHit(
                     BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
                     ClosestDistance, RightNear);
             }
-            if (bHitLeft && bHitRight && StackSize + 2u <= 64u)
+            // The CPU builder rejects BVHs deeper than 48 levels. A depth-first
+            // traversal therefore needs at most 49 stack entries, leaving room
+            // for both children in this 64-entry stack. Never silently discard
+            // a hit child because of a defensive capacity branch.
+            if (bHitLeft && bHitRight)
             {
                 if (LeftNear <= RightNear)
                 {
@@ -310,11 +343,11 @@ bool TraceClosestHit(
                     Stack[StackSize++] = RightChild;
                 }
             }
-            else if (bHitLeft && StackSize < 64u)
+            else if (bHitLeft)
             {
                 Stack[StackSize++] = LeftChild;
             }
-            else if (bHitRight && StackSize < 64u)
+            else if (bHitRight)
             {
                 Stack[StackSize++] = RightChild;
             }
@@ -629,7 +662,9 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             }
 
             // Push the farther child first; the nearer child is popped next.
-            if (bHitLeft && bHitRight && StackSize + 2u <= 64u)
+            // The CPU builder caps validated tree depth at 48, so the maximum
+            // pending DFS stack is below this 64-entry capacity.
+            if (bHitLeft && bHitRight)
             {
                 if (LeftNear <= RightNear)
                 {
@@ -642,11 +677,11 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                     Stack[StackSize++] = RightChild;
                 }
             }
-            else if (bHitLeft && StackSize < 64u && (!bHitRight || LeftNear <= RightNear))
+            else if (bHitLeft)
             {
                 Stack[StackSize++] = LeftChild;
             }
-            else if (bHitRight && StackSize < 64u)
+            else if (bHitRight)
             {
                 Stack[StackSize++] = RightChild;
             }
