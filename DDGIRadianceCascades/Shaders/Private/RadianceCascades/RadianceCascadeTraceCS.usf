@@ -93,56 +93,81 @@ bool IntersectBoundsWithNear(
 
 bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, float3 C, out float HitDistance)
 {
-    float3 Edge1 = B - A;
-    float3 Edge2 = C - A;
-    float DirectionLengthSquared = dot(Direction, Direction);
-    float Edge1LengthSquared = dot(Edge1, Edge1);
-    float Edge2LengthSquared = dot(Edge2, Edge2);
+    // Watertight ray/triangle test (Woop/Benthin/Wald style): translate the
+    // triangle to ray space, shear along the dominant ray axis, then evaluate
+    // all three edge functions in the same 2D coordinate system. Adjacent
+    // triangles therefore use matching edge equations instead of independent
+    // barycentric divisions.
+    float3 ATranslated = A - Origin;
+    float3 BTranslated = B - Origin;
+    float3 CTranslated = C - Origin;
 
-    // Scale the parallel-ray threshold by the geometric magnitude. An
-    // absolute determinant epsilon incorrectly rejects small triangles and
-    // accepts poorly conditioned large-coordinate cases.
-    float DeterminantScale = sqrt(max(
-        DirectionLengthSquared * Edge1LengthSquared * Edge2LengthSquared,
-        0.0f));
-    if (DirectionLengthSquared <= 1.0e-20f ||
-        Edge1LengthSquared <= 1.0e-20f ||
-        Edge2LengthSquared <= 1.0e-20f ||
-        DeterminantScale <= 0.0f)
+    float3 AbsDirection = abs(Direction);
+    uint DominantAxis = AbsDirection.x > AbsDirection.y
+        ? (AbsDirection.x > AbsDirection.z ? 0u : 2u)
+        : (AbsDirection.y > AbsDirection.z ? 1u : 2u);
+    if (AbsDirection[DominantAxis] <= 1.0e-20f)
     {
         HitDistance = -1.0f;
         return false;
     }
 
-    float3 P = cross(Direction, Edge2);
-    float Determinant = dot(Edge1, P);
-    if (abs(Determinant) <= 1.0e-7f * DeterminantScale)
+    uint AxisX = (DominantAxis + 1u) % 3u;
+    uint AxisY = (AxisX + 1u) % 3u;
+    if (Direction[DominantAxis] < 0.0f)
+    {
+        uint TempAxis = AxisX;
+        AxisX = AxisY;
+        AxisY = TempAxis;
+    }
+
+    float ShearX = Direction[AxisX] / Direction[DominantAxis];
+    float ShearY = Direction[AxisY] / Direction[DominantAxis];
+    float ScaleZ = rcp(Direction[DominantAxis]);
+
+    float Ax = ATranslated[AxisX] - ShearX * ATranslated[DominantAxis];
+    float Ay = ATranslated[AxisY] - ShearY * ATranslated[DominantAxis];
+    float Bx = BTranslated[AxisX] - ShearX * BTranslated[DominantAxis];
+    float By = BTranslated[AxisY] - ShearY * BTranslated[DominantAxis];
+    float Cx = CTranslated[AxisX] - ShearX * CTranslated[DominantAxis];
+    float Cy = CTranslated[AxisY] - ShearY * CTranslated[DominantAxis];
+
+    float U = Cx * By - Cy * Bx;
+    float V = Ax * Cy - Ay * Cx;
+    float W = Bx * Ay - By * Ax;
+
+    // A hit is outside when edge functions have mixed signs. Exact zero is
+    // accepted so shared edges are not discarded by strict inequalities.
+    bool bHasNegative = U < 0.0f || V < 0.0f || W < 0.0f;
+    bool bHasPositive = U > 0.0f || V > 0.0f || W > 0.0f;
+    if (bHasNegative && bHasPositive)
     {
         HitDistance = -1.0f;
         return false;
     }
 
-    float InverseDeterminant = rcp(Determinant);
-    float3 T = Origin - A;
-    float U = dot(T, P) * InverseDeterminant;
-    if (U < 0.0f || U > 1.0f)
+    float Determinant = U + V + W;
+    if (Determinant == 0.0f)
     {
         HitDistance = -1.0f;
         return false;
     }
 
-    float3 Q = cross(T, Edge1);
-    float V = dot(Direction, Q) * InverseDeterminant;
-    if (V < 0.0f || U + V > 1.0f)
+    float Az = ATranslated[DominantAxis] * ScaleZ;
+    float Bz = BTranslated[DominantAxis] * ScaleZ;
+    float Cz = CTranslated[DominantAxis] * ScaleZ;
+    float ScaledDistance = U * Az + V * Bz + W * Cz;
+
+    // Test the signed distance before division. This avoids accepting
+    // intersections behind the origin for either triangle winding.
+    if ((Determinant > 0.0f && ScaledDistance <= 0.0f) ||
+        (Determinant < 0.0f && ScaledDistance >= 0.0f))
     {
         HitDistance = -1.0f;
         return false;
     }
 
-    HitDistance = dot(Edge2, Q) * InverseDeterminant;
-    // The caller applies its own maximum distance. Only reject intersections
-    // behind or exactly at the ray origin; a fixed world-space epsilon here
-    // would make valid very-close geometry disappear.
+    HitDistance = ScaledDistance / Determinant;
     return HitDistance > 0.0f;
 }
 
