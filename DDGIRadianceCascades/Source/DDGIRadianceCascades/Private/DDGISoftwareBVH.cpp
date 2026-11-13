@@ -316,6 +316,7 @@ namespace
 			if (Node.TriangleCount > 0)
 			{
 				if (Node.LeftChild != INDEX_NONE || Node.RightChild != INDEX_NONE ||
+					Node.TriangleCount > TriangleCount ||
 					Node.FirstTriangle < 0 || Node.FirstTriangle > TriangleCount - Node.TriangleCount)
 				{
 					return false;
@@ -334,7 +335,8 @@ namespace
 			}
 			else
 			{
-				if (!Nodes.IsValidIndex(Node.LeftChild) || !Nodes.IsValidIndex(Node.RightChild) ||
+				if (Node.TriangleCount != 0 ||
+					!Nodes.IsValidIndex(Node.LeftChild) || !Nodes.IsValidIndex(Node.RightChild) ||
 					Node.LeftChild == Node.RightChild || Node.FirstTriangle != 0)
 				{
 					return false;
@@ -347,6 +349,27 @@ namespace
 		}
 
 		return VisitedCount == Nodes.Num() && CoveredCount == TriangleCount;
+	}
+
+
+	bool IsValidTriangleForPacking(const FDDGISoftwareTriangle& Triangle)
+	{
+		return IsFiniteVector(Triangle.A) &&
+			IsFiniteVector(Triangle.B) &&
+			IsFiniteVector(Triangle.C) &&
+			IsFiniteVector(Triangle.BoundsMin) &&
+			IsFiniteVector(Triangle.BoundsMax) &&
+			IsFiniteVector(Triangle.EmissiveRadiance) &&
+			IsFiniteVector(Triangle.BaseColor) &&
+			Triangle.BoundsMin.X <= Triangle.BoundsMax.X &&
+			Triangle.BoundsMin.Y <= Triangle.BoundsMax.Y &&
+			Triangle.BoundsMin.Z <= Triangle.BoundsMax.Z &&
+			Triangle.EmissiveRadiance.X >= 0.0f &&
+			Triangle.EmissiveRadiance.Y >= 0.0f &&
+			Triangle.EmissiveRadiance.Z >= 0.0f &&
+			Triangle.BaseColor.X >= 0.0f &&
+			Triangle.BaseColor.Y >= 0.0f &&
+			Triangle.BaseColor.Z >= 0.0f;
 	}
 
 	FVector4 PackVector(const FVector& Value)
@@ -565,8 +588,27 @@ void DDGISoftwareBVH::BuildStaticWorld(
 
 	TArray<FDDGISoftwareBVHNode> Nodes;
 	Nodes.Reserve(Triangles.Num() / 2);
+	// Node metadata is stored in float4, so integer indices must remain exactly
+	// representable by IEEE-754 single precision (24 significant bits).
+	const int32 MaxExactFloatInteger = 1 << 24;
+	if (Triangles.Num() >= MaxExactFloatInteger)
+	{
+		UE_LOG(LogTemp, Error, TEXT("DDGI: Software BVH triangle count exceeds exact float metadata range."));
+		OutStats.TriangleCount = 0;
+		return;
+	}
+	for (const FDDGISoftwareTriangle& Triangle : Triangles)
+	{
+		if (!IsValidTriangleForPacking(Triangle))
+		{
+			UE_LOG(LogTemp, Error, TEXT("DDGI: Software BVH contains non-finite or invalid triangle attributes; geometry upload was skipped."));
+			OutStats.TriangleCount = 0;
+			return;
+		}
+	}
+
 	BuildNode(Triangles, 0, Triangles.Num(), Nodes);
-	if (!ValidateBVH(Nodes, Triangles.Num()))
+	if (Nodes.Num() >= MaxExactFloatInteger || !ValidateBVH(Nodes, Triangles.Num()))
 	{
 		UE_LOG(LogTemp, Error, TEXT("DDGI: Software BVH validation failed; geometry upload was skipped."));
 		OutStats.TriangleCount = 0;
