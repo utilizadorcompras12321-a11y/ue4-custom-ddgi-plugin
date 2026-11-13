@@ -15,6 +15,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "SceneView.h"
 #include "RenderGraph.h"
+#include "RenderGraphUtils.h"
 #include "RayGenShaderUtils.h"
 #include "ShaderParameterStruct.h"
 #include "GlobalShader.h"
