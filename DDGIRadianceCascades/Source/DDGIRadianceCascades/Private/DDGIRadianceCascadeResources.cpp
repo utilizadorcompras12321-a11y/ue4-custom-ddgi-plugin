@@ -35,6 +35,7 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> Radiance;
 		TRefCountPtr<IPooledRenderTarget> RadianceScratch;
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
+		TRefCountPtr<IPooledRenderTarget> HitTriangleIndex;
 		TRefCountPtr<IPooledRenderTarget> RayOrigins;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
 		FBufferRHIRef ProbeSpatialHash;
@@ -63,6 +64,7 @@ namespace
 			Radiance.SafeRelease();
 			RadianceScratch.SafeRelease();
 			HitDistance.SafeRelease();
+			HitTriangleIndex.SafeRelease();
 			RayOrigins.SafeRelease();
 			ProbePositions.SafeRelease();
 			ProbeSpatialHash.SafeRelease();
@@ -124,6 +126,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.Radiance.IsValid() &&
         Storage.RadianceScratch.IsValid() &&
         Storage.HitDistance.IsValid() &&
+        Storage.HitTriangleIndex.IsValid() &&
         Storage.RayOrigins.IsValid();
 
     if (!bRayStorageMatches)
@@ -140,6 +143,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         const FPooledRenderTargetDesc DistanceDesc = FPooledRenderTargetDesc::Create2DDesc(
             RequiredDimensions, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_None,
             TexCreate_ShaderResource | TexCreate_UAV, false);
+        const FPooledRenderTargetDesc HitTriangleIndexDesc = FPooledRenderTargetDesc::Create2DDesc(
+            RequiredDimensions, PF_R32_UINT, FClearValueBinding::Black, TexCreate_None,
+            TexCreate_ShaderResource | TexCreate_UAV, false);
 
         GRenderTargetPool.FindFreeElement(RHICmdList, DirectionDesc, Storage.Directions,
             TEXT("DDGIRadianceCascade_Directions"), ERenderTargetTransience::NonTransient);
@@ -149,13 +155,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             TEXT("DDGIRadianceCascade_RadianceScratch"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, DistanceDesc, Storage.HitDistance,
             TEXT("DDGIRadianceCascade_HitDistance"), ERenderTargetTransience::NonTransient);
+        GRenderTargetPool.FindFreeElement(RHICmdList, HitTriangleIndexDesc, Storage.HitTriangleIndex,
+            TEXT("DDGIRadianceCascade_HitTriangleIndex"), ERenderTargetTransience::NonTransient);
         const FPooledRenderTargetDesc OriginDesc = FPooledRenderTargetDesc::Create2DDesc(
             RequiredDimensions, PF_A32B32G32R32F, FClearValueBinding::Black, TexCreate_None,
             TexCreate_ShaderResource | TexCreate_UAV, false);
         GRenderTargetPool.FindFreeElement(RHICmdList, OriginDesc, Storage.RayOrigins,
             TEXT("DDGIRadianceCascade_RayOrigins"), ERenderTargetTransience::NonTransient);
 
-        if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.RadianceScratch.IsValid() || !Storage.HitDistance.IsValid() || !Storage.RayOrigins.IsValid())
+        if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.RadianceScratch.IsValid() || !Storage.HitDistance.IsValid() || !Storage.HitTriangleIndex.IsValid() || !Storage.RayOrigins.IsValid())
         {
             Storage.Release();
             UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate persistent GPU textures."));
@@ -530,6 +538,7 @@ bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
 	FTexture2DRHIRef& OutDirections,
 	FTexture2DRHIRef& OutRadiance,
 	FTexture2DRHIRef& OutHitDistance,
+	FTexture2DRHIRef& OutHitTriangleIndex,
 	FTexture2DRHIRef& OutRayOrigins,
 	uint32& OutProbeCount,
 	uint32& OutTotalRaysPerProbe)
@@ -538,13 +547,14 @@ bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
 	OutDirections.SafeRelease();
 	OutRadiance.SafeRelease();
 	OutHitDistance.SafeRelease();
+	OutHitTriangleIndex.SafeRelease();
 	OutRayOrigins.SafeRelease();
 	OutProbeCount = 0;
 	OutTotalRaysPerProbe = 0;
 
 	const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
 	if (!Storage || !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() ||
-		!Storage->HitDistance.IsValid() || !Storage->RayOrigins.IsValid() ||
+		!Storage->HitDistance.IsValid() || !Storage->HitTriangleIndex.IsValid() || !Storage->RayOrigins.IsValid() ||
 		Storage->UploadedProbeCount <= 0 || Storage->TotalRaysPerProbe <= 0)
 	{
 		return false;
@@ -553,10 +563,11 @@ bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
 	const FSceneRenderTargetItem& DirectionsItem = Storage->Directions->GetRenderTargetItem();
 	const FSceneRenderTargetItem& RadianceItem = Storage->Radiance->GetRenderTargetItem();
 	const FSceneRenderTargetItem& HitDistanceItem = Storage->HitDistance->GetRenderTargetItem();
+	const FSceneRenderTargetItem& HitTriangleIndexItem = Storage->HitTriangleIndex->GetRenderTargetItem();
 	const FSceneRenderTargetItem& RayOriginsItem = Storage->RayOrigins->GetRenderTargetItem();
 	if (!DirectionsItem.ShaderResourceTexture.IsValid() ||
 		!RadianceItem.ShaderResourceTexture.IsValid() ||
-		!HitDistanceItem.ShaderResourceTexture.IsValid() ||
+		!HitDistanceItem.ShaderResourceTexture.IsValid() || !HitTriangleIndexItem.ShaderResourceTexture.IsValid() ||
 		!RayOriginsItem.ShaderResourceTexture.IsValid())
 	{
 		return false;
@@ -565,11 +576,12 @@ bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
 	OutDirections = DirectionsItem.ShaderResourceTexture->GetTexture2D();
 	OutRadiance = RadianceItem.ShaderResourceTexture->GetTexture2D();
 	OutHitDistance = HitDistanceItem.ShaderResourceTexture->GetTexture2D();
+	OutHitTriangleIndex = HitTriangleIndexItem.ShaderResourceTexture->GetTexture2D();
 	OutRayOrigins = RayOriginsItem.ShaderResourceTexture->GetTexture2D();
 	OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
 	OutTotalRaysPerProbe = static_cast<uint32>(Storage->TotalRaysPerProbe);
 	return OutDirections.IsValid() && OutRadiance.IsValid() &&
-		OutHitDistance.IsValid() && OutRayOrigins.IsValid();
+		OutHitDistance.IsValid() && OutHitTriangleIndex.IsValid() && OutRayOrigins.IsValid();
 }
 
 bool DDGIGetRadianceCascadeScratchTexture_RenderThread(
