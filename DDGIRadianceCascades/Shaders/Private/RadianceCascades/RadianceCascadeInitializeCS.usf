@@ -15,14 +15,6 @@ RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<float4> RayOriginsUAV;
 
-float3 DDGIRadianceCascadeBaseDirection(uint RayIndex, uint RayCount)
-{
-    const float GoldenAngle = 2.39996322972865332f;
-    float Y = 1.0f - 2.0f * ((float)RayIndex + 0.5f) / (float)max(RayCount, 1u);
-    float Radius = sqrt(saturate(1.0f - Y * Y));
-    float Angle = (float)RayIndex * GoldenAngle;
-    return normalize(float3(cos(Angle) * Radius, Y, sin(Angle) * Radius));
-}
 
 [numthreads(64, 1, 1)]
 void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -66,7 +58,7 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         BaseRayIndex /= EffectiveSplit;
     }
 
-    float3 Direction = DDGIRadianceCascadeBaseDirection(BaseRayIndex, BaseRayCount);
+    float4 AngularRegion = DDGIRadianceCascadeBaseRegion(BaseRayIndex, BaseRayCount);
 
     [loop]
     for (uint Level = 1u; Level <= CascadeIndex; ++Level)
@@ -88,16 +80,12 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         uint ChildRayCount = DDGIRadianceCascadeRayCount(
             Level, BaseRayCount, RaySplitFactor);
         uint EffectiveSplit = max(1u, ChildRayCount / max(ParentRayCount, 1u));
-        uint ParentIndexAtLevel = ChildIndexAtLevel / EffectiveSplit;
-        float ParentConeHalfAngle = acos(clamp(
-            1.0f - 2.0f / (float)max(ParentRayCount, 1u), -1.0f, 1.0f));
-        if (EffectiveSplit > 1u)
-        {
-            Direction = DDGIRadianceCascadeChildRayDirection(
-                Direction, ChildIndexAtLevel, EffectiveSplit,
-                ParentConeHalfAngle, ParentIndexAtLevel);
-        }
+        uint ChildInGroup = ChildIndexAtLevel % EffectiveSplit;
+        DDGIRadianceCascadeSplitRegion(
+            AngularRegion, ChildInGroup, EffectiveSplit);
     }
+
+    float3 Direction = DDGIRadianceCascadeRegionDirection(AngularRegion);
 
     uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
     DirectionsUAV[Pixel] = float4(Direction, (float)CascadeIndex);

@@ -96,46 +96,100 @@ uint DDGIRadianceCascadeParentRayIndex(
 	return ChildRayIndex / max(RaySplitFactor, 1u);
 }
 
-// Deterministically distributes the children inside the angular footprint
-// of their parent. ParentConeHalfAngleRadians must describe the parent ray's
-// angular coverage; the caller derives it from the base direction set.
-float3 DDGIRadianceCascadeChildRayDirection(
-	float3 ParentDirection,
-	uint ChildRayIndex,
-	uint RaySplitFactor,
-	float ParentConeHalfAngleRadians,
-	uint ParentRayIndex)
+// Base directions are centers of equal-solid-angle spherical rectangles.
+// Each latitude band has a number of longitude sectors close to sqrt(N).
+// Band height in z=cos(theta) is proportional to its sector count, giving
+// every base cell exactly 4*PI/BaseRayCount steradians.
+float4 DDGIRadianceCascadeBaseRegion(uint RayIndex, uint RayCount)
 {
-	uint SafeSplit = clamp(RaySplitFactor, 1u, 4u);
-	uint ChildInGroup = ChildRayIndex % SafeSplit;
+    uint SafeRayCount = clamp(RayCount, 1u, 64u);
+    uint BandCount = 1u;
+    [loop]
+    while ((BandCount + 1u) * (BandCount + 1u) <= SafeRayCount)
+    {
+        ++BandCount;
+    }
 
-	float3 Axis = normalize(ParentDirection);
-	float3 ReferenceUp = (abs(Axis.z) < 0.999f)
-		? float3(0.0f, 0.0f, 1.0f)
-		: float3(0.0f, 1.0f, 0.0f);
-	float3 Tangent = normalize(cross(ReferenceUp, Axis));
-	float3 Bitangent = normalize(cross(Axis, Tangent));
+    uint BasePerBand = SafeRayCount / BandCount;
+    uint ExtraBands = SafeRayCount % BandCount;
+    uint ExtraBandStart = (BandCount - ExtraBands) / 2u;
+    uint BandStart = 0u;
+    uint CellsInBand = BasePerBand;
 
-	const float GoldenAngle = 2.39996322972865332f;
-	// Low-discrepancy deterministic rotation. Avoid a sine hash: the
-	// orientation is a fixed function of the parent ray index and never
-	// depends on frame state or pseudo-random values.
-	const float GoldenConjugate = 0.6180339887498948f;
-	float ParentRotation = frac(((float)ParentRayIndex + 0.5f) * GoldenConjugate);
-	float Azimuth = 6.283185307179586f *
-		frac(ParentRotation + (float)ChildInGroup * (GoldenAngle / 6.283185307179586f));
+    [loop]
+    for (uint Band = 0u; Band < BandCount; ++Band)
+    {
+        uint CandidateCount = BasePerBand +
+            ((Band >= ExtraBandStart && Band < ExtraBandStart + ExtraBands) ? 1u : 0u);
+        if (RayIndex < BandStart + CandidateCount)
+        {
+            CellsInBand = CandidateCount;
+            break;
+        }
+        BandStart += CandidateCount;
+    }
 
-	float AreaSample = ((float)ChildInGroup + 0.5f) / (float)SafeSplit;
-	float MaxConeAngle = clamp(ParentConeHalfAngleRadians, 0.0f, 1.57079632679f);
-	// Uniform sampling in solid angle: the normalized cap area is linear in 1 - cos(theta).
-	float CosTheta = lerp(1.0f, cos(MaxConeAngle), AreaSample);
-	float SinTheta = sqrt(saturate(1.0f - CosTheta * CosTheta));
+    uint CellInBand = RayIndex - BandStart;
+    float InvRayCount = 1.0f / (float)SafeRayCount;
+    float ZMin = -1.0f + 2.0f * (float)BandStart * InvRayCount;
+    float ZMax = -1.0f + 2.0f * (float)(BandStart + CellsInBand) * InvRayCount;
+    float PhiMin = 6.283185307179586f * (float)CellInBand / (float)CellsInBand;
+    float PhiMax = 6.283185307179586f * (float)(CellInBand + 1u) / (float)CellsInBand;
+    return float4(PhiMin, PhiMax, ZMin, ZMax);
+}
 
-	float3 RadialDirection =
-		Tangent * cos(Azimuth) +
-		Bitangent * sin(Azimuth);
+// Split each parent rectangle into equal-solid-angle children. Since
+// dOmega=dPhi*dZ, equal subdivisions of either coordinate preserve exact
+// area. Split 4 uses a 2x2 grid; splits 2 and 3 use the longer angular axis.
+void DDGIRadianceCascadeSplitRegion(
+    inout float4 Region,
+    uint ChildInGroup,
+    uint SplitFactor)
+{
+    uint SafeSplit = clamp(SplitFactor, 1u, 4u);
+    if (SafeSplit <= 1u)
+    {
+        return;
+    }
 
-	return normalize(Axis * CosTheta + RadialDirection * SinTheta);
+    float PhiSpan = Region.y - Region.x;
+    float ZSpan = Region.w - Region.z;
+    float ZCenter = 0.5f * (Region.z + Region.w);
+    float SinTheta = sqrt(saturate(1.0f - ZCenter * ZCenter));
+    float HorizontalExtent = SinTheta * PhiSpan;
+    float VerticalExtent = ZSpan / max(SinTheta, 0.05f);
+
+    if (SafeSplit == 4u)
+    {
+        uint PhiChild = ChildInGroup & 1u;
+        uint ZChild = (ChildInGroup >> 1u) & 1u;
+        float PhiMid = 0.5f * (Region.x + Region.y);
+        float ZMid = 0.5f * (Region.z + Region.w);
+        Region.x = (PhiChild == 0u) ? Region.x : PhiMid;
+        Region.y = (PhiChild == 0u) ? PhiMid : Region.y;
+        Region.z = (ZChild == 0u) ? Region.z : ZMid;
+        Region.w = (ZChild == 0u) ? ZMid : Region.w;
+    }
+    else if (HorizontalExtent >= VerticalExtent)
+    {
+        float PhiStep = PhiSpan / (float)SafeSplit;
+        Region.x += PhiStep * (float)ChildInGroup;
+        Region.y = Region.x + PhiStep;
+    }
+    else
+    {
+        float ZStep = ZSpan / (float)SafeSplit;
+        Region.z += ZStep * (float)ChildInGroup;
+        Region.w = Region.z + ZStep;
+    }
+}
+
+float3 DDGIRadianceCascadeRegionDirection(float4 Region)
+{
+    float Phi = 0.5f * (Region.x + Region.y);
+    float Z = clamp(0.5f * (Region.z + Region.w), -1.0f, 1.0f);
+    float Radius = sqrt(saturate(1.0f - Z * Z));
+    return normalize(float3(cos(Phi) * Radius, Z, sin(Phi) * Radius));
 }
 
 #endif // DDGI_RADIANCE_CASCADE_LAYOUT_USH
