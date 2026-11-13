@@ -31,6 +31,11 @@ namespace
 		int32 TriangleCount = 0;
 	};
 
+	bool IsFiniteVector(const FVector& Value)
+	{
+		return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y) && FMath::IsFinite(Value.Z);
+	}
+
 	void IncludePoint(FVector& BoundsMin, FVector& BoundsMax, const FVector& Point)
 	{
 		BoundsMin.X = FMath::Min(BoundsMin.X, Point.X);
@@ -195,16 +200,34 @@ void DDGISoftwareBVH::BuildStaticWorld(
 					continue;
 				}
 
+				const FVector A = ComponentTransform.TransformPosition(FVector(PositionBuffer.VertexPosition(I0)));
+				const FVector B = ComponentTransform.TransformPosition(FVector(PositionBuffer.VertexPosition(I1)));
+				const FVector C = ComponentTransform.TransformPosition(FVector(PositionBuffer.VertexPosition(I2)));
+				if (!IsFiniteVector(A) || !IsFiniteVector(B) || !IsFiniteVector(C))
+				{
+					++OutStats.SkippedInvalidTriangles;
+					continue;
+				}
+
+				// Reject zero-area and near-degenerate triangles before they enter
+				// the BVH. The threshold is expressed in squared world-space area.
+				const FVector Cross = FVector::CrossProduct(B - A, C - A);
+				if (!IsFiniteVector(Cross) || Cross.SizeSquared() <= 1.0e-12f)
+				{
+					++OutStats.SkippedInvalidTriangles;
+					continue;
+				}
+
 				FDDGISoftwareTriangle& Triangle = Triangles.AddDefaulted_GetRef();
-				Triangle.A = ComponentTransform.TransformPosition(FVector(PositionBuffer.VertexPosition(I0)));
-				Triangle.B = ComponentTransform.TransformPosition(FVector(PositionBuffer.VertexPosition(I1)));
-				Triangle.C = ComponentTransform.TransformPosition(FVector(PositionBuffer.VertexPosition(I2)));
-				Triangle.Centroid = (Triangle.A + Triangle.B + Triangle.C) / 3.0f;
+				Triangle.A = A;
+				Triangle.B = B;
+				Triangle.C = C;
+				Triangle.Centroid = (A + B + C) / 3.0f;
 				Triangle.BoundsMin = FVector(FLT_MAX, FLT_MAX, FLT_MAX);
 				Triangle.BoundsMax = FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX);
-				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, Triangle.A);
-				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, Triangle.B);
-				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, Triangle.C);
+				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, A);
+				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, B);
+				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, C);
 				bAddedAnyTriangle = true;
 			}
 

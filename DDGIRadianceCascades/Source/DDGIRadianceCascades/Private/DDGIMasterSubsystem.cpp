@@ -164,15 +164,17 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 		NewBVH->SkippedNoCPUAccess = BuildStats.SkippedNoCPUAccess;
 		NewBVH->SkippedMovable = BuildStats.SkippedMovable;
 		NewBVH->SkippedInstanced = BuildStats.SkippedInstanced;
+		NewBVH->SkippedInvalidTriangles = BuildStats.SkippedInvalidTriangles;
 		NewBVH->TriangleCount = BuildStats.TriangleCount;
 		NewBVH->NodeCount = BuildStats.NodeCount;
 		Config.SoftwareBVH = NewBVH;
 		CachedSoftwareBVHTriangleLimit = Config.MaxSoftwareTriangles;
 
 		UE_LOG(LogTemp, Log,
-			TEXT("Radiance Cascades software BVH snapshot: %d triangles, %d nodes, %d static components. Skipped: %d without CPU access, %d movable, %d instanced."),
+			TEXT("Radiance Cascades software BVH snapshot: %d triangles, %d nodes, %d static components. Skipped: %d without CPU access, %d movable, %d instanced, %d invalid/degenerate triangles."),
 			NewBVH->TriangleCount, NewBVH->NodeCount, NewBVH->IncludedComponents,
-			NewBVH->SkippedNoCPUAccess, NewBVH->SkippedMovable, NewBVH->SkippedInstanced);
+			NewBVH->SkippedNoCPUAccess, NewBVH->SkippedMovable, NewBVH->SkippedInstanced,
+			NewBVH->SkippedInvalidTriangles);
 	}
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;
