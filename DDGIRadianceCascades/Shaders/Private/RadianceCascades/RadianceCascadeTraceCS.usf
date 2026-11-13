@@ -587,16 +587,6 @@ float3 TraceDeterministicDiffuseBounce(
         {
             float3 SecondaryHitPosition =
                 SecondaryOrigin + SecondaryDirection * SecondaryDistance;
-            float3 SecondaryNormal = ComputeTriangleGeometricNormal(
-                BVHTriangles[SecondaryTriangleIndex * 4u + 0u].xyz,
-                BVHTriangles[SecondaryTriangleIndex * 4u + 1u].xyz,
-                BVHTriangles[SecondaryTriangleIndex * 4u + 2u].xyz);
-            if (dot(SecondaryNormal, SecondaryDirection) > 0.0f)
-            {
-                SecondaryNormal = -SecondaryNormal;
-            }
-            uint SecondaryTriangleBase = SecondaryTriangleIndex * 4u;
-            float3 SecondaryBaseColor = max(BVHTriangles[SecondaryTriangleBase + 3u].xyz, 0.0f);
             float3 SecondaryDirectAndEmissive = EvaluateHitSurfaceRadiance(
                 SecondaryTriangleIndex,
                 SecondaryHitPosition,
