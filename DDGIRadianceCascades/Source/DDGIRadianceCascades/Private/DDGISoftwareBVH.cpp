@@ -357,6 +357,7 @@ namespace
 		return IsFiniteVector(Triangle.A) &&
 			IsFiniteVector(Triangle.B) &&
 			IsFiniteVector(Triangle.C) &&
+			IsFiniteVector(Triangle.Centroid) &&
 			IsFiniteVector(Triangle.BoundsMin) &&
 			IsFiniteVector(Triangle.BoundsMax) &&
 			IsFiniteVector(Triangle.EmissiveRadiance) &&
@@ -542,7 +543,9 @@ void DDGISoftwareBVH::BuildStaticWorld(
 				Triangle.A = A;
 				Triangle.B = B;
 				Triangle.C = C;
-				Triangle.Centroid = (A + B + C) / 3.0f;
+				// Divide before adding so the centroid does not overflow merely because
+				// the intermediate sum of three finite world positions exceeds float range.
+				Triangle.Centroid = A / 3.0f + B / 3.0f + C / 3.0f;
 				const int32 MaterialIndex = TriangleMaterialIndices.IsValidIndex(TriangleIndex)
 					? TriangleMaterialIndices[TriangleIndex]
 					: INDEX_NONE;
