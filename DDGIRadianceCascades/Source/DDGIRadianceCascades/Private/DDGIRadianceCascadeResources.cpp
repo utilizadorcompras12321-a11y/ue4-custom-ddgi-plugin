@@ -104,12 +104,27 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         return;
     }
 
-    const int64 TotalTexels = static_cast<int64>(FMath::Max(0, Config.MaxActiveProbes)) *
-        static_cast<int64>(FMath::Max(0, Config.TotalRaysPerProbe));
+    // The probe-position texture and spatial hash are sized from MaxActiveProbes.
+    // Enforce the same hard cap here as in the actor/subsystem so invalid
+    // Blueprint or externally supplied configs cannot trigger oversized allocations.
+    if (Config.MaxActiveProbes <= 0 || Config.MaxActiveProbes > 32768 ||
+        Config.TotalRaysPerProbe <= 0 || Config.ProbePositions.Num() > Config.MaxActiveProbes)
+    {
+        DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+        UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: invalid probe configuration (probes %d, positions %d, rays per probe %d). Supported probe count is 1..32768."),
+            Config.MaxActiveProbes, Config.ProbePositions.Num(), Config.TotalRaysPerProbe);
+        return;
+    }
+
+    const int64 TotalTexels = static_cast<int64>(Config.MaxActiveProbes) *
+        static_cast<int64>(Config.TotalRaysPerProbe);
+    const int64 MaxTextureTexels = static_cast<int64>(GDDGIRadianceCascadeTextureWidth) *
+        static_cast<int64>(GDDGIRadianceCascadeMaxTextureDimension);
     const int64 Height64 = (TotalTexels + GDDGIRadianceCascadeTextureWidth - 1) /
         GDDGIRadianceCascadeTextureWidth;
 
-    if (TotalTexels <= 0 || Height64 <= 0 || Height64 > GDDGIRadianceCascadeMaxTextureDimension)
+    if (TotalTexels <= 0 || TotalTexels > MaxTextureTexels ||
+        Height64 <= 0 || Height64 > GDDGIRadianceCascadeMaxTextureDimension)
     {
         DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
         UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: requested GPU storage exceeds the supported 2D texture capacity (%lld ray records). Reduce MaxActiveProbes or cascade ray counts."), TotalTexels);

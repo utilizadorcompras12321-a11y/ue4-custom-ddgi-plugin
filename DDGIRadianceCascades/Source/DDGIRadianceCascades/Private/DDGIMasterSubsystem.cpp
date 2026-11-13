@@ -229,7 +229,8 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.TotalRaysPerProbe = Config.RadianceCascades.GetTotalRayCount();
 	Config.ProbeSpacing = FMath::Max(1.0f, InActor->ProbeSpacing);
 	Config.ProbeGridOrigin = InActor->GetActorLocation();
-	Config.MaxActiveProbes = FMath::Max(1, InActor->MaxActiveProbes);
+	// Keep probe count within the texture/hash layout supported by the renderer.
+	Config.MaxActiveProbes = FMath::Clamp(InActor->MaxActiveProbes, 1, 32768);
 	DDGIBuildSparseProbePositions(Config.ProbeGridOrigin, Config.ProbeSpacing, Config.DynamicGIDistance, Config.MaxActiveProbes, Config.ProbePositions);
 	Config.ProbeCount = Config.ProbePositions.Num();
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.MaxActiveProbes);

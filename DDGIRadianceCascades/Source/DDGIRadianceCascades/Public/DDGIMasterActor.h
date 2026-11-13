@@ -41,7 +41,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", Units = "cm"))
 	float ProbeSpacing = 200.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "1", ClampMax = "32768", UIMin = "1", UIMax = "32768"))
 	int32 MaxActiveProbes = 32768;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "1", UIMin = "1000"))
