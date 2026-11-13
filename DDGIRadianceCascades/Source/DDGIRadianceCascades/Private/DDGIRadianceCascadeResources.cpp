@@ -338,6 +338,54 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
 }
 
 
+
+bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
+	const FSceneInterface* Scene,
+	FTexture2DRHIRef& OutDirections,
+	FTexture2DRHIRef& OutRadiance,
+	FTexture2DRHIRef& OutHitDistance,
+	FTexture2DRHIRef& OutRayOrigins,
+	uint32& OutProbeCount,
+	uint32& OutTotalRaysPerProbe)
+{
+	check(IsInRenderingThread() || IsInParallelRenderingThread());
+	OutDirections.SafeRelease();
+	OutRadiance.SafeRelease();
+	OutHitDistance.SafeRelease();
+	OutRayOrigins.SafeRelease();
+	OutProbeCount = 0;
+	OutTotalRaysPerProbe = 0;
+
+	const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+	if (!Storage || !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() ||
+		!Storage->HitDistance.IsValid() || !Storage->RayOrigins.IsValid() ||
+		Storage->UploadedProbeCount <= 0 || Storage->TotalRaysPerProbe <= 0)
+	{
+		return false;
+	}
+
+	const FSceneRenderTargetItem& DirectionsItem = Storage->Directions->GetRenderTargetItem();
+	const FSceneRenderTargetItem& RadianceItem = Storage->Radiance->GetRenderTargetItem();
+	const FSceneRenderTargetItem& HitDistanceItem = Storage->HitDistance->GetRenderTargetItem();
+	const FSceneRenderTargetItem& RayOriginsItem = Storage->RayOrigins->GetRenderTargetItem();
+	if (!DirectionsItem.ShaderResourceTexture.IsValid() ||
+		!RadianceItem.ShaderResourceTexture.IsValid() ||
+		!HitDistanceItem.ShaderResourceTexture.IsValid() ||
+		!RayOriginsItem.ShaderResourceTexture.IsValid())
+	{
+		return false;
+	}
+
+	OutDirections = DirectionsItem.ShaderResourceTexture->GetTexture2D();
+	OutRadiance = RadianceItem.ShaderResourceTexture->GetTexture2D();
+	OutHitDistance = HitDistanceItem.ShaderResourceTexture->GetTexture2D();
+	OutRayOrigins = RayOriginsItem.ShaderResourceTexture->GetTexture2D();
+	OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
+	OutTotalRaysPerProbe = static_cast<uint32>(Storage->TotalRaysPerProbe);
+	return OutDirections.IsValid() && OutRadiance.IsValid() &&
+		OutHitDistance.IsValid() && OutRayOrigins.IsValid();
+}
+
 bool DDGIGetSoftwareBVHResources_RenderThread(
 	const FSceneInterface* Scene,
 	FShaderResourceViewRHIRef& OutNodesSRV,

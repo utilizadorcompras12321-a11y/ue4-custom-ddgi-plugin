@@ -34,6 +34,16 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
 	FTexture2DRHIRef& OutProbePositions,
 	uint32& OutProbeCount);
 
+/** Returns ray textures for the per-frame tracing pass, regardless of initialization state. */
+bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
+	const FSceneInterface* Scene,
+	FTexture2DRHIRef& OutDirections,
+	FTexture2DRHIRef& OutRadiance,
+	FTexture2DRHIRef& OutHitDistance,
+	FTexture2DRHIRef& OutRayOrigins,
+	uint32& OutProbeCount,
+	uint32& OutTotalRaysPerProbe);
+
 /** Returns the uploaded static-scene BVH buffers for GPU traversal. */
 bool DDGIGetSoftwareBVHResources_RenderThread(
 	const FSceneInterface* Scene,

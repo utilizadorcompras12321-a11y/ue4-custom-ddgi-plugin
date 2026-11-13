@@ -1,0 +1,152 @@
+#include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
+
+uint TextureWidth;
+uint TotalTexels;
+uint DispatchGroupsX;
+uint ProbeCount;
+uint TotalRaysPerProbe;
+uint NodeCount;
+uint TriangleCount;
+float MaxTraceDistance;
+
+Texture2D<float4> DirectionsTexture;
+Texture2D<float4> RayOriginsTexture;
+StructuredBuffer<float4> BVHNodes;
+StructuredBuffer<float4> BVHTriangles;
+RWTexture2D<float4> RadianceUAV;
+RWTexture2D<float> HitDistanceUAV;
+
+bool IntersectBounds(float3 Origin, float3 Direction, float3 BoundsMin, float3 BoundsMax, float MaxDistance)
+{
+    float3 SafeDirection = Direction;
+    SafeDirection.x = abs(SafeDirection.x) < 1.0e-8f ? 1.0e-8f : SafeDirection.x;
+    SafeDirection.y = abs(SafeDirection.y) < 1.0e-8f ? 1.0e-8f : SafeDirection.y;
+    SafeDirection.z = abs(SafeDirection.z) < 1.0e-8f ? 1.0e-8f : SafeDirection.z;
+    float3 InverseDirection = rcp(SafeDirection);
+    float3 T0 = (BoundsMin - Origin) * InverseDirection;
+    float3 T1 = (BoundsMax - Origin) * InverseDirection;
+    float3 TMin = min(T0, T1);
+    float3 TMax = max(T0, T1);
+    float NearDistance = max(max(TMin.x, TMin.y), max(TMin.z, 0.0f));
+    float FarDistance = min(min(TMax.x, TMax.y), min(TMax.z, MaxDistance));
+    return FarDistance >= NearDistance;
+}
+
+bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, float3 C, out float HitDistance)
+{
+    const float Epsilon = 1.0e-7f;
+    float3 Edge1 = B - A;
+    float3 Edge2 = C - A;
+    float3 P = cross(Direction, Edge2);
+    float Determinant = dot(Edge1, P);
+    if (abs(Determinant) < Epsilon)
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+    float InverseDeterminant = rcp(Determinant);
+    float3 T = Origin - A;
+    float U = dot(T, P) * InverseDeterminant;
+    if (U < 0.0f || U > 1.0f)
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+    float3 Q = cross(T, Edge1);
+    float V = dot(Direction, Q) * InverseDeterminant;
+    if (V < 0.0f || U + V > 1.0f)
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+    HitDistance = dot(Edge2, Q) * InverseDeterminant;
+    return HitDistance > Epsilon;
+}
+
+[numthreads(64, 1, 1)]
+void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
+    if (LinearIndex >= TotalTexels || ProbeCount == 0u || TotalRaysPerProbe == 0u)
+    {
+        return;
+    }
+
+    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
+    float3 Origin = RayOriginsTexture.Load(int3(Pixel, 0)).xyz;
+    float3 Direction = normalize(DirectionsTexture.Load(int3(Pixel, 0)).xyz);
+    float ClosestHit = MaxTraceDistance;
+    bool bHit = false;
+
+    uint Stack[64];
+    uint StackSize = 0u;
+    Stack[StackSize++] = 0u;
+    uint IterationCount = 0u;
+
+    [loop]
+    while (StackSize > 0u && IterationCount < NodeCount)
+    {
+        ++IterationCount;
+        uint NodeIndex = Stack[--StackSize];
+        if (NodeIndex >= NodeCount)
+        {
+            continue;
+        }
+
+        uint NodeBase = NodeIndex * 3u;
+        float3 BoundsMin = BVHNodes[NodeBase + 0u].xyz;
+        float3 BoundsMax = BVHNodes[NodeBase + 1u].xyz;
+        if (!IntersectBounds(Origin, Direction, BoundsMin, BoundsMax, ClosestHit))
+        {
+            continue;
+        }
+
+        float4 Metadata = BVHNodes[NodeBase + 2u];
+        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
+        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
+
+        if (LeafTriangleCount > 0u)
+        {
+            [loop]
+            for (uint LocalTriangle = 0u; LocalTriangle < LeafTriangleCount; ++LocalTriangle)
+            {
+                uint TriangleIndex = FirstTriangle + LocalTriangle;
+                if (TriangleIndex >= TriangleCount)
+                {
+                    continue;
+                }
+
+                uint TriangleBase = TriangleIndex * 3u;
+                float HitDistance;
+                if (IntersectTriangle(
+                    Origin, Direction,
+                    BVHTriangles[TriangleBase + 0u].xyz,
+                    BVHTriangles[TriangleBase + 1u].xyz,
+                    BVHTriangles[TriangleBase + 2u].xyz,
+                    HitDistance) && HitDistance < ClosestHit)
+                {
+                    ClosestHit = HitDistance;
+                    bHit = true;
+                }
+            }
+        }
+        else
+        {
+            uint LeftChild = (uint)max(Metadata.x, 0.0f);
+            uint RightChild = (uint)max(Metadata.y, 0.0f);
+            if (StackSize + 2u <= 64u)
+            {
+                Stack[StackSize++] = RightChild;
+                Stack[StackSize++] = LeftChild;
+            }
+        }
+    }
+
+    HitDistanceUAV[Pixel] = bHit ? ClosestHit : -1.0f;
+    // Radiance is deliberately left black: this pass only establishes first-hit
+    // geometry. Material/emissive sampling and direct-light evaluation are next.
+    RadianceUAV[Pixel] = 0.0f;
+}
