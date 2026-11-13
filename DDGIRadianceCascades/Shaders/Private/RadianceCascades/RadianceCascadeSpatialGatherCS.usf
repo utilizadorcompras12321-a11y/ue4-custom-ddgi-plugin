@@ -89,6 +89,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         return;
     }
     float3 CenterNormal = 0.0f;
+    float3 CenterPlanePoint = 0.0f;
     if (CenterHasSurfaceTag)
     {
         uint CenterTriangleIndex = CenterTriangleTag - 1u;
@@ -98,6 +99,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             return;
         }
         uint CenterTriangleBase = CenterTriangleIndex * 4u;
+        CenterPlanePoint = BVHTriangles[CenterTriangleBase + 0u].xyz;
         CenterNormal = ComputeGatherTriangleNormal(
             BVHTriangles[CenterTriangleBase + 0u].xyz,
             BVHTriangles[CenterTriangleBase + 1u].xyz,
@@ -137,12 +139,24 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             uint NeighborTriangleIndex = NeighborTriangleTag - 1u;
             if (NeighborTriangleIndex >= TriangleCount) continue;
             uint NeighborTriangleBase = NeighborTriangleIndex * 4u;
+            float3 NeighborPlanePoint = BVHTriangles[NeighborTriangleBase + 0u].xyz;
             float3 NeighborNormal = ComputeGatherTriangleNormal(
-                BVHTriangles[NeighborTriangleBase + 0u].xyz,
+                NeighborPlanePoint,
                 BVHTriangles[NeighborTriangleBase + 1u].xyz,
                 BVHTriangles[NeighborTriangleBase + 2u].xyz);
             if (dot(NeighborNormal, NeighborDirection) > 0.0f) NeighborNormal = -NeighborNormal;
             if (dot(CenterNormal, NeighborNormal) < 0.85f) continue;
+
+            // Require both hit points to lie close to the opposite triangle
+            // plane. This rejects nearby parallel surfaces while still allowing
+            // different coplanar triangles to contribute to the same gather.
+            // Keep the tolerance bounded in world units so large probe spacing
+            // cannot make distinct walls appear coplanar.
+            float PlaneTolerance = clamp(SafeSpacing * 0.01f, 0.05f, 1.0f);
+            float CenterToNeighborPlane = abs(dot(CenterHitPosition - NeighborPlanePoint, NeighborNormal));
+            float NeighborToCenterPlane = abs(dot(NeighborHitPosition - CenterPlanePoint, CenterNormal));
+            if (CenterToNeighborPlane > PlaneTolerance ||
+                NeighborToCenterPlane > PlaneTolerance) continue;
         }
         float3 NeighborPosition = ProbePositionsTexture.Load(int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
         float Weight = saturate(1.0f - distance(CenterPosition, NeighborPosition) / (SafeSpacing * 1.75f));
