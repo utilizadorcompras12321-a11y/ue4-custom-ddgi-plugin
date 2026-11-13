@@ -4,6 +4,7 @@ float ProbeSpacing;
 float4 ProbeGridOrigin;
 Texture2D<float4> RadianceTexture;
 Texture2D<float> HitDistanceTexture;
+Texture2D<uint> HitTriangleIndexTexture;
 Texture2D<float4> DirectionsTexture;
 Texture2D<float4> RayOriginsTexture;
 Texture2D<float4> ProbePositionsTexture;
@@ -54,7 +55,8 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     float CenterHitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
     float3 RadianceSum = CenterRadianceSample.rgb;
     float3 CenterHitPosition = CenterRayOrigin + CenterDirection * max(CenterHitDistance, 0.0f);
-    bool CenterHasSurfaceTag = CenterRadianceSample.a >= 1.0f;
+    uint CenterTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel,0));
+    bool CenterHasSurfaceTag = CenterTriangleTag > 0u;
     // A positive distance without a triangle tag means an earlier cascade
     // already blocked this ray. Preserve it; there is no local surface to gather.
     if (CenterHitDistance >= 0.0f && !CenterHasSurfaceTag)
@@ -65,7 +67,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     float3 CenterNormal = 0.0f;
     if (CenterHasSurfaceTag)
     {
-        uint CenterTriangleIndex = (uint)round(CenterRadianceSample.a) - 1u;
+        uint CenterTriangleIndex = CenterTriangleTag - 1u;
         uint CenterTriangleBase = CenterTriangleIndex * 4u;
         CenterNormal = normalize(cross(
             BVHTriangles[CenterTriangleBase + 1u].xyz - BVHTriangles[CenterTriangleBase].xyz,
@@ -92,14 +94,15 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         bool NeighborHit = NeighborHitDistance >= 0.0f;
         if (CenterHit != NeighborHit) continue;
         if (CenterHit && abs(CenterHitDistance - NeighborHitDistance) > SafeSpacing * 0.75f) continue;
-        bool NeighborHasSurfaceTag = NeighborRadianceSample.a >= 1.0f;
+        uint NeighborTriangleTag = HitTriangleIndexTexture.Load(int3(NeighborPixel,0));
+        bool NeighborHasSurfaceTag = NeighborTriangleTag > 0u;
         if (CenterHasSurfaceTag != NeighborHasSurfaceTag) continue;
         if (CenterHit)
         {
             float3 NeighborRayOrigin = RayOriginsTexture.Load(int3(NeighborPixel,0)).xyz;
             float3 NeighborHitPosition = NeighborRayOrigin + NeighborDirection * NeighborHitDistance;
             if (distance(CenterHitPosition, NeighborHitPosition) > SafeSpacing * 1.25f) continue;
-            uint NeighborTriangleIndex = (uint)round(NeighborRadianceSample.a) - 1u;
+            uint NeighborTriangleIndex = NeighborTriangleTag - 1u;
             uint NeighborTriangleBase = NeighborTriangleIndex * 4u;
             float3 NeighborNormal = normalize(cross(
                 BVHTriangles[NeighborTriangleBase + 1u].xyz - BVHTriangles[NeighborTriangleBase].xyz,

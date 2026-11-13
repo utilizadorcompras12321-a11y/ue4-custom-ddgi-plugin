@@ -32,6 +32,7 @@ public:
 		DirectionsUAV.Bind(Initializer.ParameterMap, TEXT("DirectionsUAV"));
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
+		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
 		RayOriginsUAV.Bind(Initializer.ParameterMap, TEXT("RayOriginsUAV"));
 	}
 
@@ -55,6 +56,7 @@ public:
 		Ar << DirectionsUAV;
 		Ar << RadianceUAV;
 		Ar << HitDistanceUAV;
+		Ar << HitTriangleIndexUAV;
 		Ar << RayOriginsUAV;
 		return bShaderHasOutdatedParameters;
 	}
@@ -146,6 +148,7 @@ private:
 	FShaderResourceParameter DirectionsUAV;
 	FShaderResourceParameter RadianceUAV;
 	FShaderResourceParameter HitDistanceUAV;
+	FShaderResourceParameter HitTriangleIndexUAV;
 	FShaderResourceParameter RayOriginsUAV;
 };
 
@@ -246,6 +249,7 @@ public:
 		FShaderResourceViewRHIRef TrianglesSRV,
 		FUnorderedAccessViewRHIRef RadianceView,
 		FUnorderedAccessViewRHIRef HitDistanceView,
+		FUnorderedAccessViewRHIRef HitTriangleIndexView,
 		uint32 InTotalTexels,
 		uint32 InDispatchGroupsX,
 		uint32 InProbeCount,
@@ -300,6 +304,7 @@ public:
 		if (BVHTriangles.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, BVHTriangles.GetBaseIndex(), TrianglesSRV);
 		if (RadianceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), RadianceView);
 		if (HitDistanceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitDistanceUAV.GetBaseIndex(), HitDistanceView);
+		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), HitTriangleIndexView);
 	}
 
 	void UnbindResources(FRHICommandList& RHICmdList)
@@ -311,6 +316,7 @@ public:
 		if (BVHTriangles.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, BVHTriangles.GetBaseIndex(), FShaderResourceViewRHIParamRef());
 		if (RadianceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 		if (HitDistanceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitDistanceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 	}
 
 private:
@@ -364,7 +370,7 @@ public:
   DispatchGroupsX.Bind(I.ParameterMap,TEXT("DispatchGroupsX")); ProbeCount.Bind(I.ParameterMap,TEXT("ProbeCount"));
   TotalRaysPerProbe.Bind(I.ParameterMap,TEXT("TotalRaysPerProbe")); HashCapacity.Bind(I.ParameterMap,TEXT("HashCapacity"));
   ProbeSpacing.Bind(I.ParameterMap,TEXT("ProbeSpacing")); ProbeGridOrigin.Bind(I.ParameterMap,TEXT("ProbeGridOrigin"));
-  RadianceTexture.Bind(I.ParameterMap,TEXT("RadianceTexture")); HitDistanceTexture.Bind(I.ParameterMap,TEXT("HitDistanceTexture"));
+  RadianceTexture.Bind(I.ParameterMap,TEXT("RadianceTexture")); HitDistanceTexture.Bind(I.ParameterMap,TEXT("HitDistanceTexture")); HitTriangleIndexTexture.Bind(I.ParameterMap,TEXT("HitTriangleIndexTexture"));
   DirectionsTexture.Bind(I.ParameterMap,TEXT("DirectionsTexture")); RayOriginsTexture.Bind(I.ParameterMap,TEXT("RayOriginsTexture"));
   ProbePositionsTexture.Bind(I.ParameterMap,TEXT("ProbePositionsTexture")); BVHTriangles.Bind(I.ParameterMap,TEXT("BVHTriangles"));
   ProbeSpatialHash.Bind(I.ParameterMap,TEXT("ProbeSpatialHash")); OutputRadianceUAV.Bind(I.ParameterMap,TEXT("OutputRadianceUAV"));
@@ -373,10 +379,10 @@ public:
  virtual bool Serialize(FArchive& A) override
  {
   bool O=FGlobalShader::Serialize(A); A<<TextureWidth<<TotalTexels<<DispatchGroupsX<<ProbeCount<<TotalRaysPerProbe;
-  A<<HashCapacity<<ProbeSpacing<<ProbeGridOrigin<<RadianceTexture<<HitDistanceTexture<<DirectionsTexture<<RayOriginsTexture;
+  A<<HashCapacity<<ProbeSpacing<<ProbeGridOrigin<<RadianceTexture<<HitDistanceTexture<<HitTriangleIndexTexture<<DirectionsTexture<<RayOriginsTexture;
   A<<ProbePositionsTexture<<BVHTriangles<<ProbeSpatialHash<<OutputRadianceUAV; return O;
  }
- void SetParameters(FRHICommandList& C,FShaderResourceViewRHIRef R,FShaderResourceViewRHIRef H,
+ void SetParameters(FRHICommandList& C,FShaderResourceViewRHIRef R,FShaderResourceViewRHIRef H,FShaderResourceViewRHIRef HitIndices,
   FShaderResourceViewRHIRef D,FShaderResourceViewRHIRef Origins,FShaderResourceViewRHIRef P,FShaderResourceViewRHIRef Triangles,FShaderResourceViewRHIRef S,FUnorderedAccessViewRHIRef O,
   uint32 T,uint32 G,uint32 PC,uint32 RPP,uint32 HC,float PS,const FVector4& Origin)
  {
@@ -386,6 +392,7 @@ public:
   SetShaderValue(C,Sh,ProbeSpacing,PS); SetShaderValue(C,Sh,ProbeGridOrigin,Origin);
   if(RadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,RadianceTexture.GetBaseIndex(),R);
   if(HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,HitDistanceTexture.GetBaseIndex(),H);
+  if(HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,HitTriangleIndexTexture.GetBaseIndex(),HitIndices);
   if(DirectionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,DirectionsTexture.GetBaseIndex(),D);
   if(RayOriginsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,RayOriginsTexture.GetBaseIndex(),Origins);
   if(ProbePositionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbePositionsTexture.GetBaseIndex(),P);
@@ -398,6 +405,7 @@ public:
   auto Sh=GetComputeShader();
   if(RadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,RadianceTexture.GetBaseIndex(),FShaderResourceViewRHIParamRef());
   if(HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,HitDistanceTexture.GetBaseIndex(),FShaderResourceViewRHIParamRef());
+  if(HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,HitTriangleIndexTexture.GetBaseIndex(),FShaderResourceViewRHIParamRef());
   if(DirectionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,DirectionsTexture.GetBaseIndex(),FShaderResourceViewRHIParamRef());
   if(RayOriginsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,RayOriginsTexture.GetBaseIndex(),FShaderResourceViewRHIParamRef());
   if(ProbePositionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbePositionsTexture.GetBaseIndex(),FShaderResourceViewRHIParamRef());
@@ -407,7 +415,7 @@ public:
  }
 private:
  FShaderParameter TextureWidth,TotalTexels,DispatchGroupsX,ProbeCount,TotalRaysPerProbe,HashCapacity,ProbeSpacing,ProbeGridOrigin;
- FShaderResourceParameter RadianceTexture,HitDistanceTexture,DirectionsTexture,RayOriginsTexture,ProbePositionsTexture,BVHTriangles,ProbeSpatialHash,OutputRadianceUAV;
+ FShaderResourceParameter RadianceTexture,HitDistanceTexture,HitTriangleIndexTexture,DirectionsTexture,RayOriginsTexture,ProbePositionsTexture,BVHTriangles,ProbeSpatialHash,OutputRadianceUAV;
 };
 IMPLEMENT_SHADER_TYPE(,FDDGIRadianceCascadeSpatialGatherRHI,
  TEXT("/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeSpatialGatherCS.usf"),
@@ -564,11 +572,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FTexture2DRHIRef DirectionsTexture;
 	FTexture2DRHIRef RadianceTexture;
 	FTexture2DRHIRef HitDistanceTexture;
+	FTexture2DRHIRef HitTriangleIndexTexture;
 	FTexture2DRHIRef RayOriginsTexture;
 	uint32 ProbeCount = 0;
 	uint32 TotalRaysPerProbe = 0;
 	if (!DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
-		Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture, RayOriginsTexture,
+		Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture, HitTriangleIndexTexture, RayOriginsTexture,
 		ProbeCount, TotalRaysPerProbe))
 	{
 		return;
@@ -596,6 +605,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		FUnorderedAccessViewRHIRef DirectionsUAV = RHICreateUnorderedAccessView(DirectionsTexture);
 		FUnorderedAccessViewRHIRef RadianceUAV = RHICreateUnorderedAccessView(RadianceTexture);
 		FUnorderedAccessViewRHIRef HitDistanceUAV = RHICreateUnorderedAccessView(HitDistanceTexture);
+	FUnorderedAccessViewRHIRef HitTriangleIndexUAV = RHICreateUnorderedAccessView(HitTriangleIndexTexture);
 		FUnorderedAccessViewRHIRef RayOriginsUAV = RHICreateUnorderedAccessView(RayOriginsTexture);
 
 		if (ProbePositionsSRV.IsValid() && DirectionsUAV.IsValid() && RadianceUAV.IsValid() &&
@@ -605,6 +615,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, DirectionsTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RadianceTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitDistanceTexture);
+	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitTriangleIndexTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RayOriginsTexture);
 
 			TShaderMapRef<FDDGIRadianceCascadeInitializeRHI> InitializeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
@@ -622,6 +633,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DirectionsTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
+	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitTriangleIndexTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RayOriginsTexture);
 			DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(Scene);
 		}
@@ -646,7 +658,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FShaderResourceViewRHIRef OriginsSRV = RHICreateShaderResourceView(RayOriginsTexture, 0);
 	FUnorderedAccessViewRHIRef RadianceUAV = RHICreateUnorderedAccessView(RadianceTexture);
 	FUnorderedAccessViewRHIRef HitDistanceUAV = RHICreateUnorderedAccessView(HitDistanceTexture);
-	if (!DirectionsSRV.IsValid() || !OriginsSRV.IsValid() || !RadianceUAV.IsValid() || !HitDistanceUAV.IsValid())
+	if (!DirectionsSRV.IsValid() || !OriginsSRV.IsValid() || !RadianceUAV.IsValid() || !HitDistanceUAV.IsValid() || !HitTriangleIndexUAV.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create tracing SRV/UAV views."));
 		return;
@@ -661,7 +673,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	RHICmdList.SetComputeShader(TraceShader->GetComputeShader());
 	TraceShader->SetParameters(
 		RHICmdList, DirectionsSRV, OriginsSRV, NodesSRV, TrianglesSRV,
-		RadianceUAV, HitDistanceUAV,
+		RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
 		TotalTexels, GroupsX, ProbeCount, TotalRaysPerProbe,
 		NodeCount, TriangleCount,
 		static_cast<uint32>(Config.RadianceCascades.GetSafeCascadeCount()),
@@ -693,11 +705,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	FShaderResourceViewRHIRef GatherRadianceSRV=RHICreateShaderResourceView(RadianceTexture,0);
 	FShaderResourceViewRHIRef GatherHitSRV=RHICreateShaderResourceView(HitDistanceTexture,0);
+	FShaderResourceViewRHIRef GatherHitIndicesSRV=RHICreateShaderResourceView(HitTriangleIndexTexture,0);
 	FShaderResourceViewRHIRef GatherDirectionsSRV=RHICreateShaderResourceView(DirectionsTexture,0);
 	FShaderResourceViewRHIRef GatherOriginsSRV=RHICreateShaderResourceView(RayOriginsTexture,0);
 	FShaderResourceViewRHIRef GatherPositionsSRV=RHICreateShaderResourceView(ProbePositionsTexture,0);
 	FUnorderedAccessViewRHIRef GatherOutputUAV=RHICreateUnorderedAccessView(RadianceScratchTexture);
-	if(!GatherRadianceSRV.IsValid()||!GatherHitSRV.IsValid()||!GatherDirectionsSRV.IsValid()||
+	if(!GatherRadianceSRV.IsValid()||!GatherHitSRV.IsValid()||!GatherHitIndicesSRV.IsValid()||!GatherDirectionsSRV.IsValid()||
 		!GatherOriginsSRV.IsValid()||!GatherPositionsSRV.IsValid()||!TrianglesSRV.IsValid()||!GatherOutputUAV.IsValid()) return;
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,ProbePositionsTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,RadianceTexture);
@@ -707,7 +720,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable,RadianceScratchTexture);
 	TShaderMapRef<FDDGIRadianceCascadeSpatialGatherRHI> GatherShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(GatherShader->GetComputeShader());
-	GatherShader->SetParameters(RHICmdList,GatherRadianceSRV,GatherHitSRV,GatherDirectionsSRV,GatherOriginsSRV,
+	GatherShader->SetParameters(RHICmdList,GatherRadianceSRV,GatherHitSRV,GatherHitIndicesSRV,GatherDirectionsSRV,GatherOriginsSRV,
 		GatherPositionsSRV,TrianglesSRV,SpatialHashSRV,GatherOutputUAV,TotalTexels,GroupsX,ProbeCount,
 		TotalRaysPerProbe,HashCapacity,ProbeSpacing,
 		FVector4(Config.ProbeGridOrigin.X,Config.ProbeGridOrigin.Y,Config.ProbeGridOrigin.Z,0.0f));

@@ -30,6 +30,7 @@ StructuredBuffer<float4> BVHNodes;
 StructuredBuffer<float4> BVHTriangles;
 RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
+RWTexture2D<uint> HitTriangleIndexUAV;
 
 bool IntersectBounds(float3 Origin, float3 Direction, float3 BoundsMin, float3 BoundsMax, float MaxDistance)
 {
@@ -431,6 +432,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ClosestHit >= CascadeStartDistance &&
         ClosestHit <= CascadeEndDistance;
     HitDistanceUAV[Pixel] = bHitInThisInterval || bBlockedByEarlierSurface ? ClosestHit : -1.0f;
+    HitTriangleIndexUAV[Pixel] = bHitInThisInterval ? (ClosestTriangleIndex + 1u) : 0u;
 
     // The static environment is injected only by the farthest cascade.
     // Injecting it into every interval would count the same environment many times.
@@ -492,11 +494,9 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         HitIndirectRadiance = HitBaseColor * IncomingBounceRadiance;
     }
 
-    // Alpha carries a same-frame triangle tag for surface-aware spatial gathering.
-    float HitTriangleTag = bHitInThisInterval ? (float)(ClosestTriangleIndex + 1u) : 0.0f;
     RadianceUAV[Pixel] = float4(
         bHitInThisInterval
             ? (HitEmissiveRadiance + HitDirectRadiance + HitIndirectRadiance)
             : BackgroundRadiance,
-        HitTriangleTag);
+        1.0f);
 }
