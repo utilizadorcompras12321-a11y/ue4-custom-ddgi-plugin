@@ -68,7 +68,12 @@ struct FDDGIRadianceCascadeConfig
 
 		for (int32 Index = 0; Index < SafeIndex; ++Index)
 		{
-			Count = FMath::Min<int64>(Count * Split, 65536);
+			// Never create a partial child group at the storage limit. If a full
+			// split would exceed the cap, retain the parent count for this level.
+			if (Count <= 65536 / Split)
+			{
+				Count *= Split;
+			}
 		}
 		return static_cast<int32>(Count);
 	}

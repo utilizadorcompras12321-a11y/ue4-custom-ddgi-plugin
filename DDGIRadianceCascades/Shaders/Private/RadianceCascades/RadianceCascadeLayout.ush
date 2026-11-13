@@ -53,7 +53,11 @@ uint DDGIRadianceCascadeRayCount(
 	[loop]
 	for (uint Index = 0u; Index < CascadeIndex; ++Index)
 	{
-		Count = min(Count * Split, 65536u);
+		// Preserve complete parent groups when the ray storage cap is reached.
+		if (Count <= 65536u / Split)
+		{
+			Count *= Split;
+		}
 	}
 	return Count;
 }
