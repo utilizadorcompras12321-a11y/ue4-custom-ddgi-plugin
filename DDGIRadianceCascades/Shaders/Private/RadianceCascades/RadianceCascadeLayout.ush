@@ -137,8 +137,12 @@ float4 DDGIRadianceCascadeBaseRegion(uint RayIndex, uint RayCount)
     float InvRayCount = 1.0f / (float)SafeRayCount;
     float ZMin = -1.0f + 2.0f * (float)BandStart * InvRayCount;
     float ZMax = -1.0f + 2.0f * (float)(BandStart + CellsInBand) * InvRayCount;
-    float PhiMin = 6.283185307179586f * (float)CellInBand / (float)CellsInBand;
-    float PhiMax = 6.283185307179586f * (float)(CellInBand + 1u) / (float)CellsInBand;
+    // Stagger alternating latitude bands by half a sector. This avoids
+    // aligning all ray centers on the same meridians without changing cell area.
+    float BandPhase = (Band & 1u) != 0u ? 0.5f : 0.0f;
+    float PhiMin = 6.283185307179586f *
+        ((float)CellInBand + BandPhase) / (float)CellsInBand;
+    float PhiMax = PhiMin + 6.283185307179586f / (float)CellsInBand;
     return float4(PhiMin, PhiMax, ZMin, ZMax);
 }
 
