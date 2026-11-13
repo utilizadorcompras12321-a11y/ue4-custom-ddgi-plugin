@@ -6,6 +6,7 @@
 #include "DDGIMasterSubsystem.generated.h"
 
 class ADDGIMasterActor;
+class UDirectionalLightComponent;
 class FSceneInterface;
 
 struct FDDGISoftwareBVHData
@@ -65,6 +66,7 @@ public:
 	void RegisterMasterActor(ADDGIMasterActor* InActor);
 	void UnregisterMasterActor(ADDGIMasterActor* InActor);
 	void RefreshConfig(ADDGIMasterActor* InActor);
+	void RefreshDirectionalLighting(ADDGIMasterActor* InActor);
 
 	const FDDGIMasterConfig& GetConfig() const { return Config; }
 	ADDGIMasterActor* GetMasterActor() const { return ActiveMasterActor.Get(); }
@@ -72,6 +74,9 @@ public:
 
 private:
 	int32 CachedSoftwareBVHTriangleLimit = INDEX_NONE;
+	TWeakObjectPtr<UDirectionalLightComponent> ActiveDirectionalLight;
+	bool UpdateDirectionalLighting(const ADDGIMasterActor* InActor);
+	void PublishConfigValuesOnly();
 	void CopyConfigFromActor(const ADDGIMasterActor* InActor);
 	void PublishConfig(bool bHasConfig);
 

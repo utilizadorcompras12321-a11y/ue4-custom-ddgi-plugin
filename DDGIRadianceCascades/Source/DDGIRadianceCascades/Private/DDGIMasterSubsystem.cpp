@@ -119,6 +119,89 @@ void UDDGIMasterSubsystem::RefreshConfig(ADDGIMasterActor* InActor)
 	}
 }
 
+void UDDGIMasterSubsystem::RefreshDirectionalLighting(ADDGIMasterActor* InActor)
+{
+	if (IsValid(InActor) && ActiveMasterActor.Get() == InActor && UpdateDirectionalLighting(InActor))
+	{
+		PublishConfigValuesOnly();
+	}
+}
+
+bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InActor)
+{
+	if (!IsValid(InActor))
+	{
+		return false;
+	}
+
+	UDirectionalLightComponent* Light = ActiveDirectionalLight.Get();
+	if (!IsValid(Light) || !Light->IsVisible() || Light->Intensity <= 0.0f)
+	{
+		ActiveDirectionalLight.Reset();
+		float StrongestIntensity = 0.0f;
+		for (TActorIterator<AActor> ActorIt(InActor->GetWorld()); ActorIt; ++ActorIt)
+		{
+			AActor* LightActor = *ActorIt;
+			if (!IsValid(LightActor))
+			{
+				continue;
+			}
+
+			TArray<UDirectionalLightComponent*> DirectionalLights;
+			LightActor->GetComponents<UDirectionalLightComponent>(DirectionalLights);
+			for (UDirectionalLightComponent* Candidate : DirectionalLights)
+			{
+				if (IsValid(Candidate) && Candidate->IsVisible() && Candidate->Intensity > StrongestIntensity)
+				{
+					StrongestIntensity = Candidate->Intensity;
+					Light = Candidate;
+				}
+			}
+		}
+		ActiveDirectionalLight = Light;
+	}
+
+	const bool bHadLight = Config.bHasDirectionalLight;
+	const FVector OldDirection = Config.DirectionalLightDirection;
+	const FLinearColor OldColor = Config.DirectionalLightColor;
+	const float OldIntensity = Config.DirectionalLightIntensity;
+
+	if (IsValid(Light) && Light->IsVisible() && Light->Intensity > 0.0f)
+	{
+		Config.DirectionalLightDirection = -Light->GetComponentTransform().GetUnitAxis(EAxis::X).GetSafeNormal();
+		Config.DirectionalLightColor = Light->LightColor.ReinterpretAsLinear();
+		Config.DirectionalLightIntensity = FMath::Min(Light->Intensity * 1.0e-5f, 100.0f);
+		Config.bHasDirectionalLight = true;
+	}
+	else
+	{
+		Config.bHasDirectionalLight = false;
+		Config.DirectionalLightIntensity = 0.0f;
+	}
+
+	return bHadLight != Config.bHasDirectionalLight ||
+		!OldDirection.Equals(Config.DirectionalLightDirection, 1.0e-4f) ||
+		!OldColor.Equals(Config.DirectionalLightColor, 1.0e-4f) ||
+		!FMath::IsNearlyEqual(OldIntensity, Config.DirectionalLightIntensity, 1.0e-4f);
+}
+
+void UDDGIMasterSubsystem::PublishConfigValuesOnly()
+{
+	UWorld* World = GetWorld();
+	FSceneInterface* Scene = World ? World->Scene : nullptr;
+	if (!Scene)
+	{
+		return;
+	}
+
+	const FDDGIMasterConfig ConfigCopy = Config;
+	ENQUEUE_RENDER_COMMAND(DDGIUpdateMasterConfigValues)(
+		[Scene, ConfigCopy](FRHICommandListImmediate& RHICmdList)
+		{
+			GDDGIMasterConfigs_RenderThread.Add(Scene, ConfigCopy);
+		});
+}
+
 void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 {
 	if (!IsValid(InActor))
@@ -129,38 +212,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.bEnableDynamicGI = InActor->bEnableDynamicGI;
 	Config.GIIntensity = FMath::Max(0.0f, InActor->GIIntensity);
 
-	// Capture the strongest enabled directional light for the first direct-lighting pass.
-	Config.bHasDirectionalLight = false;
-	Config.DirectionalLightIntensity = 0.0f;
-	for (TActorIterator<AActor> ActorIt(InActor->GetWorld()); ActorIt; ++ActorIt)
-	{
-		AActor* LightActor = *ActorIt;
-		if (!IsValid(LightActor))
-		{
-			continue;
-		}
-
-		TArray<UDirectionalLightComponent*> DirectionalLights;
-		LightActor->GetComponents<UDirectionalLightComponent>(DirectionalLights);
-		for (UDirectionalLightComponent* Light : DirectionalLights)
-		{
-			if (!IsValid(Light) || !Light->IsVisible() || Light->Intensity <= 0.0f)
-			{
-				continue;
-			}
-
-			if (Light->Intensity > Config.DirectionalLightIntensity)
-			{
-				const FVector LightForward = Light->GetComponentTransform().GetUnitAxis(EAxis::X);
-				Config.DirectionalLightDirection = -LightForward.GetSafeNormal();
-				Config.DirectionalLightColor = Light->LightColor.ReinterpretAsLinear();
-				// Directional-light intensity is authored in lux. Normalize typical daylight
-				// (about 100,000 lux) to a practical unit radiance scale.
-				Config.DirectionalLightIntensity = FMath::Min(Light->Intensity * 1.0e-5f, 100.0f);
-				Config.bHasDirectionalLight = true;
-			}
-		}
-	}
+	UpdateDirectionalLighting(InActor);
 	Config.DynamicGIDistance = FMath::Max(0.0f, InActor->DynamicGIDistance);
 	Config.RadianceCascades.CascadeCount = FMath::Clamp(InActor->CascadeCount, 1, 8);
 	Config.RadianceCascades.BaseRayCount = FMath::Clamp(InActor->BaseRayCount, 1, 64);

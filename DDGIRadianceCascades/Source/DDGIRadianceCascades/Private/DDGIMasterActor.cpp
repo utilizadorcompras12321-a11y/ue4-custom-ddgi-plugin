@@ -17,6 +17,13 @@ void ADDGIMasterActor::BeginPlay()
 void ADDGIMasterActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (UWorld* World = GetWorld())
+	{
+		if (UDDGIMasterSubsystem* Subsystem = World->GetSubsystem<UDDGIMasterSubsystem>())
+		{
+			Subsystem->RefreshDirectionalLighting(this);
+		}
+	}
 	const FVector CurrentLocation = GetActorLocation();
 	if (!CurrentLocation.Equals(LastPublishedLocation, 0.5f))
 	{
