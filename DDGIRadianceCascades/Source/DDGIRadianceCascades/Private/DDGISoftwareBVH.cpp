@@ -549,10 +549,34 @@ void DDGISoftwareBVH::BuildStaticWorld(
 					continue;
 				}
 
-				// Reject zero-area and near-degenerate triangles before they enter
-				// the BVH. The threshold is expressed in squared world-space area.
-				const FVector Cross = FVector::CrossProduct(B - A, C - A);
-				if (!IsFiniteVector(Cross) || Cross.SizeSquared() <= 1.0e-12f)
+				// Reject zero-area and near-collinear triangles using a scale-
+				// invariant test. Normalize edge vectors before the cross product
+				// so the degeneracy check does not depend on mesh size or overflow
+				// merely because the triangle is very large.
+				const FVector EdgeAB = B - A;
+				const FVector EdgeAC = C - A;
+				const FVector EdgeBC = C - B;
+				const float EdgeScale = FMath::Max(
+					FMath::Max(
+						FMath::Max(FMath::Abs(EdgeAB.X), FMath::Abs(EdgeAB.Y)),
+						FMath::Abs(EdgeAB.Z)),
+					FMath::Max(
+						FMath::Max(
+							FMath::Max(FMath::Abs(EdgeAC.X), FMath::Abs(EdgeAC.Y)),
+							FMath::Abs(EdgeAC.Z)),
+						FMath::Max(
+							FMath::Max(FMath::Abs(EdgeBC.X), FMath::Abs(EdgeBC.Y)),
+							FMath::Abs(EdgeBC.Z))));
+				if (!FMath::IsFinite(EdgeScale) || EdgeScale <= 0.0f)
+				{
+					++OutStats.SkippedInvalidTriangles;
+					continue;
+				}
+
+				const FVector ScaledCross = FVector::CrossProduct(
+					EdgeAB / EdgeScale,
+					EdgeAC / EdgeScale);
+				if (!IsFiniteVector(ScaledCross) || ScaledCross.SizeSquared() <= 1.0e-12f)
 				{
 					++OutStats.SkippedInvalidTriangles;
 					continue;
