@@ -80,22 +80,148 @@ namespace
 		}
 
 		const FVector Extent = CentroidMax - CentroidMin;
-		int32 Axis = 0;
-		if (Extent.Y > Extent.X && Extent.Y >= Extent.Z) Axis = 1;
-		else if (Extent.Z > Extent.X && Extent.Z > Extent.Y) Axis = 2;
+		const float AxisExtent[3] = { Extent.X, Extent.Y, Extent.Z };
+		const float CentroidMinAxis[3] = { CentroidMin.X, CentroidMin.Y, CentroidMin.Z };
+		const int32 BinCount = 12;
+		struct FBin
+		{
+			FVector BoundsMin = FVector(FLT_MAX, FLT_MAX, FLT_MAX);
+			FVector BoundsMax = FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+			int32 Count = 0;
+		};
+		int32 BestAxis = INDEX_NONE;
+		int32 BestSplitBin = INDEX_NONE;
+		float BestCost = FLT_MAX;
 
-		const int32 LeftCount = TriangleCount / 2;
-		const int32 Middle = FirstTriangle + LeftCount;
-		FDDGISoftwareTriangle* Data = Triangles.GetData();
-		std::nth_element(
-			Data + FirstTriangle, Data + Middle, Data + FirstTriangle + TriangleCount,
-			[Axis](const FDDGISoftwareTriangle& A, const FDDGISoftwareTriangle& B)
+		auto BoundsArea = [](const FVector& Min, const FVector& Max) -> float
+		{
+			const FVector Size = Max - Min;
+			return 2.0f * (Size.X * Size.Y + Size.Y * Size.Z + Size.Z * Size.X);
+		};
+
+		// Deterministic 12-bin SAH: choose the split that minimizes the
+		// estimated number of triangle tests in the resulting child nodes.
+		for (int32 AxisIndex = 0; AxisIndex < 3; ++AxisIndex)
+		{
+			if (AxisExtent[AxisIndex] <= KINDA_SMALL_NUMBER)
 			{
-				if (Axis == 0) return A.Centroid.X < B.Centroid.X;
-				if (Axis == 1) return A.Centroid.Y < B.Centroid.Y;
-				return A.Centroid.Z < B.Centroid.Z;
-			});
+				continue;
+			}
+			FBin Bins[BinCount];
+			for (int32 TriangleIndex = FirstTriangle;
+				TriangleIndex < FirstTriangle + TriangleCount; ++TriangleIndex)
+			{
+				const FVector& Center = Triangles[TriangleIndex].Centroid;
+				const float Coordinate = AxisIndex == 0 ? Center.X : (AxisIndex == 1 ? Center.Y : Center.Z);
+				const float Normalized = (Coordinate - CentroidMinAxis[AxisIndex]) / AxisExtent[AxisIndex];
+				const int32 BinIndex = FMath::Clamp(FMath::FloorToInt(Normalized * BinCount), 0, BinCount - 1);
+				FBin& Bin = Bins[BinIndex];
+				++Bin.Count;
+				IncludePoint(Bin.BoundsMin, Bin.BoundsMax, Triangles[TriangleIndex].BoundsMin);
+				IncludePoint(Bin.BoundsMin, Bin.BoundsMax, Triangles[TriangleIndex].BoundsMax);
+			}
 
+			FVector LeftMin[BinCount];
+			FVector LeftMax[BinCount];
+			FVector RightMin[BinCount];
+			FVector RightMax[BinCount];
+			int32 LeftCount[BinCount] = {};
+			int32 RightCount[BinCount] = {};
+			FVector RunningMin(FLT_MAX, FLT_MAX, FLT_MAX);
+			FVector RunningMax(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+			int32 RunningCount = 0;
+			for (int32 BinIndex = 0; BinIndex < BinCount; ++BinIndex)
+			{
+				if (Bins[BinIndex].Count > 0)
+				{
+					IncludePoint(RunningMin, RunningMax, Bins[BinIndex].BoundsMin);
+					IncludePoint(RunningMin, RunningMax, Bins[BinIndex].BoundsMax);
+				}
+				RunningCount += Bins[BinIndex].Count;
+				LeftMin[BinIndex] = RunningMin;
+				LeftMax[BinIndex] = RunningMax;
+				LeftCount[BinIndex] = RunningCount;
+			}
+			RunningMin = FVector(FLT_MAX, FLT_MAX, FLT_MAX);
+			RunningMax = FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+			RunningCount = 0;
+			for (int32 BinIndex = BinCount - 1; BinIndex >= 0; --BinIndex)
+			{
+				if (Bins[BinIndex].Count > 0)
+				{
+					IncludePoint(RunningMin, RunningMax, Bins[BinIndex].BoundsMin);
+					IncludePoint(RunningMin, RunningMax, Bins[BinIndex].BoundsMax);
+				}
+				RunningCount += Bins[BinIndex].Count;
+				RightMin[BinIndex] = RunningMin;
+				RightMax[BinIndex] = RunningMax;
+				RightCount[BinIndex] = RunningCount;
+			}
+
+			for (int32 SplitBin = 0; SplitBin < BinCount - 1; ++SplitBin)
+			{
+				const int32 LCount = LeftCount[SplitBin];
+				const int32 RCount = RightCount[SplitBin + 1];
+				if (LCount == 0 || RCount == 0)
+				{
+					continue;
+				}
+				// Prevent pathological, highly unbalanced recursion.
+				if (LCount < TriangleCount / 16 || RCount < TriangleCount / 16)
+				{
+					continue;
+				}
+				const float Cost =
+					BoundsArea(LeftMin[SplitBin], LeftMax[SplitBin]) * LCount +
+					BoundsArea(RightMin[SplitBin + 1], RightMax[SplitBin + 1]) * RCount;
+				if (Cost < BestCost)
+				{
+					BestCost = Cost;
+					BestAxis = AxisIndex;
+					BestSplitBin = SplitBin;
+				}
+			}
+		}
+
+		int32 Middle = FirstTriangle;
+		if (BestAxis != INDEX_NONE)
+		{
+			const float AxisMinimum = CentroidMinAxis[BestAxis];
+			const float AxisSize = AxisExtent[BestAxis];
+			FDDGISoftwareTriangle* Data = Triangles.GetData();
+			const auto PartitionEnd = std::partition(
+				Data + FirstTriangle, Data + FirstTriangle + TriangleCount,
+				[BestAxis, AxisMinimum, AxisSize, BestSplitBin, BinCount](const FDDGISoftwareTriangle& Triangle)
+				{
+					const float Coordinate = BestAxis == 0 ? Triangle.Centroid.X :
+						(BestAxis == 1 ? Triangle.Centroid.Y : Triangle.Centroid.Z);
+					const float Normalized = (Coordinate - AxisMinimum) / AxisSize;
+					const int32 BinIndex = FMath::Clamp(FMath::FloorToInt(Normalized * BinCount), 0, BinCount - 1);
+					return BinIndex <= BestSplitBin;
+				});
+			Middle = static_cast<int32>(PartitionEnd - Data);
+		}
+
+		// Degenerate centroid distributions or an empty SAH partition fall
+		// back to a balanced median split on the widest centroid axis.
+		if (Middle <= FirstTriangle || Middle >= FirstTriangle + TriangleCount)
+		{
+			int32 Axis = 0;
+			if (Extent.Y > Extent.X && Extent.Y >= Extent.Z) Axis = 1;
+			else if (Extent.Z > Extent.X && Extent.Z > Extent.Y) Axis = 2;
+			Middle = FirstTriangle + TriangleCount / 2;
+			FDDGISoftwareTriangle* Data = Triangles.GetData();
+			std::nth_element(
+				Data + FirstTriangle, Data + Middle, Data + FirstTriangle + TriangleCount,
+				[Axis](const FDDGISoftwareTriangle& A, const FDDGISoftwareTriangle& B)
+				{
+					if (Axis == 0) return A.Centroid.X < B.Centroid.X;
+					if (Axis == 1) return A.Centroid.Y < B.Centroid.Y;
+					return A.Centroid.Z < B.Centroid.Z;
+				});
+		}
+
+		const int32 LeftCount = Middle - FirstTriangle;
 		const int32 LeftChild = BuildNode(Triangles, FirstTriangle, LeftCount, Nodes);
 		const int32 RightChild = BuildNode(Triangles, Middle, TriangleCount - LeftCount, Nodes);
 
@@ -104,7 +230,6 @@ namespace
 		Node.BoundsMax = BoundsMax;
 		Node.LeftChild = LeftChild;
 		Node.RightChild = RightChild;
-		return NodeIndex;
 	}
 
 	FVector4 PackVector(const FVector& Value)
