@@ -492,9 +492,11 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         HitIndirectRadiance = HitBaseColor * IncomingBounceRadiance;
     }
 
+    // Alpha carries a same-frame triangle tag for surface-aware spatial gathering.
+    float HitTriangleTag = bHitInThisInterval ? (float)(ClosestTriangleIndex + 1u) : 0.0f;
     RadianceUAV[Pixel] = float4(
         bHitInThisInterval
             ? (HitEmissiveRadiance + HitDirectRadiance + HitIndirectRadiance)
             : BackgroundRadiance,
-        1.0f);
+        HitTriangleTag);
 }
