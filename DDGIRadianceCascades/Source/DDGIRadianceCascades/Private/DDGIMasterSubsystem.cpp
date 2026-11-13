@@ -3,6 +3,7 @@
 #include "Engine/World.h"
 #include "RenderingThread.h"
 #include "RHICommandList.h"
+#include "DDGIRadianceCascadeResources.h"
 
 namespace
 {
@@ -78,9 +79,9 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.RadianceCascades.MaxTraceDistance = FMath::Max(1.0f, InActor->DynamicGIDistance);
 	Config.RadianceCascades.BuildCascadeSlices(Config.RadianceCascadeSlices);
 	Config.TotalRaysPerProbe = Config.RadianceCascades.GetTotalRayCount();
-	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.MaxActiveProbes);
 	Config.ProbeSpacing = FMath::Max(1.0f, InActor->ProbeSpacing);
 	Config.MaxActiveProbes = FMath::Max(1, InActor->MaxActiveProbes);
+	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.MaxActiveProbes);
 	Config.ProbeUpdateBudget = FMath::Max(0, InActor->ProbeUpdateBudget);
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;
@@ -106,10 +107,12 @@ void UDDGIMasterSubsystem::PublishConfig(bool bHasConfig)
 			if (bHasConfig)
 			{
 				GDDGIMasterConfigs_RenderThread.Add(Scene, ConfigCopy);
+				DDGIUpdateRadianceCascadeResources_RenderThread(RHICmdList, Scene, ConfigCopy);
 			}
 			else
 			{
 				GDDGIMasterConfigs_RenderThread.Remove(Scene);
+				DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
 			}
 		});
 }
