@@ -8,9 +8,6 @@ uint TextureWidth;
 uint TotalTexels;
 uint DispatchGroupsX;
 uint ProbeCount;
-uint bEnableStaticBackground;
-float4 StaticBackgroundColor;
-
 Texture2D<float4> ProbePositionsTexture;
 
 RWTexture2D<float4> DirectionsUAV;
@@ -81,7 +78,7 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
     DirectionsUAV[Pixel] = float4(Direction, (float)CascadeIndex);
-    RadianceUAV[Pixel] = (bEnableStaticBackground != 0u) ? StaticBackgroundColor : 0.0f;
+    RadianceUAV[Pixel] = 0.0f;
     HitDistanceUAV[Pixel] = -1.0f;
     RayOriginsUAV[Pixel] = ProbeOrigin;
 }

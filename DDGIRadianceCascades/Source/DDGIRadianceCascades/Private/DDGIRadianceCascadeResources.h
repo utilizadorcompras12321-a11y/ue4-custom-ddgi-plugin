@@ -30,3 +30,6 @@ bool DDGIGetRadianceCascadeProbePositions_RenderThread(
     const FSceneInterface* Scene,
     FRDGTextureRef& OutProbePositions,
     uint32& OutProbeCount);
+
+/** Marks initialization as scheduled after all required RDG resources were registered. */
+void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInterface* Scene);

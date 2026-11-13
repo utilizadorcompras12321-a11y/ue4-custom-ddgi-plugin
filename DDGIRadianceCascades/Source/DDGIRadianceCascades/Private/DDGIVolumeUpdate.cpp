@@ -53,8 +53,6 @@ class FDDGIRadianceCascadeInitializeCS : public FGlobalShader
         SHADER_PARAMETER(uint32, TotalTexels)
         SHADER_PARAMETER(uint32, DispatchGroupsX)
         SHADER_PARAMETER(uint32, ProbeCount)
-        SHADER_PARAMETER(uint32, bEnableStaticBackground)
-        SHADER_PARAMETER(FVector4, StaticBackgroundColor)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ProbePositionsTexture)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, DirectionsUAV)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RadianceUAV)
@@ -585,10 +583,6 @@ namespace DDGIVolumeUpdate
                 PassParameters->RaySplitFactor = static_cast<uint32>(FMath::Clamp(RadianceCascadeConfig.RadianceCascades.RaySplitFactor, 1, 4));
                 PassParameters->TextureWidth = 4096;
                 PassParameters->ProbeCount = ProbeCount;
-                PassParameters->bEnableStaticBackground = RadianceCascadeConfig.bEnableStaticBackground ? 1u : 0u;
-                const FLinearColor BackgroundColor = RadianceCascadeConfig.StaticBackgroundColor * RadianceCascadeConfig.StaticBackgroundIntensity;
-                PassParameters->StaticBackgroundColor = FVector4(
-                    BackgroundColor.R, BackgroundColor.G, BackgroundColor.B, 1.0f);
                 PassParameters->ProbePositionsTexture = ProbePositionsTexture;
                 PassParameters->TotalTexels = ProbeCount * PassParameters->TotalRaysPerProbe;
                 PassParameters->DispatchGroupsX = FMath::Min(FMath::DivideAndRoundUp(PassParameters->TotalTexels, 64u), 65535u);
@@ -602,6 +596,7 @@ namespace DDGIVolumeUpdate
                     FMath::DivideAndRoundUp(PassParameters->TotalTexels, 64u), PassParameters->DispatchGroupsX);
                 FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("DDGI Radiance Cascades Initialize"),
                     ComputeShader, PassParameters, FIntVector(PassParameters->DispatchGroupsX, GroupCountY, 1));
+                DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(&Scene);
             }
         }
 

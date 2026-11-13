@@ -205,7 +205,6 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     OutRadiance = GraphBuilder.RegisterExternalTexture(Storage->Radiance);
     OutHitDistance = GraphBuilder.RegisterExternalTexture(Storage->HitDistance);
     OutRayOrigins = GraphBuilder.RegisterExternalTexture(Storage->RayOrigins);
-    Storage->bNeedsInitialization = false;
     return OutDirections && OutRadiance && OutHitDistance && OutRayOrigins;
 }
 
@@ -229,4 +228,13 @@ bool DDGIGetRadianceCascadeProbePositions_RenderThread(
     OutProbePositions = GraphBuilder.RegisterExternalTexture(Storage->ProbePositions);
     OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
     return OutProbePositions != nullptr;
+}
+
+void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInterface* Scene)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    if (FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene))
+    {
+        Storage->bNeedsInitialization = false;
+    }
 }
