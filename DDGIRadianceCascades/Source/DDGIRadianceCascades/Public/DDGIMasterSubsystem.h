@@ -11,6 +11,7 @@ class FSceneInterface;
 
 struct FDDGISoftwareBVHData
 {
+	FVector WorldOrigin = FVector::ZeroVector;
 	TArray<FVector4> PackedNodes;
 	TArray<FVector4> PackedTriangles;
 	int32 IncludedComponents = 0;

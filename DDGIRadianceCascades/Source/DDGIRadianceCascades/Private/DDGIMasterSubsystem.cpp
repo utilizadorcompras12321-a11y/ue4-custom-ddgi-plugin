@@ -228,11 +228,8 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.RadianceCascades.BuildCascadeSlices(Config.RadianceCascadeSlices);
 	Config.TotalRaysPerProbe = Config.RadianceCascades.GetTotalRayCount();
 	Config.ProbeSpacing = FMath::Max(1.0f, InActor->ProbeSpacing);
-	Config.ProbeGridOrigin = InActor->GetActorLocation();
 	// Keep probe count within the texture/hash layout supported by the renderer.
 	Config.MaxActiveProbes = FMath::Clamp(InActor->MaxActiveProbes, 1, 32768);
-	DDGIBuildSparseProbePositions(Config.ProbeGridOrigin, Config.ProbeSpacing, Config.DynamicGIDistance, Config.MaxActiveProbes, Config.ProbePositions);
-	Config.ProbeCount = Config.ProbePositions.Num();
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.MaxActiveProbes);
 	Config.ProbeUpdateBudget = FMath::Max(0, InActor->ProbeUpdateBudget);
 	Config.MaxSoftwareTriangles = FMath::Max(1, InActor->MaxSoftwareTriangles);
@@ -250,6 +247,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 			Config.MaxSoftwareTriangles,
 			NewBVH->PackedNodes,
 			NewBVH->PackedTriangles,
+			NewBVH->WorldOrigin,
 			BuildStats);
 
 		NewBVH->IncludedComponents = BuildStats.IncludedComponents;
@@ -275,6 +273,18 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 			UE_LOG(LogTemp, Warning, TEXT("DDGI: %d material slots do not expose the DDGI_BaseColor vector parameter; their GI albedo is approximated as neutral 0.18 gray. Material textures and arbitrary material graphs are not evaluated."), BuildStats.MaterialsUsingDefaultBaseColor);
 		}
 	}
+
+	// The BVH origin remains fixed until the BVH is rebuilt. The Master Actor
+	// may move independently; only its probe lattice moves within this frame.
+	Config.ProbeGridOrigin = InActor->GetActorLocation() - Config.SoftwareBVH->WorldOrigin;
+	DDGIBuildSparseProbePositions(
+		Config.ProbeGridOrigin,
+		Config.ProbeSpacing,
+		Config.DynamicGIDistance,
+		Config.MaxActiveProbes,
+		Config.ProbePositions);
+	Config.ProbeCount = Config.ProbePositions.Num();
+
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;
 	Config.StaticBackgroundIntensity = FMath::Max(0.0f, InActor->StaticBackgroundIntensity);

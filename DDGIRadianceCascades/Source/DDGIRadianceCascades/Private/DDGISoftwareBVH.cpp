@@ -384,10 +384,12 @@ void DDGISoftwareBVH::BuildStaticWorld(
 	int32 MaxTriangleCount,
 	TArray<FVector4>& OutPackedNodes,
 	TArray<FVector4>& OutPackedTriangles,
+	FVector& OutWorldOrigin,
 	FDDGISoftwareBVHBuildStats& OutStats)
 {
 	OutPackedNodes.Reset();
 	OutPackedTriangles.Reset();
+	OutWorldOrigin = FVector::ZeroVector;
 	OutStats = FDDGISoftwareBVHBuildStats();
 
 	if (!World || MaxTriangleCount <= 0)
@@ -451,6 +453,14 @@ void DDGISoftwareBVH::BuildStaticWorld(
 			}
 
 			const FTransform ComponentTransform = Component->GetComponentTransform();
+			// Keep one immutable coordinate frame for this BVH. Choosing the first
+			// CPU-readable static mesh component avoids adding local vertex offsets
+			// to large absolute world coordinates before packing them as float.
+			if (Triangles.Num() == 0 && OutWorldOrigin.IsZero())
+			{
+				OutWorldOrigin = ComponentTransform.GetLocation();
+			}
+			const FVector ComponentRelativeLocation = ComponentTransform.GetLocation() - OutWorldOrigin;
 			const int32 ComponentTriangleCount = static_cast<int32>(IndexCount / 3);
 			bool bAddedAnyTriangle = false;
 
@@ -526,9 +536,11 @@ void DDGISoftwareBVH::BuildStaticWorld(
 					continue;
 				}
 
-				const FVector A = ComponentTransform.TransformPosition(FVector(PositionBuffer.VertexPosition(I0)));
-				const FVector B = ComponentTransform.TransformPosition(FVector(PositionBuffer.VertexPosition(I1)));
-				const FVector C = ComponentTransform.TransformPosition(FVector(PositionBuffer.VertexPosition(I2)));
+				// Transform only the local offset, then add the component translation
+				// relative to the BVH origin. Do not form large absolute world positions.
+				const FVector A = ComponentTransform.TransformVector(FVector(PositionBuffer.VertexPosition(I0))) + ComponentRelativeLocation;
+				const FVector B = ComponentTransform.TransformVector(FVector(PositionBuffer.VertexPosition(I1))) + ComponentRelativeLocation;
+				const FVector C = ComponentTransform.TransformVector(FVector(PositionBuffer.VertexPosition(I2))) + ComponentRelativeLocation;
 				if (!IsFiniteVector(A) || !IsFiniteVector(B) || !IsFiniteVector(C))
 				{
 					++OutStats.SkippedInvalidTriangles;

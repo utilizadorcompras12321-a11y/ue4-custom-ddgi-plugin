@@ -29,5 +29,6 @@ namespace DDGISoftwareBVH
 		int32 MaxTriangleCount,
 		TArray<FVector4>& OutPackedNodes,
 		TArray<FVector4>& OutPackedTriangles,
+		FVector& OutWorldOrigin,
 		FDDGISoftwareBVHBuildStats& OutStats);
 }
