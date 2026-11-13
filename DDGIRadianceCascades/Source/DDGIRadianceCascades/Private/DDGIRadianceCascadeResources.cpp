@@ -41,6 +41,7 @@ namespace
 		FShaderResourceViewRHIRef ProbeSpatialHashSRV;
 		uint32 ProbeSpatialHashCapacity = 0;
 		uint32 ProbeSpatialHashProbeCount = 0;
+		uint32 ProbeSpatialHashLayoutHash = 0;
 		float ProbeSpatialHashSpacing = 0.0f;
 		FBufferRHIRef BVHNodes;
 		FShaderResourceViewRHIRef BVHNodesSRV;
@@ -68,6 +69,7 @@ namespace
 			ProbeSpatialHashSRV.SafeRelease();
 			ProbeSpatialHashCapacity = 0;
 			ProbeSpatialHashProbeCount = 0;
+			ProbeSpatialHashLayoutHash = 0;
 			ProbeSpatialHashSpacing = 0.0f;
 			BVHNodes.SafeRelease();
 			BVHNodesSRV.SafeRelease();
@@ -227,11 +229,29 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     {
         RequiredHashCapacity <<= 1u;
     }
+    // Include the actual relative cell layout in the cache key. Probe count
+    // and spacing alone are insufficient: changing DynamicGIDistance can
+    // replace cells while leaving the count unchanged.
+    uint32 ProbeLayoutHash = 2166136261u;
+    for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
+    {
+        const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
+        const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - Config.ProbeGridOrigin;
+        const FIntVector Cell(
+            FMath::RoundToInt(Relative.X / SafeProbeSpacing),
+            FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
+            FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
+        ProbeLayoutHash = (ProbeLayoutHash ^ static_cast<uint32>(Cell.X)) * 16777619u;
+        ProbeLayoutHash = (ProbeLayoutHash ^ static_cast<uint32>(Cell.Y)) * 16777619u;
+        ProbeLayoutHash = (ProbeLayoutHash ^ static_cast<uint32>(Cell.Z)) * 16777619u;
+    }
+
     const bool bProbeHashMatches =
         Storage.ProbeSpatialHash.IsValid() &&
         Storage.ProbeSpatialHashSRV.IsValid() &&
         Storage.ProbeSpatialHashCapacity == RequiredHashCapacity &&
         Storage.ProbeSpatialHashProbeCount == ProbeCountForHash &&
+        Storage.ProbeSpatialHashLayoutHash == ProbeLayoutHash &&
         FMath::IsNearlyEqual(Storage.ProbeSpatialHashSpacing, SafeProbeSpacing, 1.0e-4f);
     if (!bProbeHashMatches)
     {
@@ -304,12 +324,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.ProbeSpatialHashSRV.SafeRelease();
             Storage.ProbeSpatialHashCapacity = 0;
             Storage.ProbeSpatialHashProbeCount = 0;
+            Storage.ProbeSpatialHashLayoutHash = 0;
             UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to build sparse probe spatial hash."));
         }
         else
         {
             Storage.ProbeSpatialHashCapacity = RequiredHashCapacity;
             Storage.ProbeSpatialHashProbeCount = ProbeCountForHash;
+            Storage.ProbeSpatialHashLayoutHash = ProbeLayoutHash;
             Storage.ProbeSpatialHashSpacing = SafeProbeSpacing;
         }
     }
