@@ -125,9 +125,10 @@ float3 DDGIRadianceCascadeChildRayDirection(
 	float Azimuth = 6.283185307179586f *
 		frac(ParentRotation + (float)ChildInGroup * (GoldenAngle / 6.283185307179586f));
 
-	float RadialSample = sqrt(((float)ChildInGroup + 0.5f) / (float)SafeSplit);
+	float AreaSample = ((float)ChildInGroup + 0.5f) / (float)SafeSplit;
 	float MaxConeAngle = clamp(ParentConeHalfAngleRadians, 0.0f, 1.57079632679f);
-	float CosTheta = lerp(1.0f, cos(MaxConeAngle), RadialSample);
+	// Uniform sampling in solid angle: the normalized cap area is linear in 1 - cos(theta).
+	float CosTheta = lerp(1.0f, cos(MaxConeAngle), AreaSample);
 	float SinTheta = sqrt(saturate(1.0f - CosTheta * CosTheta));
 
 	float3 RadialDirection =
