@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "RenderGraph.h"
+#include "RHIResources.h"
 
 class FSceneInterface;
 struct FDDGIMasterConfig;
@@ -16,20 +17,29 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Scene);
 
 bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
-    FRDGBuilder& GraphBuilder,
-    const FSceneInterface* Scene,
-    FRDGTextureRef& OutDirections,
-    FRDGTextureRef& OutRadiance,
-    FRDGTextureRef& OutHitDistance,
-    FRDGTextureRef& OutRayOrigins);
+	FRDGBuilder& GraphBuilder,
+	const FSceneInterface* Scene,
+	FRDGTextureRef& OutDirections,
+	FRDGTextureRef& OutRadiance,
+	FRDGTextureRef& OutHitDistance,
+	FRDGTextureRef& OutRayOrigins);
 
+/** Returns persistent RHI textures while initialization is pending. */
+bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
+	const FSceneInterface* Scene,
+	FTexture2DRHIRef& OutDirections,
+	FTexture2DRHIRef& OutRadiance,
+	FTexture2DRHIRef& OutHitDistance,
+	FTexture2DRHIRef& OutRayOrigins,
+	FTexture2DRHIRef& OutProbePositions,
+	uint32& OutProbeCount);
 
 /** Returns the uploaded sparse probe-origin texture for later tracing passes. */
 bool DDGIGetRadianceCascadeProbePositions_RenderThread(
-    FRDGBuilder& GraphBuilder,
-    const FSceneInterface* Scene,
-    FRDGTextureRef& OutProbePositions,
-    uint32& OutProbeCount);
+	FRDGBuilder& GraphBuilder,
+	const FSceneInterface* Scene,
+	FRDGTextureRef& OutProbePositions,
+	uint32& OutProbeCount);
 
-/** Marks initialization as scheduled after all required RDG resources were registered. */
+/** Marks initialization as scheduled after all required GPU resources were bound and dispatch was issued. */
 void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInterface* Scene);

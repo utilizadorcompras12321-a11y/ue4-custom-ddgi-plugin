@@ -209,6 +209,59 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
 }
 
 
+
+bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
+	const FSceneInterface* Scene,
+	FTexture2DRHIRef& OutDirections,
+	FTexture2DRHIRef& OutRadiance,
+	FTexture2DRHIRef& OutHitDistance,
+	FTexture2DRHIRef& OutRayOrigins,
+	FTexture2DRHIRef& OutProbePositions,
+	uint32& OutProbeCount)
+{
+	check(IsInRenderingThread() || IsInParallelRenderingThread());
+	OutDirections.SafeRelease();
+	OutRadiance.SafeRelease();
+	OutHitDistance.SafeRelease();
+	OutRayOrigins.SafeRelease();
+	OutProbePositions.SafeRelease();
+	OutProbeCount = 0;
+
+	FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+	if (!Storage || !Storage->bNeedsInitialization ||
+		!Storage->Directions.IsValid() || !Storage->Radiance.IsValid() ||
+		!Storage->HitDistance.IsValid() || !Storage->RayOrigins.IsValid() ||
+		!Storage->ProbePositions.IsValid() || Storage->UploadedProbeCount <= 0)
+	{
+		return false;
+	}
+
+	const FSceneRenderTargetItem& DirectionsItem = Storage->Directions->GetRenderTargetItem();
+	const FSceneRenderTargetItem& RadianceItem = Storage->Radiance->GetRenderTargetItem();
+	const FSceneRenderTargetItem& HitDistanceItem = Storage->HitDistance->GetRenderTargetItem();
+	const FSceneRenderTargetItem& RayOriginsItem = Storage->RayOrigins->GetRenderTargetItem();
+	const FSceneRenderTargetItem& ProbePositionsItem = Storage->ProbePositions->GetRenderTargetItem();
+
+	if (!DirectionsItem.ShaderResourceTexture.IsValid() ||
+		!RadianceItem.ShaderResourceTexture.IsValid() ||
+		!HitDistanceItem.ShaderResourceTexture.IsValid() ||
+		!RayOriginsItem.ShaderResourceTexture.IsValid() ||
+		!ProbePositionsItem.ShaderResourceTexture.IsValid())
+	{
+		return false;
+	}
+
+	OutDirections = DirectionsItem.ShaderResourceTexture->GetTexture2D();
+	OutRadiance = RadianceItem.ShaderResourceTexture->GetTexture2D();
+	OutHitDistance = HitDistanceItem.ShaderResourceTexture->GetTexture2D();
+	OutRayOrigins = RayOriginsItem.ShaderResourceTexture->GetTexture2D();
+	OutProbePositions = ProbePositionsItem.ShaderResourceTexture->GetTexture2D();
+	OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
+
+	return OutDirections.IsValid() && OutRadiance.IsValid() &&
+		OutHitDistance.IsValid() && OutRayOrigins.IsValid() && OutProbePositions.IsValid();
+}
+
 bool DDGIGetRadianceCascadeProbePositions_RenderThread(
     FRDGBuilder& GraphBuilder,
     const FSceneInterface* Scene,
