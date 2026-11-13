@@ -1,0 +1,78 @@
+#include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
+uint TextureWidth, TotalTexels, DispatchGroupsX, ProbeCount, TotalRaysPerProbe, HashCapacity;
+float ProbeSpacing;
+float4 ProbeGridOrigin;
+Texture2D<float4> RadianceTexture;
+Texture2D<float> HitDistanceTexture;
+Texture2D<float4> DirectionsTexture;
+Texture2D<float4> ProbePositionsTexture;
+StructuredBuffer<float4> ProbeSpatialHash;
+RWTexture2D<float4> OutputRadianceUAV;
+
+uint DDGIHashProbeCell(int3 Cell)
+{
+    uint Hash = asuint(Cell.x) * 0x8DA6B343u;
+    Hash ^= asuint(Cell.y) * 0xD8163841u;
+    Hash ^= asuint(Cell.z) * 0xCB1AB31Fu;
+    Hash ^= Hash >> 16; Hash *= 0x7FEB352Du;
+    Hash ^= Hash >> 15; Hash *= 0x846CA68Bu;
+    Hash ^= Hash >> 16;
+    return Hash;
+}
+bool DDGIFindProbeInCell(int3 Cell, out uint OutProbeIndex)
+{
+    OutProbeIndex = 0u;
+    if (HashCapacity == 0u) return false;
+    uint Slot = DDGIHashProbeCell(Cell) & (HashCapacity - 1u);
+    [loop] for (uint Attempt = 0u; Attempt < HashCapacity; ++Attempt)
+    {
+        float4 Entry = ProbeSpatialHash[Slot];
+        if (Entry.w < 0.0f) return false;
+        if (all(int3(round(Entry.xyz)) == Cell))
+        {
+            OutProbeIndex = (uint)max(Entry.w, 0.0f);
+            return OutProbeIndex < ProbeCount;
+        }
+        Slot = (Slot + 1u) & (HashCapacity - 1u);
+    }
+    return false;
+}
+[numthreads(64, 1, 1)]
+void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
+    if (LinearIndex >= TotalTexels || ProbeCount == 0u || TotalRaysPerProbe == 0u) return;
+    uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
+    uint RayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
+    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
+    float3 CenterPosition = ProbePositionsTexture.Load(int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0)).xyz;
+    float3 CenterDirection = normalize(DirectionsTexture.Load(int3(Pixel, 0)).xyz);
+    float CenterHitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
+    float3 RadianceSum = RadianceTexture.Load(int3(Pixel, 0)).rgb;
+    float WeightSum = 1.0f;
+    float SafeSpacing = max(ProbeSpacing, 1.0f);
+    int3 CenterCell = int3(round((CenterPosition - ProbeGridOrigin.xyz) / SafeSpacing));
+    [unroll] for (int Z=-1; Z<=1; ++Z)
+    [unroll] for (int Y=-1; Y<=1; ++Y)
+    [unroll] for (int X=-1; X<=1; ++X)
+    {
+        if (X==0 && Y==0 && Z==0) continue;
+        uint NeighborIndex;
+        if (!DDGIFindProbeInCell(CenterCell + int3(X,Y,Z), NeighborIndex)) continue;
+        uint NeighborLinear = NeighborIndex * TotalRaysPerProbe + RayIndex;
+        uint2 NeighborPixel = uint2(NeighborLinear % TextureWidth, NeighborLinear / TextureWidth);
+        float3 NeighborDirection = normalize(DirectionsTexture.Load(int3(NeighborPixel,0)).xyz);
+        if (dot(CenterDirection, NeighborDirection) < 0.9995f) continue;
+        float NeighborHitDistance = HitDistanceTexture.Load(int3(NeighborPixel,0));
+        bool CenterHit = CenterHitDistance >= 0.0f;
+        bool NeighborHit = NeighborHitDistance >= 0.0f;
+        if (CenterHit != NeighborHit) continue;
+        if (CenterHit && abs(CenterHitDistance - NeighborHitDistance) > SafeSpacing * 0.75f) continue;
+        float3 NeighborPosition = ProbePositionsTexture.Load(int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
+        float Weight = saturate(1.0f - distance(CenterPosition, NeighborPosition) / (SafeSpacing * 1.75f));
+        if (Weight <= 0.0f) continue;
+        RadianceSum += RadianceTexture.Load(int3(NeighborPixel,0)).rgb * Weight;
+        WeightSum += Weight;
+    }
+    OutputRadianceUAV[Pixel] = float4(RadianceSum / max(WeightSum,1.0e-5f),1.0f);
+}

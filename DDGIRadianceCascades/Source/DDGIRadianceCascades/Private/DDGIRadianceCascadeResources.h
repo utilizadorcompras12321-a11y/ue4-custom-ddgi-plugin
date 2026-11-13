@@ -67,6 +67,9 @@ bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
 	uint32& OutHashCapacity,
 	float& OutProbeSpacing);
 
+/** Returns the persistent sparse probe-origin texture for RHI compute passes. */
+bool DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(const FSceneInterface* Scene, FTexture2DRHIRef& OutProbePositions, uint32& OutProbeCount);
+
 /** Returns the uploaded sparse probe-origin texture for later tracing passes. */
 bool DDGIGetRadianceCascadeProbePositions_RenderThread(
 	FRDGBuilder& GraphBuilder,

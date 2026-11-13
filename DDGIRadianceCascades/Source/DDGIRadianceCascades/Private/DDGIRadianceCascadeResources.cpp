@@ -651,6 +651,21 @@ bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
     return true;
 }
 
+bool DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(
+    const FSceneInterface* Scene, FTexture2DRHIRef& OutProbePositions, uint32& OutProbeCount)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutProbePositions.SafeRelease();
+    OutProbeCount = 0;
+    const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || !Storage->ProbePositions.IsValid() || Storage->UploadedProbeCount <= 0) return false;
+    FTextureRHIRef Texture = Storage->ProbePositions->GetRenderTargetItem().ShaderResourceTexture;
+    if (!Texture.IsValid()) return false;
+    OutProbePositions = Texture->GetTexture2D();
+    OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
+    return OutProbePositions.IsValid();
+}
+
 bool DDGIGetRadianceCascadeProbePositions_RenderThread(
     FRDGBuilder& GraphBuilder,
     const FSceneInterface* Scene,
