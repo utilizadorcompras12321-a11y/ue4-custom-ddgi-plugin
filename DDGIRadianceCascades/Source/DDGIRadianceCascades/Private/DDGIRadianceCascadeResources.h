@@ -44,6 +44,14 @@ bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
 	uint32& OutProbeCount,
 	uint32& OutTotalRaysPerProbe);
 
+/** Returns the ping-pong radiance texture used by the cascade integration pass. */
+bool DDGIGetRadianceCascadeScratchTexture_RenderThread(
+	const FSceneInterface* Scene,
+	FTexture2DRHIRef& OutRadianceScratch);
+
+/** Swaps persistent radiance and scratch textures after an odd number of integration passes. */
+void DDGISwapRadianceCascadeRadianceBuffers_RenderThread(const FSceneInterface* Scene);
+
 /** Returns the uploaded static-scene BVH buffers for GPU traversal. */
 bool DDGIGetSoftwareBVHResources_RenderThread(
 	const FSceneInterface* Scene,

@@ -17,6 +17,7 @@ namespace
 	{
 		TRefCountPtr<IPooledRenderTarget> Directions;
 		TRefCountPtr<IPooledRenderTarget> Radiance;
+		TRefCountPtr<IPooledRenderTarget> RadianceScratch;
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> RayOrigins;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
@@ -38,6 +39,7 @@ namespace
 		{
 			Directions.SafeRelease();
 			Radiance.SafeRelease();
+			RadianceScratch.SafeRelease();
 			HitDistance.SafeRelease();
 			RayOrigins.SafeRelease();
 			ProbePositions.SafeRelease();
@@ -122,7 +124,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         GRenderTargetPool.FindFreeElement(RHICmdList, OriginDesc, Storage.RayOrigins,
             TEXT("DDGIRadianceCascade_RayOrigins"), ERenderTargetTransience::NonTransient);
 
-        if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.HitDistance.IsValid() || !Storage.RayOrigins.IsValid())
+        if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.RadianceScratch.IsValid() || !Storage.HitDistance.IsValid() || !Storage.RayOrigins.IsValid())
         {
             Storage.Release();
             UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate persistent GPU textures."));
@@ -387,6 +389,35 @@ bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
 	OutTotalRaysPerProbe = static_cast<uint32>(Storage->TotalRaysPerProbe);
 	return OutDirections.IsValid() && OutRadiance.IsValid() &&
 		OutHitDistance.IsValid() && OutRayOrigins.IsValid();
+}
+
+bool DDGIGetRadianceCascadeScratchTexture_RenderThread(
+	const FSceneInterface* Scene,
+	FTexture2DRHIRef& OutRadianceScratch)
+{
+	check(IsInRenderingThread() || IsInParallelRenderingThread());
+	OutRadianceScratch.SafeRelease();
+	const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+	if (!Storage || !Storage->RadianceScratch.IsValid())
+	{
+		return false;
+	}
+	const FSceneRenderTargetItem& ScratchItem = Storage->RadianceScratch->GetRenderTargetItem();
+	if (!ScratchItem.ShaderResourceTexture.IsValid())
+	{
+		return false;
+	}
+	OutRadianceScratch = ScratchItem.ShaderResourceTexture->GetTexture2D();
+	return OutRadianceScratch.IsValid();
+}
+
+void DDGISwapRadianceCascadeRadianceBuffers_RenderThread(const FSceneInterface* Scene)
+{
+	check(IsInRenderingThread() || IsInParallelRenderingThread());
+	if (FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene))
+	{
+		Swap(Storage->Radiance, Storage->RadianceScratch);
+	}
 }
 
 bool DDGIGetSoftwareBVHResources_RenderThread(
