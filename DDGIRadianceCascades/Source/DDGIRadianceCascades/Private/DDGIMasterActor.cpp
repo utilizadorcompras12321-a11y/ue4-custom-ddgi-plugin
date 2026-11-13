@@ -10,13 +10,13 @@ ADDGIMasterActor::ADDGIMasterActor()
 void ADDGIMasterActor::BeginPlay()
 {
 	Super::BeginPlay();
+	LastPublishedLocation = GetActorLocation();
 	RefreshWorldConfig();
 }
 
 void ADDGIMasterActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	static FVector LastPublishedLocation = FVector::ZeroVector;
 	const FVector CurrentLocation = GetActorLocation();
 	if (!CurrentLocation.Equals(LastPublishedLocation, 0.5f))
 	{

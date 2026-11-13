@@ -141,11 +141,13 @@ struct FDDGIRadianceCascadeConfig
 		}
 	}
 
-	// Current GPU layout: half-float RGBA direction + half-float RGBA radiance + R32F hit distance (20 bytes per ray).
-	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 20) const
+	// Current GPU layout: direction (8) + radiance (8) + hit distance (4) +
+	// per-ray world-space origin (16) = 36 bytes per ray. Probe origins also
+	// occupy a separate float4 texture (16 bytes per probe).
+	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 36) const
 	{
-		return static_cast<int64>(FMath::Max(0, ProbeCount)) *
-			static_cast<int64>(GetTotalRayCount()) *
-			static_cast<int64>(FMath::Max(1, BytesPerRay));
+		const int64 SafeProbeCount = static_cast<int64>(FMath::Max(0, ProbeCount));
+		return SafeProbeCount *
+			(static_cast<int64>(GetTotalRayCount()) * static_cast<int64>(FMath::Max(1, BytesPerRay)) + 16ll);
 	}
 };

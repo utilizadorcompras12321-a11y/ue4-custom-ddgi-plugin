@@ -73,4 +73,5 @@ protected:
 
 private:
 	void RefreshWorldConfig();
+	FVector LastPublishedLocation = FVector::ZeroVector;
 };
