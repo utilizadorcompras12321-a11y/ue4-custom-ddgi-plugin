@@ -605,7 +605,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		FUnorderedAccessViewRHIRef DirectionsUAV = RHICreateUnorderedAccessView(DirectionsTexture);
 		FUnorderedAccessViewRHIRef RadianceUAV = RHICreateUnorderedAccessView(RadianceTexture);
 		FUnorderedAccessViewRHIRef HitDistanceUAV = RHICreateUnorderedAccessView(HitDistanceTexture);
-	FUnorderedAccessViewRHIRef HitTriangleIndexUAV = RHICreateUnorderedAccessView(HitTriangleIndexTexture);
 		FUnorderedAccessViewRHIRef RayOriginsUAV = RHICreateUnorderedAccessView(RayOriginsTexture);
 
 		if (ProbePositionsSRV.IsValid() && DirectionsUAV.IsValid() && RadianceUAV.IsValid() &&
@@ -615,7 +614,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, DirectionsTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RadianceTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitDistanceTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitTriangleIndexTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RayOriginsTexture);
 
 			TShaderMapRef<FDDGIRadianceCascadeInitializeRHI> InitializeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
@@ -633,7 +631,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DirectionsTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitTriangleIndexTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RayOriginsTexture);
 			DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(Scene);
 		}
@@ -658,6 +655,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FShaderResourceViewRHIRef OriginsSRV = RHICreateShaderResourceView(RayOriginsTexture, 0);
 	FUnorderedAccessViewRHIRef RadianceUAV = RHICreateUnorderedAccessView(RadianceTexture);
 	FUnorderedAccessViewRHIRef HitDistanceUAV = RHICreateUnorderedAccessView(HitDistanceTexture);
+	FUnorderedAccessViewRHIRef HitTriangleIndexUAV = RHICreateUnorderedAccessView(HitTriangleIndexTexture);
 	if (!DirectionsSRV.IsValid() || !OriginsSRV.IsValid() || !RadianceUAV.IsValid() || !HitDistanceUAV.IsValid() || !HitTriangleIndexUAV.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create tracing SRV/UAV views."));
@@ -668,6 +666,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RayOriginsTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RadianceTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitDistanceTexture);
+	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitTriangleIndexTexture);
 
 	TShaderMapRef<FDDGIRadianceCascadeTraceRHI> TraceShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(TraceShader->GetComputeShader());
@@ -693,6 +692,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
+	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitTriangleIndexTexture);
 
 	FTexture2DRHIRef RadianceScratchTexture, ProbePositionsTexture;
 	FShaderResourceViewRHIRef SpatialHashSRV;
