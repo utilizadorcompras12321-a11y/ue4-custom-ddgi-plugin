@@ -48,6 +48,29 @@ bool IntersectBounds(float3 Origin, float3 Direction, float3 BoundsMin, float3 B
     return FarDistance >= NearDistance;
 }
 
+
+bool IntersectBoundsWithNear(
+    float3 Origin,
+    float3 Direction,
+    float3 BoundsMin,
+    float3 BoundsMax,
+    float MaxDistance,
+    out float NearDistance)
+{
+    float3 SafeDirection = Direction;
+    SafeDirection.x = abs(SafeDirection.x) < 1.0e-8f ? (SafeDirection.x < 0.0f ? -1.0e-8f : 1.0e-8f) : SafeDirection.x;
+    SafeDirection.y = abs(SafeDirection.y) < 1.0e-8f ? (SafeDirection.y < 0.0f ? -1.0e-8f : 1.0e-8f) : SafeDirection.y;
+    SafeDirection.z = abs(SafeDirection.z) < 1.0e-8f ? (SafeDirection.z < 0.0f ? -1.0e-8f : 1.0e-8f) : SafeDirection.z;
+    float3 InverseDirection = rcp(SafeDirection);
+    float3 T0 = (BoundsMin - Origin) * InverseDirection;
+    float3 T1 = (BoundsMax - Origin) * InverseDirection;
+    float3 TMin = min(T0, T1);
+    float3 TMax = max(T0, T1);
+    NearDistance = max(max(TMin.x, TMin.y), max(TMin.z, 0.0f));
+    float FarDistance = min(min(TMax.x, TMax.y), min(TMax.z, MaxDistance));
+    return FarDistance >= NearDistance;
+}
+
 bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, float3 C, out float HitDistance)
 {
     const float Epsilon = 1.0e-7f;
@@ -135,10 +158,50 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
                 }
             }
         }
-        else if (StackSize + 2u <= 64u)
+        else
         {
-            Stack[StackSize++] = (uint)max(Metadata.y, 0.0f);
-            Stack[StackSize++] = (uint)max(Metadata.x, 0.0f);
+            uint LeftChild = (uint)max(Metadata.x, 0.0f);
+            uint RightChild = (uint)max(Metadata.y, 0.0f);
+            float LeftNear = 0.0f;
+            float RightNear = 0.0f;
+            bool bHitLeft = false;
+            bool bHitRight = false;
+            if (LeftChild < NodeCount)
+            {
+                uint LeftBase = LeftChild * 3u;
+                bHitLeft = IntersectBoundsWithNear(Origin, Direction,
+                    BVHNodes[LeftBase + 0u].xyz, BVHNodes[LeftBase + 1u].xyz,
+                    ClosestDistance, LeftNear);
+            }
+            if (RightChild < NodeCount)
+            {
+                uint RightBase = RightChild * 3u;
+                bHitRight = IntersectBoundsWithNear(Origin, Direction,
+                    BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
+                    ClosestDistance, RightNear);
+            }
+            // LIFO: farther child first, nearer child second.
+            if (bHitLeft && bHitRight && StackSize + 2u <= 64u)
+            {
+                if (LeftNear <= RightNear)
+                {
+                    Stack[StackSize++] = RightChild;
+                    Stack[StackSize++] = LeftChild;
+                }
+                else
+                {
+                    Stack[StackSize++] = LeftChild;
+                    Stack[StackSize++] = RightChild;
+                }
+            }
+            else if (bHitLeft && StackSize < 64u)
+            {
+                Stack[StackSize++] = LeftChild;
+            }
+            else if (bHitRight && StackSize < 64u)
+            {
+                Stack[StackSize++] = RightChild;
+            }
         }
     }
     return false;
