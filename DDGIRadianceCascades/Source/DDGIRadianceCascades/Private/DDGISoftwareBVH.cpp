@@ -14,6 +14,13 @@ namespace
 {
 	static const int32 GDDGISoftwareBVHHardTriangleLimit = 250000;
 
+	struct FDDGISoftwareMaterialData
+	{
+		FVector EmissiveRadiance = FVector::ZeroVector;
+		FVector BaseColor = FVector(0.18f, 0.18f, 0.18f);
+		bool bUsesDefaultBaseColor = true;
+	};
+
 	struct FDDGISoftwareTriangle
 	{
 		FVector A;
@@ -405,6 +412,9 @@ void DDGISoftwareBVH::BuildStaticWorld(
 
 	TArray<FDDGISoftwareTriangle> Triangles;
 	Triangles.Reserve(FMath::Min(MaxTriangleCount, 65536));
+	// Material interfaces are often shared by many static-mesh components.
+	// Cache parameter evaluation for this build only; no UObject pointer survives it.
+	TMap<const UMaterialInterface*, FDDGISoftwareMaterialData> MaterialDataCache;
 	bool bHasWorldOrigin = false;
 
 	for (TActorIterator<AActor> ActorIt(World); ActorIt; ++ActorIt)
@@ -511,24 +521,36 @@ void DDGISoftwareBVH::BuildStaticWorld(
 					continue;
 				}
 
-				FLinearColor EmissiveColor = FLinearColor::Black;
-				if (Material->GetVectorParameterValue(EmissiveParameterInfo, EmissiveColor))
+				FDDGISoftwareMaterialData* CachedData = MaterialDataCache.Find(Material);
+				if (!CachedData)
 				{
-					MaterialEmissiveRadiance[MaterialIndex] = FVector(
-						FMath::Max(0.0f, EmissiveColor.R),
-						FMath::Max(0.0f, EmissiveColor.G),
-						FMath::Max(0.0f, EmissiveColor.B));
+					FDDGISoftwareMaterialData NewData;
+					FLinearColor EmissiveColor = FLinearColor::Black;
+					if (Material->GetVectorParameterValue(EmissiveParameterInfo, EmissiveColor))
+					{
+						NewData.EmissiveRadiance = FVector(
+							FMath::Max(0.0f, EmissiveColor.R),
+							FMath::Max(0.0f, EmissiveColor.G),
+							FMath::Max(0.0f, EmissiveColor.B));
+					}
+
+					FLinearColor BaseColorValue = FLinearColor::White;
+					NewData.bUsesDefaultBaseColor = !Material->GetVectorParameterValue(BaseColorParameterInfo, BaseColorValue);
+					if (!NewData.bUsesDefaultBaseColor)
+					{
+						NewData.BaseColor = FVector(
+							FMath::Max(0.0f, BaseColorValue.R),
+							FMath::Max(0.0f, BaseColorValue.G),
+							FMath::Max(0.0f, BaseColorValue.B));
+					}
+					CachedData = &MaterialDataCache.Add(Material, NewData);
 				}
-				FLinearColor BaseColorValue = FLinearColor::White;
-				if (Material->GetVectorParameterValue(BaseColorParameterInfo, BaseColorValue))
+
+				MaterialEmissiveRadiance[MaterialIndex] = CachedData->EmissiveRadiance;
+				MaterialBaseColor[MaterialIndex] = CachedData->BaseColor;
+				if (CachedData->bUsesDefaultBaseColor)
 				{
-					MaterialBaseColor[MaterialIndex] = FVector(
-						FMath::Max(0.0f, BaseColorValue.R),
-						FMath::Max(0.0f, BaseColorValue.G),
-						FMath::Max(0.0f, BaseColorValue.B));
-				}
-				else
-				{
+					// Count fallback material slots, not unique material objects.
 					++OutStats.MaterialsUsingDefaultBaseColor;
 				}
 			}
@@ -541,6 +563,7 @@ void DDGISoftwareBVH::BuildStaticWorld(
 				const uint32 I2 = LOD.IndexBuffer.GetIndex(TriangleIndex * 3 + 2);
 				if (I0 >= VertexCount || I1 >= VertexCount || I2 >= VertexCount)
 				{
+					++OutStats.SkippedInvalidTriangles;
 					continue;
 				}
 
