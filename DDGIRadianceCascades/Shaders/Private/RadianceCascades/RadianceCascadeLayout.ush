@@ -117,8 +117,11 @@ float3 DDGIRadianceCascadeChildRayDirection(
 	float3 Bitangent = normalize(cross(Axis, Tangent));
 
 	const float GoldenAngle = 2.39996322972865332f;
-	float ParentRotation = frac(
-		sin((float)ParentRayIndex * 12.9898f + 78.233f) * 43758.5453f);
+	// Low-discrepancy deterministic rotation. Avoid a sine hash: the
+	// orientation is a fixed function of the parent ray index and never
+	// depends on frame state or pseudo-random values.
+	const float GoldenConjugate = 0.6180339887498948f;
+	float ParentRotation = frac(((float)ParentRayIndex + 0.5f) * GoldenConjugate);
 	float Azimuth = 6.283185307179586f *
 		frac(ParentRotation + (float)ChildInGroup * (GoldenAngle / 6.283185307179586f));
 
