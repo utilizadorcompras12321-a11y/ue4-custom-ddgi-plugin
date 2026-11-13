@@ -21,3 +21,11 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     FRDGTextureRef& OutDirections,
     FRDGTextureRef& OutRadiance,
     FRDGTextureRef& OutHitDistance);
+
+
+/** Returns the uploaded sparse probe-origin texture for later tracing passes. */
+bool DDGIGetRadianceCascadeProbePositions_RenderThread(
+    FRDGBuilder& GraphBuilder,
+    const FSceneInterface* Scene,
+    FRDGTextureRef& OutProbePositions,
+    uint32& OutProbeCount);

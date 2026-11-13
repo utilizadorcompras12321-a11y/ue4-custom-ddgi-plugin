@@ -17,17 +17,23 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> Directions;
 		TRefCountPtr<IPooledRenderTarget> Radiance;
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
+		TRefCountPtr<IPooledRenderTarget> ProbePositions;
 		bool bNeedsInitialization = true;
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
 		int32 TotalRaysPerProbe = 0;
 		int32 ProbeCapacity = 0;
+		FIntPoint ProbePositionDimensions = FIntPoint::ZeroValue;
+		int32 UploadedProbeCount = 0;
 
 		void Release()
 		{
 			Directions.SafeRelease();
 			Radiance.SafeRelease();
 			HitDistance.SafeRelease();
+			ProbePositions.SafeRelease();
 			Dimensions = FIntPoint::ZeroValue;
+			ProbePositionDimensions = FIntPoint::ZeroValue;
+			UploadedProbeCount = 0;
 			TotalRaysPerProbe = 0;
 			ProbeCapacity = 0;
 			bNeedsInitialization = true;
@@ -104,6 +110,48 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 	Storage.Dimensions = RequiredDimensions;
 	Storage.TotalRaysPerProbe = Config.TotalRaysPerProbe;
 	Storage.ProbeCapacity = Config.MaxActiveProbes;
+
+	// Keep probe origins in a separate float4 texture. It is updated whenever
+	// the Master Actor publishes a new lattice, even if ray storage is unchanged.
+	const int32 ProbeTextureWidth = 4096;
+	const int32 ProbeTextureHeight = FMath::Max(1, FMath::DivideAndRoundUp(Config.MaxActiveProbes, ProbeTextureWidth));
+	const FIntPoint ProbePositionDimensions(ProbeTextureWidth, ProbeTextureHeight);
+	if (Storage.ProbePositionDimensions != ProbePositionDimensions || !Storage.ProbePositions.IsValid())
+	{
+		Storage.ProbePositions.SafeRelease();
+		const FPooledRenderTargetDesc ProbePositionDesc = FPooledRenderTargetDesc::Create2DDesc(
+			ProbePositionDimensions, PF_A32B32G32R32F, FClearValueBinding::Black, TexCreate_None,
+			TexCreate_ShaderResource, false);
+		GRenderTargetPool.FindFreeElement(RHICmdList, ProbePositionDesc, Storage.ProbePositions,
+			TEXT("DDGIRadianceCascade_ProbePositions"), ERenderTargetTransience::NonTransient);
+		if (!Storage.ProbePositions.IsValid())
+		{
+			UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate sparse probe-position texture."));
+			return;
+		}
+		Storage.ProbePositionDimensions = ProbePositionDimensions;
+	}
+
+	const int32 ProbeTextureTexelCount = ProbePositionDimensions.X * ProbePositionDimensions.Y;
+	TArray<FVector4> UploadData;
+	UploadData.SetNumZeroed(ProbeTextureTexelCount);
+	const int32 ProbeCount = FMath::Min(Config.ProbePositions.Num(), Config.MaxActiveProbes);
+	for (int32 ProbeIndex = 0; ProbeIndex < ProbeCount; ++ProbeIndex)
+	{
+		UploadData[ProbeIndex] = Config.ProbePositions[ProbeIndex];
+	}
+	FTexture2DRHIRef ProbePositionRHI = Storage.ProbePositions->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D();
+	if (ProbePositionRHI.IsValid())
+	{
+		const FUpdateTextureRegion2D UpdateRegion(0, 0, 0, 0, ProbePositionDimensions.X, ProbePositionDimensions.Y);
+		RHICmdList.UpdateTexture2D(
+			ProbePositionRHI,
+			0,
+			UpdateRegion,
+			static_cast<uint32>(ProbePositionDimensions.X * sizeof(FVector4)),
+			reinterpret_cast<const uint8*>(UploadData.GetData()));
+		Storage.UploadedProbeCount = ProbeCount;
+	}
 }
 
 void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Scene)
@@ -140,4 +188,26 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     OutHitDistance = GraphBuilder.RegisterExternalTexture(Storage->HitDistance);
     Storage->bNeedsInitialization = false;
     return OutDirections && OutRadiance && OutHitDistance;
+}
+
+
+bool DDGIGetRadianceCascadeProbePositions_RenderThread(
+    FRDGBuilder& GraphBuilder,
+    const FSceneInterface* Scene,
+    FRDGTextureRef& OutProbePositions,
+    uint32& OutProbeCount)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutProbePositions = nullptr;
+    OutProbeCount = 0;
+
+    FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || !Storage->ProbePositions.IsValid() || Storage->UploadedProbeCount <= 0)
+    {
+        return false;
+    }
+
+    OutProbePositions = GraphBuilder.RegisterExternalTexture(Storage->ProbePositions);
+    OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
+    return OutProbePositions != nullptr;
 }
