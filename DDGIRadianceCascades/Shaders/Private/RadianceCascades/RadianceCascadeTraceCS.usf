@@ -44,6 +44,32 @@ float ComputeRayOriginBias(float3 Position)
     return max(MinimumBias, CoordinateMagnitude * FloatEpsilon * 4.0f);
 }
 
+
+// Compute a geometric normal without forming an unscaled cross product.
+// Scaling both edges by their largest component keeps intermediate products
+// bounded and makes the degeneracy threshold independent of triangle size.
+float3 ComputeTriangleGeometricNormal(float3 A, float3 B, float3 C)
+{
+    float3 EdgeAB = B - A;
+    float3 EdgeAC = C - A;
+    float EdgeScale = max(
+        max(max(abs(EdgeAB.x), abs(EdgeAB.y)), abs(EdgeAB.z)),
+        max(max(abs(EdgeAC.x), abs(EdgeAC.y)), abs(EdgeAC.z)));
+    if (!(EdgeScale > 0.0f) || !isfinite(EdgeScale))
+    {
+        return 0.0f;
+    }
+
+    float3 ScaledCross = cross(EdgeAB / EdgeScale, EdgeAC / EdgeScale);
+    float NormalLengthSquared = dot(ScaledCross, ScaledCross);
+    if (!(NormalLengthSquared > 1.0e-12f) || !isfinite(NormalLengthSquared))
+    {
+        return 0.0f;
+    }
+
+    return ScaledCross * rsqrt(NormalLengthSquared);
+}
+
 bool IntersectBounds(float3 Origin, float3 Direction, float3 BoundsMin, float3 BoundsMax, float MaxDistance)
 {
     // A nearly parallel ray can only intersect this slab when its origin
@@ -424,7 +450,7 @@ float3 EvaluateHitSurfaceRadiance(
     float3 A = BVHTriangles[TriangleBase + 0u].xyz;
     float3 B = BVHTriangles[TriangleBase + 1u].xyz;
     float3 C = BVHTriangles[TriangleBase + 2u].xyz;
-    float3 Normal = normalize(cross(B - A, C - A));
+    float3 Normal = ComputeTriangleGeometricNormal(A, B, C);
     if (dot(Normal, IncomingDirection) > 0.0f)
     {
         Normal = -Normal;
@@ -439,7 +465,7 @@ float3 EvaluateHitSurfaceRadiance(
     float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
     // Black diffuse surfaces cannot receive direct diffuse light. Avoid
     // launching a shadow traversal for emissive-only / zero-albedo triangles.
-    if (bHasDirectionalLight != 0u && any(BaseColor > 1.0e-6f))
+    if (dot(Normal, Normal) > 0.0f && bHasDirectionalLight != 0u && any(BaseColor > 1.0e-6f))
     {
         float3 ToLight = normalize(DirectionalLightDirection.xyz);
         float NdotL = saturate(dot(Normal, ToLight));
@@ -574,9 +600,10 @@ float3 TraceDeterministicDiffuseBounce(
         {
             float3 SecondaryHitPosition =
                 SecondaryOrigin + SecondaryDirection * SecondaryDistance;
-            float3 SecondaryNormal = normalize(cross(
-                BVHTriangles[SecondaryTriangleIndex * 4u + 1u].xyz - BVHTriangles[SecondaryTriangleIndex * 4u].xyz,
-                BVHTriangles[SecondaryTriangleIndex * 4u + 2u].xyz - BVHTriangles[SecondaryTriangleIndex * 4u].xyz));
+            float3 SecondaryNormal = ComputeTriangleGeometricNormal(
+                BVHTriangles[SecondaryTriangleIndex * 4u + 0u].xyz,
+                BVHTriangles[SecondaryTriangleIndex * 4u + 1u].xyz,
+                BVHTriangles[SecondaryTriangleIndex * 4u + 2u].xyz);
             if (dot(SecondaryNormal, SecondaryDirection) > 0.0f)
             {
                 SecondaryNormal = -SecondaryNormal;
@@ -590,7 +617,7 @@ float3 TraceDeterministicDiffuseBounce(
             float3 SecondaryIndirect = 0.0f;
             // No diffuse albedo means no reflected tertiary contribution.
             // Preserve direct/emissive radiance, but skip four closest-hit rays.
-            if (any(SecondaryBaseColor > 1.0e-6f))
+            if (dot(SecondaryNormal, SecondaryNormal) > 0.0f && any(SecondaryBaseColor > 1.0e-6f))
             {
                 SecondaryIndirect = SecondaryBaseColor * TraceDeterministicTertiaryBounce(
                     SecondaryHitPosition,
@@ -777,7 +804,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         float3 HitA = BVHTriangles[HitTriangleBase + 0u].xyz;
         float3 HitB = BVHTriangles[HitTriangleBase + 1u].xyz;
         float3 HitC = BVHTriangles[HitTriangleBase + 2u].xyz;
-        float3 GeometricNormal = normalize(cross(HitB - HitA, HitC - HitA));
+        float3 GeometricNormal = ComputeTriangleGeometricNormal(HitA, HitB, HitC);
         if (dot(GeometricNormal, Direction) > 0.0f)
         {
             GeometricNormal = -GeometricNormal;
@@ -790,7 +817,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             BVHTriangles[HitTriangleBase + 1u].w,
             BVHTriangles[HitTriangleBase + 2u].w) * GIIntensity;
 
-        if (bHasDirectionalLight != 0u)
+        if (dot(GeometricNormal, GeometricNormal) > 0.0f && bHasDirectionalLight != 0u)
         {
             float3 ToLight = normalize(DirectionalLightDirection.xyz);
             float NdotL = saturate(dot(GeometricNormal, ToLight));
@@ -811,9 +838,12 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         // One deterministic diffuse bounce: secondary rays evaluate direct
         // and emissive radiance at the next surface, then the primary hit
         // reflects their average according to its diffuse base color.
-        float3 IncomingBounceRadiance = TraceDeterministicDiffuseBounce(
-            HitPosition, GeometricNormal, ClosestTriangleIndex);
-        HitIndirectRadiance = HitBaseColor * IncomingBounceRadiance;
+        if (dot(GeometricNormal, GeometricNormal) > 0.0f)
+        {
+            float3 IncomingBounceRadiance = TraceDeterministicDiffuseBounce(
+                HitPosition, GeometricNormal, ClosestTriangleIndex);
+            HitIndirectRadiance = HitBaseColor * IncomingBounceRadiance;
+        }
     }
 
     RadianceUAV[Pixel] = float4(
