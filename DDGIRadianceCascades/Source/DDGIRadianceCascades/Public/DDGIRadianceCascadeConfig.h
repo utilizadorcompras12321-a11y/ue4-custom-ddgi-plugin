@@ -12,6 +12,27 @@
  * it does not perform scene tracing or allocate GPU resources.
  */
 USTRUCT(BlueprintType)
+struct FDDGIRadianceCascadeSlice
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Radiance Cascades")
+	int32 CascadeIndex = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Radiance Cascades", meta = (Units = "cm"))
+	float StartDistance = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Radiance Cascades", meta = (Units = "cm"))
+	float EndDistance = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Radiance Cascades")
+	int32 RayCount = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Radiance Cascades")
+	int32 StorageOffset = 0;
+};
+
+USTRUCT(BlueprintType)
 struct FDDGIRadianceCascadeConfig
 {
 	GENERATED_BODY()
@@ -23,7 +44,7 @@ struct FDDGIRadianceCascadeConfig
 	int32 BaseRayCount = 6;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radiance Cascades", meta = (ClampMin = "1", ClampMax = "4"))
-	int32 RaySplitFactor = 4;
+	int32 RaySplitFactor = 2;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radiance Cascades", meta = (ClampMin = "1.0"))
 	float BaseSegmentLength = 250.0f;
@@ -102,5 +123,29 @@ struct FDDGIRadianceCascadeConfig
 		return FMath::Min(
 			Start + GetCascadeSegmentLength(SafeIndex),
 			FMath::Max(1.0f, MaxTraceDistance));
+	}
+
+	// Builds the packed per-probe cascade table consumed later by GPU upload.
+	FORCEINLINE void BuildCascadeSlices(TArray<FDDGIRadianceCascadeSlice>& OutSlices) const
+	{
+		OutSlices.Reset(GetSafeCascadeCount());
+
+		for (int32 Index = 0; Index < GetSafeCascadeCount(); ++Index)
+		{
+			FDDGIRadianceCascadeSlice& Slice = OutSlices.AddDefaulted_GetRef();
+			Slice.CascadeIndex = Index;
+			Slice.StartDistance = GetCascadeStartDistance(Index);
+			Slice.EndDistance = GetCascadeEndDistance(Index);
+			Slice.RayCount = GetRayCount(Index);
+			Slice.StorageOffset = GetRayStorageOffset(Index);
+		}
+	}
+
+	// Current logical format stores one float4 per ray (radiance + hit distance).
+	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 16) const
+	{
+		return static_cast<int64>(FMath::Max(0, ProbeCount)) *
+			static_cast<int64>(GetTotalRayCount()) *
+			static_cast<int64>(FMath::Max(1, BytesPerRay));
 	}
 };
