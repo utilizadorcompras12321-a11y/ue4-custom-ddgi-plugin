@@ -87,6 +87,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 Direction = normalize(DirectionsTexture.Load(int3(Pixel, 0)).xyz);
     float ClosestHit = MaxTraceDistance;
     bool bHit = false;
+    uint ClosestTriangleIndex = 0u;
 
     uint Stack[64];
     uint StackSize = 0u;
@@ -136,6 +137,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                     HitDistance) && HitDistance < ClosestHit)
                 {
                     ClosestHit = HitDistance;
+                    ClosestTriangleIndex = TriangleIndex;
                     bHit = true;
                 }
             }
@@ -164,6 +166,16 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 
     float3 BackgroundRadiance = StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity * BackgroundFade;
-    // Hit radiance remains zero until material/emissive and direct-light sampling are implemented.
-    RadianceUAV[Pixel] = float4(bHit ? 0.0f : BackgroundRadiance, 1.0f);
+    float3 HitEmissiveRadiance = 0.0f;
+    if (bHit)
+    {
+        uint HitTriangleBase = ClosestTriangleIndex * 3u;
+        HitEmissiveRadiance = float3(
+            BVHTriangles[HitTriangleBase + 0u].w,
+            BVHTriangles[HitTriangleBase + 1u].w,
+            BVHTriangles[HitTriangleBase + 2u].w) * GIIntensity;
+    }
+
+    // Non-emissive surface response and direct lighting are not implemented yet.
+    RadianceUAV[Pixel] = float4(bHit ? HitEmissiveRadiance : BackgroundRadiance, 1.0f);
 }

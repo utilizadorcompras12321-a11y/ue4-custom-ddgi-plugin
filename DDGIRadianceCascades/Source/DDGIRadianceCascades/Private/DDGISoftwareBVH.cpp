@@ -6,6 +6,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "StaticMeshResources.h"
+#include "Materials/MaterialInterface.h"
 
 #include <algorithm>
 
@@ -19,6 +20,7 @@ namespace
 		FVector Centroid;
 		FVector BoundsMin;
 		FVector BoundsMax;
+		FVector EmissiveRadiance = FVector::ZeroVector;
 	};
 
 	struct FDDGISoftwareBVHNode
@@ -185,6 +187,45 @@ void DDGISoftwareBVH::BuildStaticWorld(
 			const int32 ComponentTriangleCount = static_cast<int32>(IndexCount / 3);
 			bool bAddedAnyTriangle = false;
 
+			// Resolve each triangle's material from the LOD section ranges.
+			// Only the explicit DDGI emissive parameter is sampled here; the
+			// software BVH does not evaluate arbitrary material graphs.
+			TArray<int32> TriangleMaterialIndices;
+			TriangleMaterialIndices.Init(INDEX_NONE, ComponentTriangleCount);
+			for (const FStaticMeshSection& Section : LOD.Sections)
+			{
+				const int32 FirstSectionTriangle = static_cast<int32>(Section.FirstIndex / 3u);
+				const int32 EndSectionTriangle = FMath::Min(
+					FirstSectionTriangle + static_cast<int32>(Section.NumTriangles),
+					ComponentTriangleCount);
+				for (int32 SectionTriangle = FirstSectionTriangle;
+					SectionTriangle < EndSectionTriangle; ++SectionTriangle)
+				{
+					TriangleMaterialIndices[SectionTriangle] = static_cast<int32>(Section.MaterialIndex);
+				}
+			}
+
+			TArray<FVector> MaterialEmissiveRadiance;
+			MaterialEmissiveRadiance.Init(FVector::ZeroVector, Component->GetNumMaterials());
+			const FMaterialParameterInfo EmissiveParameterInfo(FName(TEXT("DDGI_EmissiveRadiance")));
+			for (int32 MaterialIndex = 0; MaterialIndex < Component->GetNumMaterials(); ++MaterialIndex)
+			{
+				UMaterialInterface* Material = Component->GetMaterial(MaterialIndex);
+				if (!Material)
+				{
+					continue;
+				}
+
+				FLinearColor EmissiveColor = FLinearColor::Black;
+				if (Material->GetVectorParameterValue(EmissiveParameterInfo, EmissiveColor))
+				{
+					MaterialEmissiveRadiance[MaterialIndex] = FVector(
+						FMath::Max(0.0f, EmissiveColor.R),
+						FMath::Max(0.0f, EmissiveColor.G),
+						FMath::Max(0.0f, EmissiveColor.B));
+				}
+			}
+
 			for (int32 TriangleIndex = 0; TriangleIndex < ComponentTriangleCount; ++TriangleIndex)
 			{
 				if (Triangles.Num() >= MaxTriangleCount)
@@ -223,6 +264,13 @@ void DDGISoftwareBVH::BuildStaticWorld(
 				Triangle.B = B;
 				Triangle.C = C;
 				Triangle.Centroid = (A + B + C) / 3.0f;
+				const int32 MaterialIndex = TriangleMaterialIndices.IsValidIndex(TriangleIndex)
+					? TriangleMaterialIndices[TriangleIndex]
+					: INDEX_NONE;
+				if (MaterialEmissiveRadiance.IsValidIndex(MaterialIndex))
+				{
+					Triangle.EmissiveRadiance = MaterialEmissiveRadiance[MaterialIndex];
+				}
 				Triangle.BoundsMin = FVector(FLT_MAX, FLT_MAX, FLT_MAX);
 				Triangle.BoundsMax = FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, A);
@@ -261,9 +309,10 @@ void DDGISoftwareBVH::BuildStaticWorld(
 	OutPackedTriangles.Reserve(Triangles.Num() * 3);
 	for (const FDDGISoftwareTriangle& Triangle : Triangles)
 	{
-		OutPackedTriangles.Add(PackVector(Triangle.A));
-		OutPackedTriangles.Add(PackVector(Triangle.B));
-		OutPackedTriangles.Add(PackVector(Triangle.C));
+		// XYZ stores positions; W stores the corresponding emissive channel.
+		OutPackedTriangles.Add(FVector4(Triangle.A.X, Triangle.A.Y, Triangle.A.Z, Triangle.EmissiveRadiance.X));
+		OutPackedTriangles.Add(FVector4(Triangle.B.X, Triangle.B.Y, Triangle.B.Z, Triangle.EmissiveRadiance.Y));
+		OutPackedTriangles.Add(FVector4(Triangle.C.X, Triangle.C.Y, Triangle.C.Z, Triangle.EmissiveRadiance.Z));
 	}
 
 	OutPackedNodes.Reserve(Nodes.Num() * 3);
