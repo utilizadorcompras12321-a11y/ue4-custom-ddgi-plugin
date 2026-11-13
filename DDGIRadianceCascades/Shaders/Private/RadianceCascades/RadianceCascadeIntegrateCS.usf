@@ -7,7 +7,7 @@ uint TotalRaysPerProbe;
 uint CascadeStorageOffset;
 uint CascadeRayCount;
 uint NextCascadeStorageOffset;
-uint RaySplitFactor;
+uint EffectiveSplitFactor;
 
 Texture2D<float4> InputRadianceTexture;
 Texture2D<float> HitDistanceTexture;
@@ -27,7 +27,7 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
     float4 Result = InputRadianceTexture.Load(int3(Pixel, 0));
 
-    const uint SafeSplitFactor = max(RaySplitFactor, 1u);
+    const uint SafeSplitFactor = max(EffectiveSplitFactor, 1u);
     const bool bIsTargetCascadeRay =
         PackedRayIndex >= CascadeStorageOffset &&
         PackedRayIndex < CascadeStorageOffset + CascadeRayCount;

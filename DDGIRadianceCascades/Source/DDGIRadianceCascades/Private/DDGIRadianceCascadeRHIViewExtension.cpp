@@ -23,7 +23,7 @@ public:
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
 		CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
 		BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
-		RaySplitFactor.Bind(Initializer.ParameterMap, TEXT("RaySplitFactor"));
+		EffectiveSplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
 		TextureWidth.Bind(Initializer.ParameterMap, TEXT("TextureWidth"));
 		TotalTexels.Bind(Initializer.ParameterMap, TEXT("TotalTexels"));
 		DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
@@ -46,7 +46,7 @@ public:
 		Ar << TotalRaysPerProbe;
 		Ar << CascadeCount;
 		Ar << BaseRayCount;
-		Ar << RaySplitFactor;
+		Ar << EffectiveSplitFactor;
 		Ar << TextureWidth;
 		Ar << TotalTexels;
 		Ar << DispatchGroupsX;
@@ -80,7 +80,7 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
-		SetShaderValue(RHICmdList, ShaderRHI, RaySplitFactor, InRaySplitFactor);
+		SetShaderValue(RHICmdList, ShaderRHI, EffectiveSplitFactor, InEffectiveSplitFactor);
 		SetShaderValue(RHICmdList, ShaderRHI, TextureWidth, InTextureWidth);
 		SetShaderValue(RHICmdList, ShaderRHI, TotalTexels, InTotalTexels);
 		SetShaderValue(RHICmdList, ShaderRHI, DispatchGroupsX, InDispatchGroupsX);
@@ -408,7 +408,7 @@ public:
 		uint32 InCascadeStorageOffset,
 		uint32 InCascadeRayCount,
 		uint32 InNextCascadeStorageOffset,
-		uint32 InRaySplitFactor)
+		uint32 InEffectiveSplitFactor)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 		const uint32 InTextureWidth = 4096u;
@@ -459,7 +459,7 @@ private:
 	FShaderParameter CascadeStorageOffset;
 	FShaderParameter CascadeRayCount;
 	FShaderParameter NextCascadeStorageOffset;
-	FShaderParameter RaySplitFactor;
+	FShaderParameter EffectiveSplitFactor;
 	FShaderResourceParameter InputRadianceTexture;
 	FShaderResourceParameter HitDistanceTexture;
 	FShaderResourceParameter OutputRadianceUAV;
@@ -661,7 +661,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 				static_cast<uint32>(Config.RadianceCascades.GetRayStorageOffset(CascadeIndex)),
 				static_cast<uint32>(Config.RadianceCascades.GetRayCount(CascadeIndex)),
 				static_cast<uint32>(Config.RadianceCascades.GetRayStorageOffset(CascadeIndex + 1)),
-				RaySplitFactor);
+				static_cast<uint32>(FMath::Max(1,
+					Config.RadianceCascades.GetRayCount(CascadeIndex + 1) /
+					FMath::Max(1, Config.RadianceCascades.GetRayCount(CascadeIndex)))));
 			DispatchComputeShader(RHICmdList, *IntegrateShader, IntegrationGroups, IntegrationGroupsY, 1);
 			IntegrateShader->UnbindResources(RHICmdList);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, CurrentOutputRadiance);
