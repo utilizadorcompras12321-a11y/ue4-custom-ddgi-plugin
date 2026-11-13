@@ -70,33 +70,68 @@ float3 ComputeTriangleGeometricNormal(float3 A, float3 B, float3 C)
     return ScaledCross * rsqrt(NormalLengthSquared);
 }
 
-bool IntersectBounds(float3 Origin, float3 Direction, float3 BoundsMin, float3 BoundsMax, float MaxDistance)
+// Update a ray interval against one AABB slab. Exact zero is the only
+// parallel case: treating small non-zero directions as parallel can miss a
+// valid hit when the ray starts just outside the slab.
+bool UpdateSlabInterval(
+    float RayOrigin,
+    float RayDirection,
+    float SlabMin,
+    float SlabMax,
+    inout float NearDistance,
+    inout float FarDistance)
 {
-    // A nearly parallel ray can only intersect this slab when its origin
-    // already lies inside the slab. Reject the other case explicitly instead
-    // of relying on a large reciprocal that can overflow or misclassify it.
-    const float DirectionEpsilon = 1.0e-8f;
-    if ((abs(Direction.x) < DirectionEpsilon && (Origin.x < BoundsMin.x || Origin.x > BoundsMax.x)) ||
-        (abs(Direction.y) < DirectionEpsilon && (Origin.y < BoundsMin.y || Origin.y > BoundsMax.y)) ||
-        (abs(Direction.z) < DirectionEpsilon && (Origin.z < BoundsMin.z || Origin.z > BoundsMax.z)))
+    if (RayDirection == 0.0f)
+    {
+        return RayOrigin >= SlabMin && RayOrigin <= SlabMax;
+    }
+
+    float T0 = (SlabMin - RayOrigin) / RayDirection;
+    float T1 = (SlabMax - RayOrigin) / RayDirection;
+    if (!isfinite(T0) || !isfinite(T1))
     {
         return false;
     }
 
-    float3 SafeDirection = Direction;
-    SafeDirection.x = abs(SafeDirection.x) < DirectionEpsilon ? (SafeDirection.x < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.x;
-    SafeDirection.y = abs(SafeDirection.y) < DirectionEpsilon ? (SafeDirection.y < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.y;
-    SafeDirection.z = abs(SafeDirection.z) < DirectionEpsilon ? (SafeDirection.z < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.z;
-    float3 InverseDirection = rcp(SafeDirection);
-    float3 T0 = (BoundsMin - Origin) * InverseDirection;
-    float3 T1 = (BoundsMax - Origin) * InverseDirection;
-    float3 TMin = min(T0, T1);
-    float3 TMax = max(T0, T1);
-    float NearDistance = max(max(TMin.x, TMin.y), max(TMin.z, 0.0f));
-    float FarDistance = min(min(TMax.x, TMax.y), min(TMax.z, MaxDistance));
+    NearDistance = max(NearDistance, min(T0, T1));
+    FarDistance = min(FarDistance, max(T0, T1));
     return FarDistance >= NearDistance;
 }
 
+bool IntersectBoundsInterval(
+    float3 Origin,
+    float3 Direction,
+    float3 BoundsMin,
+    float3 BoundsMax,
+    float MaxDistance,
+    out float NearDistance)
+{
+    NearDistance = 0.0f;
+    if (!all(isfinite(Origin)) || !all(isfinite(Direction)) ||
+        !all(isfinite(BoundsMin)) || !all(isfinite(BoundsMax)) ||
+        any(BoundsMin > BoundsMax) ||
+        !isfinite(MaxDistance) || MaxDistance <= 0.0f)
+    {
+        return false;
+    }
+
+    float FarDistance = MaxDistance;
+    if (!UpdateSlabInterval(Origin.x, Direction.x, BoundsMin.x, BoundsMax.x, NearDistance, FarDistance) ||
+        !UpdateSlabInterval(Origin.y, Direction.y, BoundsMin.y, BoundsMax.y, NearDistance, FarDistance) ||
+        !UpdateSlabInterval(Origin.z, Direction.z, BoundsMin.z, BoundsMax.z, NearDistance, FarDistance))
+    {
+        return false;
+    }
+
+    return FarDistance >= NearDistance;
+}
+
+bool IntersectBounds(float3 Origin, float3 Direction, float3 BoundsMin, float3 BoundsMax, float MaxDistance)
+{
+    float NearDistance;
+    return IntersectBoundsInterval(
+        Origin, Direction, BoundsMin, BoundsMax, MaxDistance, NearDistance);
+}
 
 bool IntersectBoundsWithNear(
     float3 Origin,
@@ -106,28 +141,10 @@ bool IntersectBoundsWithNear(
     float MaxDistance,
     out float NearDistance)
 {
-    const float DirectionEpsilon = 1.0e-8f;
-    if ((abs(Direction.x) < DirectionEpsilon && (Origin.x < BoundsMin.x || Origin.x > BoundsMax.x)) ||
-        (abs(Direction.y) < DirectionEpsilon && (Origin.y < BoundsMin.y || Origin.y > BoundsMax.y)) ||
-        (abs(Direction.z) < DirectionEpsilon && (Origin.z < BoundsMin.z || Origin.z > BoundsMax.z)))
-    {
-        NearDistance = 0.0f;
-        return false;
-    }
-
-    float3 SafeDirection = Direction;
-    SafeDirection.x = abs(SafeDirection.x) < DirectionEpsilon ? (SafeDirection.x < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.x;
-    SafeDirection.y = abs(SafeDirection.y) < DirectionEpsilon ? (SafeDirection.y < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.y;
-    SafeDirection.z = abs(SafeDirection.z) < DirectionEpsilon ? (SafeDirection.z < 0.0f ? -DirectionEpsilon : DirectionEpsilon) : SafeDirection.z;
-    float3 InverseDirection = rcp(SafeDirection);
-    float3 T0 = (BoundsMin - Origin) * InverseDirection;
-    float3 T1 = (BoundsMax - Origin) * InverseDirection;
-    float3 TMin = min(T0, T1);
-    float3 TMax = max(T0, T1);
-    NearDistance = max(max(TMin.x, TMin.y), max(TMin.z, 0.0f));
-    float FarDistance = min(min(TMax.x, TMax.y), min(TMax.z, MaxDistance));
-    return FarDistance >= NearDistance;
+    return IntersectBoundsInterval(
+        Origin, Direction, BoundsMin, BoundsMax, MaxDistance, NearDistance);
 }
+
 
 bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, float3 C, out float HitDistance)
 {
