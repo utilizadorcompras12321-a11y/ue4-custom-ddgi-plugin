@@ -1,0 +1,68 @@
+#ifndef DDGI_RADIANCE_CASCADE_LAYOUT_USH
+#define DDGI_RADIANCE_CASCADE_LAYOUT_USH
+
+// Mirrors FDDGIRadianceCascadeConfig. Cascade intervals are disjoint;
+// cascade N covers only [start(N), end(N)] and never re-integrates earlier ranges.
+
+float DDGIRadianceCascadeSegmentLength(
+	int CascadeIndex,
+	float BaseSegmentLength,
+	float CascadeScale)
+{
+	return max(BaseSegmentLength, 1.0) *
+		pow(max(CascadeScale, 1.01), (float)max(CascadeIndex, 0));
+}
+
+float DDGIRadianceCascadeStartDistance(
+	int CascadeIndex,
+	float BaseSegmentLength,
+	float CascadeScale)
+{
+	float StartDistance = 0.0;
+	[loop]
+	for (int Index = 0; Index < CascadeIndex; ++Index)
+	{
+		StartDistance += DDGIRadianceCascadeSegmentLength(
+			Index, BaseSegmentLength, CascadeScale);
+	}
+	return StartDistance;
+}
+
+float2 DDGIRadianceCascadeDistanceInterval(
+	int CascadeIndex,
+	float BaseSegmentLength,
+	float CascadeScale,
+	float MaxTraceDistance)
+{
+	float StartDistance = DDGIRadianceCascadeStartDistance(
+		CascadeIndex, BaseSegmentLength, CascadeScale);
+	float EndDistance = StartDistance +
+		DDGIRadianceCascadeSegmentLength(
+			CascadeIndex, BaseSegmentLength, CascadeScale);
+	return float2(min(StartDistance, MaxTraceDistance),
+		min(EndDistance, MaxTraceDistance));
+}
+
+uint DDGIRadianceCascadeRayCount(
+	uint CascadeIndex,
+	uint BaseRayCount,
+	uint RaySplitFactor)
+{
+	uint Count = max(BaseRayCount, 1u);
+	uint Split = clamp(RaySplitFactor, 1u, 4u);
+	[loop]
+	for (uint Index = 0u; Index < CascadeIndex; ++Index)
+	{
+		Count = min(Count * Split, 65536u);
+	}
+	return Count;
+}
+
+uint DDGIRadianceCascadeParentRayIndex(
+	uint ChildRayIndex,
+	uint RaySplitFactor)
+{
+	return ChildRayIndex / max(RaySplitFactor, 1u);
+}
+
+#endif // DDGI_RADIANCE_CASCADE_LAYOUT_USH

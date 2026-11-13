@@ -21,6 +21,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "0.0", Units = "cm"))
 	float DynamicGIDistance = 10000.0f;
 
+	// Radiance Cascades layout. These settings define the cascade hierarchy,
+	// not the scene tracing backend.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1", ClampMax = "8"))
+	int32 CascadeCount = 5;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 BaseRayCount = 6;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1", ClampMax = "4"))
+	int32 RaySplitFactor = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1.0", Units = "cm"))
+	float BaseSegmentLength = 250.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1.01"))
+	float CascadeScale = 2.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", Units = "cm"))
 	float ProbeSpacing = 200.0f;
 
