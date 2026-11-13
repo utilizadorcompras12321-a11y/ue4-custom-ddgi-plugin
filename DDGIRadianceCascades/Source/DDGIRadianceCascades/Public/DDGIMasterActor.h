@@ -4,7 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "DDGIMasterActor.generated.h"
 
-UCLASS(Blueprintable, ClassGroup = (Rendering), meta = (DisplayName = "DDGI Master Actor"))
+UCLASS(Blueprintable, ClassGroup = (Rendering), meta = (DisplayName = "Radiance Cascades Master Actor"))
 class DDGIRADIANCECASCADES_API ADDGIMasterActor : public AActor
 {
 	GENERATED_BODY()

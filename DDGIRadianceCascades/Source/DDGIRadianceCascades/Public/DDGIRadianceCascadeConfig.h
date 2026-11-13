@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DDGIRadianceCascadeConfig.generated.h"
 
 /**
  * World-level Radiance Cascades layout.
@@ -11,12 +12,14 @@
  */
 struct FDDGIRadianceCascadeConfig
 {
-	int32 CascadeCount = 5;
-	int32 BaseRayCount = 6;
-	int32 RaySplitFactor = 4;
-	float BaseSegmentLength = 250.0f;
-	float CascadeScale = 2.0f;
-	float MaxTraceDistance = 7750.0f;
+	GENERATED_BODY()
+
+	UPROPERTY() int32 CascadeCount = 5;
+	UPROPERTY() int32 BaseRayCount = 6;
+	UPROPERTY() int32 RaySplitFactor = 4;
+	UPROPERTY() float BaseSegmentLength = 250.0f;
+	UPROPERTY() float CascadeScale = 2.0f;
+	UPROPERTY() float MaxTraceDistance = 7750.0f;
 
 	FORCEINLINE int32 GetSafeCascadeCount() const
 	{
