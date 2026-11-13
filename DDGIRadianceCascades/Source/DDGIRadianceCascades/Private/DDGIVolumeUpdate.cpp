@@ -52,9 +52,12 @@ class FDDGIRadianceCascadeInitializeCS : public FGlobalShader
         SHADER_PARAMETER(uint32, TextureWidth)
         SHADER_PARAMETER(uint32, TotalTexels)
         SHADER_PARAMETER(uint32, DispatchGroupsX)
+        SHADER_PARAMETER(uint32, ProbeCount)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ProbePositionsTexture)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, DirectionsUAV)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RadianceUAV)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, HitDistanceUAV)
+        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RayOriginsUAV)
     END_SHADER_PARAMETER_STRUCT()
 
     static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -564,8 +567,13 @@ namespace DDGIVolumeUpdate
             FRDGTextureRef DirectionsTexture = nullptr;
             FRDGTextureRef RadianceTexture = nullptr;
             FRDGTextureRef HitDistanceTexture = nullptr;
+            FRDGTextureRef RayOriginsTexture = nullptr;
+            FRDGTextureRef ProbePositionsTexture = nullptr;
+            uint32 ProbeCount = 0;
             if (DDGIGetRadianceCascadeInitializationTextures_RenderThread(
-                GraphBuilder, &Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture))
+                GraphBuilder, &Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture, RayOriginsTexture) &&
+                DDGIGetRadianceCascadeProbePositions_RenderThread(
+                    GraphBuilder, &Scene, ProbePositionsTexture, ProbeCount))
             {
                 FDDGIRadianceCascadeInitializeCS::FParameters* PassParameters =
                     GraphBuilder.AllocParameters<FDDGIRadianceCascadeInitializeCS::FParameters>();
@@ -574,11 +582,14 @@ namespace DDGIVolumeUpdate
                 PassParameters->BaseRayCount = static_cast<uint32>(FMath::Clamp(RadianceCascadeConfig.RadianceCascades.BaseRayCount, 1, 64));
                 PassParameters->RaySplitFactor = static_cast<uint32>(FMath::Clamp(RadianceCascadeConfig.RadianceCascades.RaySplitFactor, 1, 4));
                 PassParameters->TextureWidth = 4096;
-                PassParameters->TotalTexels = static_cast<uint32>(RadianceCascadeConfig.MaxActiveProbes) * PassParameters->TotalRaysPerProbe;
+                PassParameters->ProbeCount = ProbeCount;
+                PassParameters->ProbePositionsTexture = ProbePositionsTexture;
+                PassParameters->TotalTexels = ProbeCount * PassParameters->TotalRaysPerProbe;
                 PassParameters->DispatchGroupsX = FMath::Min(FMath::DivideAndRoundUp(PassParameters->TotalTexels, 64u), 65535u);
                 PassParameters->DirectionsUAV = GraphBuilder.CreateUAV(DirectionsTexture);
                 PassParameters->RadianceUAV = GraphBuilder.CreateUAV(RadianceTexture);
                 PassParameters->HitDistanceUAV = GraphBuilder.CreateUAV(HitDistanceTexture);
+                PassParameters->RayOriginsUAV = GraphBuilder.CreateUAV(RayOriginsTexture);
 
                 TShaderMapRef<FDDGIRadianceCascadeInitializeCS> ComputeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
                 const uint32 GroupCountY = FMath::DivideAndRoundUp(

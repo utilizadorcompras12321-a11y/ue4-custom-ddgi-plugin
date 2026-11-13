@@ -17,6 +17,7 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> Directions;
 		TRefCountPtr<IPooledRenderTarget> Radiance;
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
+		TRefCountPtr<IPooledRenderTarget> RayOrigins;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
 		bool bNeedsInitialization = true;
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
@@ -30,6 +31,7 @@ namespace
 			Directions.SafeRelease();
 			Radiance.SafeRelease();
 			HitDistance.SafeRelease();
+			RayOrigins.SafeRelease();
 			ProbePositions.SafeRelease();
 			Dimensions = FIntPoint::ZeroValue;
 			ProbePositionDimensions = FIntPoint::ZeroValue;
@@ -98,8 +100,13 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             TEXT("DDGIRadianceCascade_Radiance"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, DistanceDesc, Storage.HitDistance,
             TEXT("DDGIRadianceCascade_HitDistance"), ERenderTargetTransience::NonTransient);
+        const FPooledRenderTargetDesc OriginDesc = FPooledRenderTargetDesc::Create2DDesc(
+            RequiredDimensions, PF_A32B32G32R32F, FClearValueBinding::Black, TexCreate_None,
+            TexCreate_ShaderResource | TexCreate_UAV, false);
+        GRenderTargetPool.FindFreeElement(RHICmdList, OriginDesc, Storage.RayOrigins,
+            TEXT("DDGIRadianceCascade_RayOrigins"), ERenderTargetTransience::NonTransient);
 
-        if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.HitDistance.IsValid())
+        if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.HitDistance.IsValid() || !Storage.RayOrigins.IsValid())
         {
             Storage.Release();
             UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate persistent GPU textures."));
@@ -145,6 +152,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbePositions->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D();
     if (ProbePositionRHI.IsValid())
     {
+        Storage.bNeedsInitialization = true;
         const FUpdateTextureRegion2D UpdateRegion(
             0, 0, 0, 0, ProbePositionDimensions.X, ProbePositionDimensions.Y);
         RHICmdList.UpdateTexture2D(
@@ -176,16 +184,18 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     const FSceneInterface* Scene,
     FRDGTexture*& OutDirections,
     FRDGTexture*& OutRadiance,
-    FRDGTexture*& OutHitDistance)
+    FRDGTexture*& OutHitDistance,
+    FRDGTexture*& OutRayOrigins)
 {
     check(IsInRenderingThread() || IsInParallelRenderingThread());
     OutDirections = nullptr;
     OutRadiance = nullptr;
     OutHitDistance = nullptr;
+    OutRayOrigins = nullptr;
 
     FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || !Storage->bNeedsInitialization ||
-        !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() || !Storage->HitDistance.IsValid())
+        !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() || !Storage->HitDistance.IsValid() || !Storage->RayOrigins.IsValid())
     {
         return false;
     }
@@ -193,8 +203,9 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     OutDirections = GraphBuilder.RegisterExternalTexture(Storage->Directions);
     OutRadiance = GraphBuilder.RegisterExternalTexture(Storage->Radiance);
     OutHitDistance = GraphBuilder.RegisterExternalTexture(Storage->HitDistance);
+    OutRayOrigins = GraphBuilder.RegisterExternalTexture(Storage->RayOrigins);
     Storage->bNeedsInitialization = false;
-    return OutDirections && OutRadiance && OutHitDistance;
+    return OutDirections && OutRadiance && OutHitDistance && OutRayOrigins;
 }
 
 

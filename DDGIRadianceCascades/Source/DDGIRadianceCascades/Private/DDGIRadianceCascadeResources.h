@@ -20,7 +20,8 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     const FSceneInterface* Scene,
     FRDGTextureRef& OutDirections,
     FRDGTextureRef& OutRadiance,
-    FRDGTextureRef& OutHitDistance);
+    FRDGTextureRef& OutHitDistance,
+    FRDGTextureRef& OutRayOrigins);
 
 
 /** Returns the uploaded sparse probe-origin texture for later tracing passes. */
