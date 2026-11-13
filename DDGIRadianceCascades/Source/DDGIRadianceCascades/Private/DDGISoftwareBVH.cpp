@@ -53,7 +53,8 @@ namespace
 		TArray<FDDGISoftwareTriangle>& Triangles,
 		int32 FirstTriangle,
 		int32 TriangleCount,
-		TArray<FDDGISoftwareBVHNode>& Nodes)
+		TArray<FDDGISoftwareBVHNode>& Nodes,
+		int32 Depth = 0)
 	{
 		const int32 NodeIndex = Nodes.AddDefaulted();
 		FVector BoundsMin(FLT_MAX, FLT_MAX, FLT_MAX);
@@ -69,7 +70,9 @@ namespace
 			IncludePoint(CentroidMin, CentroidMax, Triangle.Centroid);
 		}
 
-		if (TriangleCount <= 4)
+		// Keep the worst-case traversal depth below the shader's 64-entry stack.
+		// At the limit, emit a larger leaf rather than risking a dropped child.
+		if (TriangleCount <= 4 || Depth >= 48)
 		{
 			FDDGISoftwareBVHNode& Leaf = Nodes[NodeIndex];
 			Leaf.BoundsMin = BoundsMin;
@@ -167,7 +170,7 @@ namespace
 					continue;
 				}
 				// Prevent pathological, highly unbalanced recursion.
-				if (LCount < TriangleCount / 16 || RCount < TriangleCount / 16)
+				if (LCount * 4 < TriangleCount || RCount * 4 < TriangleCount)
 				{
 					continue;
 				}
@@ -222,8 +225,8 @@ namespace
 		}
 
 		const int32 LeftCount = Middle - FirstTriangle;
-		const int32 LeftChild = BuildNode(Triangles, FirstTriangle, LeftCount, Nodes);
-		const int32 RightChild = BuildNode(Triangles, Middle, TriangleCount - LeftCount, Nodes);
+		const int32 LeftChild = BuildNode(Triangles, FirstTriangle, LeftCount, Nodes, Depth + 1);
+		const int32 RightChild = BuildNode(Triangles, Middle, TriangleCount - LeftCount, Nodes, Depth + 1);
 
 		FDDGISoftwareBVHNode& Node = Nodes[NodeIndex];
 		Node.BoundsMin = BoundsMin;
