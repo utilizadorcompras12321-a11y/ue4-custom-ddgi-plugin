@@ -4,6 +4,7 @@
 #include "RenderingThread.h"
 #include "RHICommandList.h"
 #include "DDGIRadianceCascadeResources.h"
+#include "DDGISoftwareBVH.h"
 
 namespace
 {
@@ -105,6 +106,7 @@ void UDDGIMasterSubsystem::UnregisterMasterActor(ADDGIMasterActor* InActor)
 
 	ActiveMasterActor.Reset();
 	Config = FDDGIMasterConfig();
+	CachedSoftwareBVHTriangleLimit = INDEX_NONE;
 	PublishConfig(false);
 }
 
@@ -141,6 +143,37 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.ProbeCount = Config.ProbePositions.Num();
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.MaxActiveProbes);
 	Config.ProbeUpdateBudget = FMath::Max(0, InActor->ProbeUpdateBudget);
+	Config.MaxSoftwareTriangles = FMath::Max(1, InActor->MaxSoftwareTriangles);
+
+	// Build the immutable static-scene BVH once. Moving the Master Actor only
+	// moves probe origins; it must not rebuild the world geometry every tick.
+	if (!Config.SoftwareBVH.IsValid() || CachedSoftwareBVHTriangleLimit != Config.MaxSoftwareTriangles)
+	{
+		TSharedPtr<FDDGISoftwareBVHData, ESPMode::ThreadSafe> NewBVH =
+			MakeShareable(new FDDGISoftwareBVHData());
+
+		FDDGISoftwareBVHBuildStats BuildStats;
+		DDGISoftwareBVH::BuildStaticWorld(
+			InActor->GetWorld(),
+			Config.MaxSoftwareTriangles,
+			NewBVH->PackedNodes,
+			NewBVH->PackedTriangles,
+			BuildStats);
+
+		NewBVH->IncludedComponents = BuildStats.IncludedComponents;
+		NewBVH->SkippedNoCPUAccess = BuildStats.SkippedNoCPUAccess;
+		NewBVH->SkippedMovable = BuildStats.SkippedMovable;
+		NewBVH->SkippedInstanced = BuildStats.SkippedInstanced;
+		NewBVH->TriangleCount = BuildStats.TriangleCount;
+		NewBVH->NodeCount = BuildStats.NodeCount;
+		Config.SoftwareBVH = NewBVH;
+		CachedSoftwareBVHTriangleLimit = Config.MaxSoftwareTriangles;
+
+		UE_LOG(LogTemp, Log,
+			TEXT("Radiance Cascades software BVH snapshot: %d triangles, %d nodes, %d static components. Skipped: %d without CPU access, %d movable, %d instanced."),
+			NewBVH->TriangleCount, NewBVH->NodeCount, NewBVH->IncludedComponents,
+			NewBVH->SkippedNoCPUAccess, NewBVH->SkippedMovable, NewBVH->SkippedInstanced);
+	}
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;
 	Config.StaticBackgroundIntensity = FMath::Max(0.0f, InActor->StaticBackgroundIntensity);

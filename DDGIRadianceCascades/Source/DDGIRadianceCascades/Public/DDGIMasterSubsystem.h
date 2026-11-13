@@ -8,6 +8,18 @@
 class ADDGIMasterActor;
 class FSceneInterface;
 
+struct FDDGISoftwareBVHData
+{
+	TArray<FVector4> PackedNodes;
+	TArray<FVector4> PackedTriangles;
+	int32 IncludedComponents = 0;
+	int32 SkippedNoCPUAccess = 0;
+	int32 SkippedMovable = 0;
+	int32 SkippedInstanced = 0;
+	int32 TriangleCount = 0;
+	int32 NodeCount = 0;
+};
+
 USTRUCT()
 struct FDDGIMasterConfig
 {
@@ -26,6 +38,8 @@ struct FDDGIMasterConfig
 	UPROPERTY() int32 ProbeCount = 0;
 	UPROPERTY() int32 MaxActiveProbes = 32768;
 	UPROPERTY() int32 ProbeUpdateBudget = 50000;
+	TSharedPtr<FDDGISoftwareBVHData, ESPMode::ThreadSafe> SoftwareBVH;
+	int32 MaxSoftwareTriangles = 250000;
 	UPROPERTY() bool bEnableStaticBackground = true;
 	UPROPERTY() FLinearColor StaticBackgroundColor = FLinearColor(0.025f, 0.035f, 0.055f, 1.0f);
 	UPROPERTY() float StaticBackgroundIntensity = 1.0f;
