@@ -135,9 +135,13 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 	}
 
 	UDirectionalLightComponent* Light = ActiveDirectionalLight.Get();
-	if (!IsValid(Light) || !Light->IsVisible() || Light->Intensity <= 0.0f)
+	const bool bCachedLightBecameUnavailable = ActiveDirectionalLight.IsValid() &&
+		(!Light->IsVisible() || Light->Intensity <= 0.0f);
+	const bool bCachedLightWasDestroyed = !ActiveDirectionalLight.IsValid() && Config.bHasDirectionalLight;
+	if (!bHasSearchedDirectionalLights || bCachedLightBecameUnavailable || bCachedLightWasDestroyed)
 	{
 		ActiveDirectionalLight.Reset();
+		Light = nullptr;
 		float StrongestIntensity = 0.0f;
 		for (TActorIterator<AActor> ActorIt(InActor->GetWorld()); ActorIt; ++ActorIt)
 		{
@@ -159,6 +163,7 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 			}
 		}
 		ActiveDirectionalLight = Light;
+		bHasSearchedDirectionalLights = true;
 	}
 
 	const bool bHadLight = Config.bHasDirectionalLight;

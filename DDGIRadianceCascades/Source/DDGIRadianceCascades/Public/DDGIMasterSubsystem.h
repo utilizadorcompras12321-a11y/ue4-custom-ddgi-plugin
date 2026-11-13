@@ -75,6 +75,7 @@ public:
 private:
 	int32 CachedSoftwareBVHTriangleLimit = INDEX_NONE;
 	TWeakObjectPtr<UDirectionalLightComponent> ActiveDirectionalLight;
+	bool bHasSearchedDirectionalLights = false;
 	bool UpdateDirectionalLighting(const ADDGIMasterActor* InActor);
 	void PublishConfigValuesOnly();
 	void CopyConfigFromActor(const ADDGIMasterActor* InActor);
