@@ -182,6 +182,11 @@ public:
 		BackgroundTransitionStart.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionStart"));
 		BackgroundTransitionEnd.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionEnd"));
 		bEnableStaticBackground.Bind(Initializer.ParameterMap, TEXT("bEnableStaticBackground"));
+
+		DirectionalLightDirection.Bind(Initializer.ParameterMap, TEXT("DirectionalLightDirection"));
+		DirectionalLightColor.Bind(Initializer.ParameterMap, TEXT("DirectionalLightColor"));
+		DirectionalLightIntensity.Bind(Initializer.ParameterMap, TEXT("DirectionalLightIntensity"));
+		bHasDirectionalLight.Bind(Initializer.ParameterMap, TEXT("bHasDirectionalLight"));
 		DirectionsTexture.Bind(Initializer.ParameterMap, TEXT("DirectionsTexture"));
 		RayOriginsTexture.Bind(Initializer.ParameterMap, TEXT("RayOriginsTexture"));
 		BVHNodes.Bind(Initializer.ParameterMap, TEXT("BVHNodes"));
@@ -213,6 +218,11 @@ public:
 		Ar << BackgroundTransitionStart;
 		Ar << BackgroundTransitionEnd;
 		Ar << bEnableStaticBackground;
+
+		Ar << DirectionalLightDirection;
+		Ar << DirectionalLightColor;
+		Ar << DirectionalLightIntensity;
+		Ar << bHasDirectionalLight;
 		Ar << DirectionsTexture;
 		Ar << RayOriginsTexture;
 		Ar << BVHNodes;
@@ -243,7 +253,11 @@ public:
 		const FVector4& InProbeGridOrigin,
 		float InBackgroundTransitionStart,
 		float InBackgroundTransitionEnd,
-		uint32 bInEnableStaticBackground)
+		uint32 bInEnableStaticBackground,
+		const FVector4& InDirectionalLightDirection,
+		const FVector4& InDirectionalLightColor,
+		float InDirectionalLightIntensity,
+		uint32 bInHasDirectionalLight)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 		const uint32 InTextureWidth = 4096;
@@ -262,6 +276,11 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionStart, InBackgroundTransitionStart);
 		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionEnd, InBackgroundTransitionEnd);
 		SetShaderValue(RHICmdList, ShaderRHI, bEnableStaticBackground, bInEnableStaticBackground);
+
+		SetShaderValue(RHICmdList, ShaderRHI, DirectionalLightDirection, InDirectionalLightDirection);
+		SetShaderValue(RHICmdList, ShaderRHI, DirectionalLightColor, InDirectionalLightColor);
+		SetShaderValue(RHICmdList, ShaderRHI, DirectionalLightIntensity, InDirectionalLightIntensity);
+		SetShaderValue(RHICmdList, ShaderRHI, bHasDirectionalLight, bInHasDirectionalLight);
 
 		if (DirectionsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, DirectionsTexture.GetBaseIndex(), DirectionsSRV);
 		if (RayOriginsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, RayOriginsTexture.GetBaseIndex(), OriginsSRV);
@@ -298,6 +317,11 @@ private:
 	FShaderParameter BackgroundTransitionStart;
 	FShaderParameter BackgroundTransitionEnd;
 	FShaderParameter bEnableStaticBackground;
+
+	FShaderParameter DirectionalLightDirection;
+	FShaderParameter DirectionalLightColor;
+	FShaderParameter DirectionalLightIntensity;
+	FShaderParameter bHasDirectionalLight;
 	FShaderResourceParameter DirectionsTexture;
 	FShaderResourceParameter RayOriginsTexture;
 	FShaderResourceParameter BVHNodes;
@@ -448,7 +472,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		Config.StaticBackgroundIntensity, Config.GIIntensity,
 		FVector4(Config.ProbeGridOrigin.X, Config.ProbeGridOrigin.Y, Config.ProbeGridOrigin.Z, 0.0f),
 		Config.BackgroundTransitionStart, Config.BackgroundTransitionEnd,
-		Config.bEnableStaticBackground ? 1u : 0u);
+		Config.bEnableStaticBackground ? 1u : 0u,
+		FVector4(Config.DirectionalLightDirection.X, Config.DirectionalLightDirection.Y, Config.DirectionalLightDirection.Z, 0.0f),
+		FVector4(Config.DirectionalLightColor.R, Config.DirectionalLightColor.G, Config.DirectionalLightColor.B, 0.0f),
+		Config.DirectionalLightIntensity,
+		Config.bHasDirectionalLight ? 1u : 0u);
 	DispatchComputeShader(RHICmdList, *TraceShader, GroupsX, GroupsY, 1);
 	TraceShader->UnbindResources(RHICmdList);
 

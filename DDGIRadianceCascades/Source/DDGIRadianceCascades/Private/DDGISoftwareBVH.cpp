@@ -21,6 +21,7 @@ namespace
 		FVector BoundsMin;
 		FVector BoundsMax;
 		FVector EmissiveRadiance = FVector::ZeroVector;
+		FVector BaseColor = FVector::OneVector;
 	};
 
 	struct FDDGISoftwareBVHNode
@@ -207,6 +208,10 @@ void DDGISoftwareBVH::BuildStaticWorld(
 
 			TArray<FVector> MaterialEmissiveRadiance;
 			MaterialEmissiveRadiance.Init(FVector::ZeroVector, Component->GetNumMaterials());
+
+			TArray<FVector> MaterialBaseColor;
+			MaterialBaseColor.Init(FVector::OneVector, Component->GetNumMaterials());
+			const FMaterialParameterInfo BaseColorParameterInfo(FName(TEXT("DDGI_BaseColor")));
 			const FMaterialParameterInfo EmissiveParameterInfo(FName(TEXT("DDGI_EmissiveRadiance")));
 			for (int32 MaterialIndex = 0; MaterialIndex < Component->GetNumMaterials(); ++MaterialIndex)
 			{
@@ -223,6 +228,14 @@ void DDGISoftwareBVH::BuildStaticWorld(
 						FMath::Max(0.0f, EmissiveColor.R),
 						FMath::Max(0.0f, EmissiveColor.G),
 						FMath::Max(0.0f, EmissiveColor.B));
+				}
+				FLinearColor BaseColorValue = FLinearColor::White;
+				if (Material->GetVectorParameterValue(BaseColorParameterInfo, BaseColorValue))
+				{
+					MaterialBaseColor[MaterialIndex] = FVector(
+						FMath::Max(0.0f, BaseColorValue.R),
+						FMath::Max(0.0f, BaseColorValue.G),
+						FMath::Max(0.0f, BaseColorValue.B));
 				}
 			}
 
@@ -271,6 +284,11 @@ void DDGISoftwareBVH::BuildStaticWorld(
 				{
 					Triangle.EmissiveRadiance = MaterialEmissiveRadiance[MaterialIndex];
 				}
+
+				if (MaterialBaseColor.IsValidIndex(MaterialIndex))
+				{
+					Triangle.BaseColor = MaterialBaseColor[MaterialIndex];
+				}
 				Triangle.BoundsMin = FVector(FLT_MAX, FLT_MAX, FLT_MAX);
 				Triangle.BoundsMax = FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, A);
@@ -313,6 +331,7 @@ void DDGISoftwareBVH::BuildStaticWorld(
 		OutPackedTriangles.Add(FVector4(Triangle.A.X, Triangle.A.Y, Triangle.A.Z, Triangle.EmissiveRadiance.X));
 		OutPackedTriangles.Add(FVector4(Triangle.B.X, Triangle.B.Y, Triangle.B.Z, Triangle.EmissiveRadiance.Y));
 		OutPackedTriangles.Add(FVector4(Triangle.C.X, Triangle.C.Y, Triangle.C.Z, Triangle.EmissiveRadiance.Z));
+		OutPackedTriangles.Add(FVector4(Triangle.BaseColor.X, Triangle.BaseColor.Y, Triangle.BaseColor.Z, 0.0f));
 	}
 
 	OutPackedNodes.Reserve(Nodes.Num() * 3);

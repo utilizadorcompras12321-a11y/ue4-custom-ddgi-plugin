@@ -5,6 +5,7 @@
 #include "RHICommandList.h"
 #include "DDGIRadianceCascadeResources.h"
 #include "DDGISoftwareBVH.h"
+#include "Components/DirectionalLightComponent.h"
 
 namespace
 {
@@ -127,6 +128,39 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 
 	Config.bEnableDynamicGI = InActor->bEnableDynamicGI;
 	Config.GIIntensity = FMath::Max(0.0f, InActor->GIIntensity);
+
+	// Capture the strongest enabled directional light for the first direct-lighting pass.
+	Config.bHasDirectionalLight = false;
+	Config.DirectionalLightIntensity = 0.0f;
+	for (TActorIterator<AActor> ActorIt(InActor->GetWorld()); ActorIt; ++ActorIt)
+	{
+		AActor* LightActor = *ActorIt;
+		if (!IsValid(LightActor))
+		{
+			continue;
+		}
+
+		TArray<UDirectionalLightComponent*> DirectionalLights;
+		LightActor->GetComponents<UDirectionalLightComponent>(DirectionalLights);
+		for (UDirectionalLightComponent* Light : DirectionalLights)
+		{
+			if (!IsValid(Light) || !Light->IsVisible() || Light->Intensity <= 0.0f)
+			{
+				continue;
+			}
+
+			if (Light->Intensity > Config.DirectionalLightIntensity)
+			{
+				const FVector LightForward = Light->GetComponentTransform().GetUnitAxis(EAxis::X);
+				Config.DirectionalLightDirection = -LightForward.GetSafeNormal();
+				Config.DirectionalLightColor = Light->LightColor.ReinterpretAsLinear();
+				// Directional-light intensity is authored in lux. Normalize typical daylight
+				// (about 100,000 lux) to a practical unit radiance scale.
+				Config.DirectionalLightIntensity = FMath::Min(Light->Intensity * 1.0e-5f, 100.0f);
+				Config.bHasDirectionalLight = true;
+			}
+		}
+	}
 	Config.DynamicGIDistance = FMath::Max(0.0f, InActor->DynamicGIDistance);
 	Config.RadianceCascades.CascadeCount = FMath::Clamp(InActor->CascadeCount, 1, 8);
 	Config.RadianceCascades.BaseRayCount = FMath::Clamp(InActor->BaseRayCount, 1, 64);

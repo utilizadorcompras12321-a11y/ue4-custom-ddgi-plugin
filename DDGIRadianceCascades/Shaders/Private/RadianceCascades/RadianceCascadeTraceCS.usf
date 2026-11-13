@@ -16,6 +16,11 @@ float BackgroundTransitionStart;
 float BackgroundTransitionEnd;
 uint bEnableStaticBackground;
 
+float4 DirectionalLightDirection;
+float4 DirectionalLightColor;
+float DirectionalLightIntensity;
+uint bHasDirectionalLight;
+
 Texture2D<float4> DirectionsTexture;
 Texture2D<float4> RayOriginsTexture;
 StructuredBuffer<float4> BVHNodes;
@@ -73,6 +78,68 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
     return HitDistance > Epsilon;
 }
 
+
+bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint IgnoreTriangleIndex)
+{
+    uint Stack[64];
+    uint StackSize = 0u;
+    uint IterationCount = 0u;
+    Stack[StackSize++] = 0u;
+
+    [loop]
+    while (StackSize > 0u && IterationCount < NodeCount)
+    {
+        ++IterationCount;
+        uint NodeIndex = Stack[--StackSize];
+        if (NodeIndex >= NodeCount)
+        {
+            continue;
+        }
+
+        uint NodeBase = NodeIndex * 3u;
+        if (!IntersectBounds(Origin, Direction,
+            BVHNodes[NodeBase + 0u].xyz,
+            BVHNodes[NodeBase + 1u].xyz,
+            MaxDistance))
+        {
+            continue;
+        }
+
+        float4 Metadata = BVHNodes[NodeBase + 2u];
+        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
+        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
+        if (LeafTriangleCount > 0u)
+        {
+            [loop]
+            for (uint LocalTriangle = 0u; LocalTriangle < LeafTriangleCount; ++LocalTriangle)
+            {
+                uint TriangleIndex = FirstTriangle + LocalTriangle;
+                if (TriangleIndex >= TriangleCount || TriangleIndex == IgnoreTriangleIndex)
+                {
+                    continue;
+                }
+
+                uint TriangleBase = TriangleIndex * 4u;
+                float ShadowHitDistance;
+                if (IntersectTriangle(Origin, Direction,
+                    BVHTriangles[TriangleBase + 0u].xyz,
+                    BVHTriangles[TriangleBase + 1u].xyz,
+                    BVHTriangles[TriangleBase + 2u].xyz,
+                    ShadowHitDistance) && ShadowHitDistance < MaxDistance)
+                {
+                    return true;
+                }
+            }
+        }
+        else if (StackSize + 2u <= 64u)
+        {
+            Stack[StackSize++] = (uint)max(Metadata.y, 0.0f);
+            Stack[StackSize++] = (uint)max(Metadata.x, 0.0f);
+        }
+    }
+    return false;
+}
+
 [numthreads(64, 1, 1)]
 void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -127,7 +194,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                     continue;
                 }
 
-                uint TriangleBase = TriangleIndex * 3u;
+                uint TriangleBase = TriangleIndex * 4u;
                 float HitDistance;
                 if (IntersectTriangle(
                     Origin, Direction,
@@ -167,15 +234,45 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     float3 BackgroundRadiance = StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity * BackgroundFade;
     float3 HitEmissiveRadiance = 0.0f;
+    float3 HitDirectRadiance = 0.0f;
     if (bHit)
     {
-        uint HitTriangleBase = ClosestTriangleIndex * 3u;
+        uint HitTriangleBase = ClosestTriangleIndex * 4u;
         HitEmissiveRadiance = float3(
             BVHTriangles[HitTriangleBase + 0u].w,
             BVHTriangles[HitTriangleBase + 1u].w,
             BVHTriangles[HitTriangleBase + 2u].w) * GIIntensity;
+
+        float3 HitA = BVHTriangles[HitTriangleBase + 0u].xyz;
+        float3 HitB = BVHTriangles[HitTriangleBase + 1u].xyz;
+        float3 HitC = BVHTriangles[HitTriangleBase + 2u].xyz;
+        float3 GeometricNormal = normalize(cross(HitB - HitA, HitC - HitA));
+        if (dot(GeometricNormal, Direction) > 0.0f)
+        {
+            GeometricNormal = -GeometricNormal;
+        }
+
+        if (bHasDirectionalLight != 0u)
+        {
+            float3 ToLight = normalize(DirectionalLightDirection.xyz);
+            float NdotL = saturate(dot(GeometricNormal, ToLight));
+            if (NdotL > 0.0f)
+            {
+                float3 HitPosition = Origin + Direction * ClosestHit;
+                float3 ShadowOrigin = HitPosition + GeometricNormal * 1.0f;
+                const float DirectionalShadowDistance = 1000000.0f;
+                const bool bOccluded = TraceAnyHit(
+                    ShadowOrigin, ToLight, DirectionalShadowDistance, ClosestTriangleIndex);
+                if (!bOccluded)
+                {
+                    float3 BaseColor = max(BVHTriangles[HitTriangleBase + 3u].xyz, 0.0f);
+                    HitDirectRadiance = BaseColor * DirectionalLightColor.rgb *
+                        DirectionalLightIntensity * NdotL * (1.0f / 3.14159265f) * GIIntensity;
+                }
+            }
+        }
     }
 
-    // Non-emissive surface response and direct lighting are not implemented yet.
-    RadianceUAV[Pixel] = float4(bHit ? HitEmissiveRadiance : BackgroundRadiance, 1.0f);
+    RadianceUAV[Pixel] = float4(
+        bHit ? (HitEmissiveRadiance + HitDirectRadiance) : BackgroundRadiance, 1.0f);
 }
