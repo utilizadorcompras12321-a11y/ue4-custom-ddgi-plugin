@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "SceneViewExtension.h"
 
+class FRHICommandListImmediate;
+
 class FDDGIRadianceCascadeRHIViewExtension final : public FSceneViewExtensionBase
 {
 public:
