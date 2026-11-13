@@ -140,6 +140,16 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
     float3 BTranslated = B - Origin;
     float3 CTranslated = C - Origin;
 
+    // Reject non-finite inputs before axis selection or projected arithmetic.
+    if (!all(isfinite(ATranslated)) ||
+        !all(isfinite(BTranslated)) ||
+        !all(isfinite(CTranslated)) ||
+        !all(isfinite(Direction)))
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
     float3 AbsDirection = abs(Direction);
     uint DominantAxis = AbsDirection.x > AbsDirection.y
         ? (AbsDirection.x > AbsDirection.z ? 0u : 2u)
@@ -170,6 +180,15 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
     float Cx = CTranslated[AxisX] - ShearX * CTranslated[DominantAxis];
     float Cy = CTranslated[AxisY] - ShearY * CTranslated[DominantAxis];
 
+    if (!isfinite(ShearX) || !isfinite(ShearY) || !isfinite(ScaleZ) ||
+        !isfinite(Ax) || !isfinite(Ay) ||
+        !isfinite(Bx) || !isfinite(By) ||
+        !isfinite(Cx) || !isfinite(Cy))
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
     float U = Cx * By - Cy * Bx;
     float V = Ax * Cy - Ay * Cx;
     float W = Bx * Ay - By * Ax;
@@ -185,7 +204,8 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
     }
 
     float Determinant = U + V + W;
-    if (Determinant == 0.0f)
+    if (!isfinite(U) || !isfinite(V) || !isfinite(W) ||
+        !isfinite(Determinant) || Determinant == 0.0f)
     {
         HitDistance = -1.0f;
         return false;
@@ -195,6 +215,11 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
     float Bz = BTranslated[DominantAxis] * ScaleZ;
     float Cz = CTranslated[DominantAxis] * ScaleZ;
     float ScaledDistance = U * Az + V * Bz + W * Cz;
+    if (!isfinite(Az) || !isfinite(Bz) || !isfinite(Cz) || !isfinite(ScaledDistance))
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
 
     // Test the signed distance before division. This avoids accepting
     // intersections behind the origin for either triangle winding.
@@ -206,7 +231,12 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
     }
 
     HitDistance = ScaledDistance / Determinant;
-    return HitDistance > 0.0f;
+    if (!isfinite(HitDistance) || HitDistance <= 0.0f)
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+    return true;
 }
 
 
