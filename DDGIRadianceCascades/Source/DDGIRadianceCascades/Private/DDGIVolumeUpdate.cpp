@@ -244,13 +244,13 @@ class FDDGIIrradianceBlend : public FGlobalShader
 		// Set to 0 to disable and deadstrip everything related
 		OutEnvironment.SetDefine(TEXT("DDGIIrradianceBlendDebug"), 0);
 
-		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
+		// Typed UAV loads are required by the shared compute filtering passes.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return ShouldCompileRayTracingShadersForProject(Parameters.Platform);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -302,13 +302,13 @@ class FDDGIDistanceBlend : public FGlobalShader
 		// Set to 0 to disable and deadstrip everything related
 		OutEnvironment.SetDefine(TEXT("DDGIDistanceBlendDebug"), 0);
 
-		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
+		// Typed UAV loads are required by the shared compute filtering passes.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return ShouldCompileRayTracingShadersForProject(Parameters.Platform);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -343,13 +343,13 @@ class FDDGIBorderRowUpdate : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
+		// Typed UAV loads are required by the shared compute filtering passes.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return ShouldCompileRayTracingShadersForProject(Parameters.Platform);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -374,13 +374,13 @@ class FDDGIBorderColumnUpdate : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
+		// Typed UAV loads are required by the shared compute filtering passes.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return ShouldCompileRayTracingShadersForProject(Parameters.Platform);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -410,13 +410,13 @@ class FDDGIProbesRelocate : public FGlobalShader
 		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION ? 1 : 0);
 		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_RELOCATION"), 1);
 
-		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
+		// Typed UAV loads are required by the shared compute filtering passes.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return ShouldCompileRayTracingShadersForProject(Parameters.Platform);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -450,13 +450,13 @@ class FDDGIProbesClassify : public FGlobalShader
 
 		OutEnvironment.SetDefine(TEXT("DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION"), 1);
 
-		// needed for a typed UAV load. This already assumes we are raytracing, so should be fine.
+		// Typed UAV loads are required by the shared compute filtering passes.
 		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return ShouldCompileRayTracingShadersForProject(Parameters.Platform);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
