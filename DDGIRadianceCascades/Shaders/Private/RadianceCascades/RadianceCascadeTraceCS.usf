@@ -143,6 +143,187 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
     return false;
 }
 
+
+bool TraceClosestHit(
+    float3 Origin,
+    float3 Direction,
+    float MaxDistance,
+    uint IgnoreTriangleIndex,
+    out float ClosestDistance,
+    out uint ClosestTriangleIndex)
+{
+    ClosestDistance = MaxDistance;
+    ClosestTriangleIndex = 0u;
+    if (NodeCount == 0u || TriangleCount == 0u)
+    {
+        return false;
+    }
+
+    uint Stack[64];
+    uint StackSize = 0u;
+    uint IterationCount = 0u;
+    Stack[StackSize++] = 0u;
+    bool bFoundHit = false;
+
+    [loop]
+    while (StackSize > 0u && IterationCount < NodeCount)
+    {
+        ++IterationCount;
+        uint NodeIndex = Stack[--StackSize];
+        if (NodeIndex >= NodeCount)
+        {
+            continue;
+        }
+
+        uint NodeBase = NodeIndex * 3u;
+        if (!IntersectBounds(Origin, Direction,
+            BVHNodes[NodeBase + 0u].xyz,
+            BVHNodes[NodeBase + 1u].xyz,
+            ClosestDistance))
+        {
+            continue;
+        }
+
+        float4 Metadata = BVHNodes[NodeBase + 2u];
+        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
+        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
+        if (LeafTriangleCount > 0u)
+        {
+            [loop]
+            for (uint LocalTriangle = 0u; LocalTriangle < LeafTriangleCount; ++LocalTriangle)
+            {
+                uint TriangleIndex = FirstTriangle + LocalTriangle;
+                if (TriangleIndex >= TriangleCount || TriangleIndex == IgnoreTriangleIndex)
+                {
+                    continue;
+                }
+
+                uint TriangleBase = TriangleIndex * 4u;
+                float CandidateDistance;
+                if (IntersectTriangle(Origin, Direction,
+                    BVHTriangles[TriangleBase + 0u].xyz,
+                    BVHTriangles[TriangleBase + 1u].xyz,
+                    BVHTriangles[TriangleBase + 2u].xyz,
+                    CandidateDistance) && CandidateDistance < ClosestDistance)
+                {
+                    ClosestDistance = CandidateDistance;
+                    ClosestTriangleIndex = TriangleIndex;
+                    bFoundHit = true;
+                }
+            }
+        }
+        else if (StackSize + 2u <= 64u)
+        {
+            Stack[StackSize++] = (uint)max(Metadata.y, 0.0f);
+            Stack[StackSize++] = (uint)max(Metadata.x, 0.0f);
+        }
+    }
+
+    return bFoundHit;
+}
+
+float3 EvaluateHitSurfaceRadiance(
+    uint TriangleIndex,
+    float3 HitPosition,
+    float3 IncomingDirection)
+{
+    uint TriangleBase = TriangleIndex * 4u;
+    float3 A = BVHTriangles[TriangleBase + 0u].xyz;
+    float3 B = BVHTriangles[TriangleBase + 1u].xyz;
+    float3 C = BVHTriangles[TriangleBase + 2u].xyz;
+    float3 Normal = normalize(cross(B - A, C - A));
+    if (dot(Normal, IncomingDirection) > 0.0f)
+    {
+        Normal = -Normal;
+    }
+
+    float3 Emissive = float3(
+        BVHTriangles[TriangleBase + 0u].w,
+        BVHTriangles[TriangleBase + 1u].w,
+        BVHTriangles[TriangleBase + 2u].w) * GIIntensity;
+
+    float3 Direct = 0.0f;
+    if (bHasDirectionalLight != 0u)
+    {
+        float3 ToLight = normalize(DirectionalLightDirection.xyz);
+        float NdotL = saturate(dot(Normal, ToLight));
+        if (NdotL > 0.0f)
+        {
+            float3 ShadowOrigin = HitPosition + Normal * 0.5f;
+            const float DirectionalShadowDistance = 1000000.0f;
+            if (!TraceAnyHit(ShadowOrigin, ToLight, DirectionalShadowDistance, TriangleIndex))
+            {
+                float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
+                Direct = BaseColor * DirectionalLightColor.rgb *
+                    DirectionalLightIntensity * NdotL *
+                    (1.0f / 3.14159265f) * GIIntensity;
+            }
+        }
+    }
+
+    return Emissive + Direct;
+}
+
+// Fixed four-point cosine-weighted hemisphere quadrature. The sample pattern
+// is indexed only by the ray/hit, never by frame number or a random seed.
+float3 TraceDeterministicDiffuseBounce(
+    float3 HitPosition,
+    float3 SurfaceNormal,
+    uint IgnoreTriangleIndex)
+{
+    float3 Normal = normalize(SurfaceNormal);
+    float3 ReferenceUp = abs(Normal.z) < 0.999f
+        ? float3(0.0f, 0.0f, 1.0f)
+        : float3(0.0f, 1.0f, 0.0f);
+    float3 Tangent = normalize(cross(ReferenceUp, Normal));
+    float3 Bitangent = normalize(cross(Normal, Tangent));
+
+    float3 IncomingRadianceSum = 0.0f;
+    const uint SampleCount = 4u;
+    const float GoldenRatioConjugate = 0.6180339887498948f;
+    const float TwoPi = 6.283185307179586f;
+
+    [unroll]
+    for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
+    {
+        float U = ((float)SampleIndex + 0.5f) / (float)SampleCount;
+        float V = frac(((float)SampleIndex + 0.5f) * GoldenRatioConjugate);
+        float Radius = sqrt(U);
+        float Phi = TwoPi * V;
+        float Z = sqrt(saturate(1.0f - U));
+        float3 SecondaryDirection = normalize(
+            Tangent * (Radius * cos(Phi)) +
+            Bitangent * (Radius * sin(Phi)) +
+            Normal * Z);
+
+        float SecondaryDistance;
+        uint SecondaryTriangleIndex;
+        float3 SecondaryOrigin = HitPosition + Normal * 0.5f;
+        if (TraceClosestHit(
+            SecondaryOrigin,
+            SecondaryDirection,
+            MaxTraceDistance,
+            IgnoreTriangleIndex,
+            SecondaryDistance,
+            SecondaryTriangleIndex))
+        {
+            float3 SecondaryHitPosition =
+                SecondaryOrigin + SecondaryDirection * SecondaryDistance;
+            IncomingRadianceSum += EvaluateHitSurfaceRadiance(
+                SecondaryTriangleIndex,
+                SecondaryHitPosition,
+                SecondaryDirection);
+        }
+        else if (bEnableStaticBackground != 0u)
+        {
+            IncomingRadianceSum +=
+                StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity;
+        }
+    }
+
+    return IncomingRadianceSum / (float)SampleCount;
+}
+
 [numthreads(64, 1, 1)]
 void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -255,14 +436,10 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 BackgroundRadiance = StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity * BackgroundFade;
     float3 HitEmissiveRadiance = 0.0f;
     float3 HitDirectRadiance = 0.0f;
+    float3 HitIndirectRadiance = 0.0f;
     if (bHitInThisInterval)
     {
         uint HitTriangleBase = ClosestTriangleIndex * 4u;
-        HitEmissiveRadiance = float3(
-            BVHTriangles[HitTriangleBase + 0u].w,
-            BVHTriangles[HitTriangleBase + 1u].w,
-            BVHTriangles[HitTriangleBase + 2u].w) * GIIntensity;
-
         float3 HitA = BVHTriangles[HitTriangleBase + 0u].xyz;
         float3 HitB = BVHTriangles[HitTriangleBase + 1u].xyz;
         float3 HitC = BVHTriangles[HitTriangleBase + 2u].xyz;
@@ -272,27 +449,42 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             GeometricNormal = -GeometricNormal;
         }
 
+        float3 HitPosition = Origin + Direction * ClosestHit;
+        float3 HitBaseColor = max(BVHTriangles[HitTriangleBase + 3u].xyz, 0.0f);
+        HitEmissiveRadiance = float3(
+            BVHTriangles[HitTriangleBase + 0u].w,
+            BVHTriangles[HitTriangleBase + 1u].w,
+            BVHTriangles[HitTriangleBase + 2u].w) * GIIntensity;
+
         if (bHasDirectionalLight != 0u)
         {
             float3 ToLight = normalize(DirectionalLightDirection.xyz);
             float NdotL = saturate(dot(GeometricNormal, ToLight));
             if (NdotL > 0.0f)
             {
-                float3 HitPosition = Origin + Direction * ClosestHit;
-                float3 ShadowOrigin = HitPosition + GeometricNormal * 1.0f;
+                float3 ShadowOrigin = HitPosition + GeometricNormal * 0.5f;
                 const float DirectionalShadowDistance = 1000000.0f;
                 const bool bOccluded = TraceAnyHit(
                     ShadowOrigin, ToLight, DirectionalShadowDistance, ClosestTriangleIndex);
                 if (!bOccluded)
                 {
-                    float3 BaseColor = max(BVHTriangles[HitTriangleBase + 3u].xyz, 0.0f);
-                    HitDirectRadiance = BaseColor * DirectionalLightColor.rgb *
+                    HitDirectRadiance = HitBaseColor * DirectionalLightColor.rgb *
                         DirectionalLightIntensity * NdotL * (1.0f / 3.14159265f) * GIIntensity;
                 }
             }
         }
+
+        // One deterministic diffuse bounce: secondary rays evaluate direct
+        // and emissive radiance at the next surface, then the primary hit
+        // reflects their average according to its diffuse base color.
+        float3 IncomingBounceRadiance = TraceDeterministicDiffuseBounce(
+            HitPosition, GeometricNormal, ClosestTriangleIndex);
+        HitIndirectRadiance = HitBaseColor * IncomingBounceRadiance;
     }
 
     RadianceUAV[Pixel] = float4(
-        bHitInThisInterval ? (HitEmissiveRadiance + HitDirectRadiance) : BackgroundRadiance, 1.0f);
+        bHitInThisInterval
+            ? (HitEmissiveRadiance + HitDirectRadiance + HitIndirectRadiance)
+            : BackgroundRadiance,
+        1.0f);
 }
