@@ -198,7 +198,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.BVHTriangleCount = 0;
         Storage.BVHDataIdentity = CurrentBVH;
 
-        if (CurrentBVH && CurrentBVH->PackedNodes.Num() >= 3 && CurrentBVH->PackedTriangles.Num() >= 3)
+        if (CurrentBVH && CurrentBVH->NodeCount > 0 && CurrentBVH->TriangleCount > 0 &&
+            CurrentBVH->PackedNodes.Num() >= CurrentBVH->NodeCount * 3 &&
+            CurrentBVH->PackedTriangles.Num() >= CurrentBVH->TriangleCount * 4)
         {
             TResourceArray<FVector4> NodeData;
             NodeData.Append(CurrentBVH->PackedNodes);
