@@ -48,7 +48,7 @@ uint DDGIRadianceCascadeRayCount(
 	uint BaseRayCount,
 	uint RaySplitFactor)
 {
-	uint Count = max(BaseRayCount, 1u);
+	uint Count = clamp(BaseRayCount, 1u, 64u);
 	uint Split = clamp(RaySplitFactor, 1u, 4u);
 	[loop]
 	for (uint Index = 0u; Index < CascadeIndex; ++Index)
@@ -58,6 +58,37 @@ uint DDGIRadianceCascadeRayCount(
 	return Count;
 }
 
+// Rays are packed cascade-by-cascade for each probe.
+uint DDGIRadianceCascadeRayStorageOffset(
+	uint CascadeIndex,
+	uint BaseRayCount,
+	uint RaySplitFactor)
+{
+	uint Offset = 0u;
+	[loop]
+	for (uint Index = 0u; Index < CascadeIndex; ++Index)
+	{
+		Offset += DDGIRadianceCascadeRayCount(
+			Index, BaseRayCount, RaySplitFactor);
+	}
+	return Offset;
+}
+
+uint DDGIRadianceCascadeRayStorageIndex(
+	uint CascadeIndex,
+	uint RayIndex,
+	uint BaseRayCount,
+	uint RaySplitFactor)
+{
+	uint Count = DDGIRadianceCascadeRayCount(
+		CascadeIndex, BaseRayCount, RaySplitFactor);
+	return DDGIRadianceCascadeRayStorageOffset(
+		CascadeIndex, BaseRayCount, RaySplitFactor) +
+		min(RayIndex, Count - 1u);
+}
+
+// This is the parent grouping in the hierarchy. It is not yet the
+// angular child-direction generator; that will be implemented separately.
 uint DDGIRadianceCascadeParentRayIndex(
 	uint ChildRayIndex,
 	uint RaySplitFactor)
