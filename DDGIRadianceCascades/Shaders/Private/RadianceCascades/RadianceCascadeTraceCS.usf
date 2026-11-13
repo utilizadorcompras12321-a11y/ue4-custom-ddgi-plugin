@@ -265,6 +265,66 @@ float3 EvaluateHitSurfaceRadiance(
     return Emissive + Direct;
 }
 
+// One additional deterministic diffuse bounce at the secondary surface.
+// This is deliberately non-recursive: a fixed four-ray quadrature bounds the
+// work and keeps shader call depth portable across UE4.27 SM5 hardware.
+float3 TraceDeterministicTertiaryBounce(
+    float3 HitPosition,
+    float3 SurfaceNormal,
+    uint IgnoreTriangleIndex)
+{
+    float3 Normal = normalize(SurfaceNormal);
+    float BasisSign = Normal.z >= 0.0f ? 1.0f : -1.0f;
+    float BasisA = -1.0f / (BasisSign + Normal.z);
+    float BasisB = Normal.x * Normal.y * BasisA;
+    float3 Tangent = float3(
+        1.0f + BasisSign * Normal.x * Normal.x * BasisA,
+        BasisSign * BasisB,
+        -BasisSign * Normal.x);
+    float3 Bitangent = float3(
+        BasisB,
+        BasisSign + Normal.y * Normal.y * BasisA,
+        -Normal.y);
+
+    float3 IncomingRadianceSum = 0.0f;
+    const uint SampleCount = 4u;
+    const float CosTheta = 0.6666666666666667f;
+    const float SinTheta = 0.7453559924999299f;
+    const float HalfPi = 1.5707963267948966f;
+
+    [unroll]
+    for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
+    {
+        float Phi = ((float)SampleIndex + 0.5f) * HalfPi;
+        float3 TertiaryDirection = normalize(
+            Tangent * (SinTheta * cos(Phi)) +
+            Bitangent * (SinTheta * sin(Phi)) +
+            Normal * CosTheta);
+        float TertiaryDistance;
+        uint TertiaryTriangleIndex;
+        float3 TertiaryOrigin = HitPosition + Normal * 0.5f;
+        if (TraceClosestHit(
+            TertiaryOrigin,
+            TertiaryDirection,
+            MaxTraceDistance,
+            IgnoreTriangleIndex,
+            TertiaryDistance,
+            TertiaryTriangleIndex))
+        {
+            float3 TertiaryHitPosition = TertiaryOrigin + TertiaryDirection * TertiaryDistance;
+            IncomingRadianceSum += EvaluateHitSurfaceRadiance(
+                TertiaryTriangleIndex,
+                TertiaryHitPosition,
+                TertiaryDirection);
+        }
+        else if (bEnableStaticBackground != 0u)
+        {
+            IncomingRadianceSum += StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity;
+        }
+    }
+    return IncomingRadianceSum / (float)SampleCount;
+}
+
 // Fixed four-point cosine-weighted hemisphere quadrature. The sample pattern
 // is indexed only by the ray/hit, never by frame number or a random seed.
 float3 TraceDeterministicDiffuseBounce(
@@ -320,10 +380,24 @@ float3 TraceDeterministicDiffuseBounce(
         {
             float3 SecondaryHitPosition =
                 SecondaryOrigin + SecondaryDirection * SecondaryDistance;
-            IncomingRadianceSum += EvaluateHitSurfaceRadiance(
+            float3 SecondaryNormal = normalize(cross(
+                BVHTriangles[SecondaryTriangleIndex * 4u + 1u].xyz - BVHTriangles[SecondaryTriangleIndex * 4u].xyz,
+                BVHTriangles[SecondaryTriangleIndex * 4u + 2u].xyz - BVHTriangles[SecondaryTriangleIndex * 4u].xyz));
+            if (dot(SecondaryNormal, SecondaryDirection) > 0.0f)
+            {
+                SecondaryNormal = -SecondaryNormal;
+            }
+            uint SecondaryTriangleBase = SecondaryTriangleIndex * 4u;
+            float3 SecondaryBaseColor = max(BVHTriangles[SecondaryTriangleBase + 3u].xyz, 0.0f);
+            float3 SecondaryDirectAndEmissive = EvaluateHitSurfaceRadiance(
                 SecondaryTriangleIndex,
                 SecondaryHitPosition,
                 SecondaryDirection);
+            float3 SecondaryIndirect = SecondaryBaseColor * TraceDeterministicTertiaryBounce(
+                SecondaryHitPosition,
+                SecondaryNormal,
+                SecondaryTriangleIndex);
+            IncomingRadianceSum += SecondaryDirectAndEmissive + SecondaryIndirect;
         }
         else if (bEnableStaticBackground != 0u)
         {
