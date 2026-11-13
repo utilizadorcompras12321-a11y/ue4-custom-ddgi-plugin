@@ -28,6 +28,10 @@ namespace
 {
 	static const int32 GDDGIRadianceCascadeTextureWidth = 4096;
 	static const int32 GDDGIRadianceCascadeMaxTextureDimension = 16384;
+	// Six persistent per-ray textures consume 48 bytes per ray record.
+	// Bound this subsystem's ray storage independently of the RHI texture limits.
+	static const int64 GDDGIRadianceCascadeMaxRayStorageBytes = 512ll * 1024ll * 1024ll;
+	static const int64 GDDGIRadianceCascadeBytesPerRay = 48ll;
 
 	struct FDDGIRadianceCascadeGPUStorage
 	{
@@ -123,11 +127,17 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const int64 Height64 = (TotalTexels + GDDGIRadianceCascadeTextureWidth - 1) /
         GDDGIRadianceCascadeTextureWidth;
 
+    const int64 EstimatedRayStorageBytes = TotalTexels * GDDGIRadianceCascadeBytesPerRay;
     if (TotalTexels <= 0 || TotalTexels > MaxTextureTexels ||
-        Height64 <= 0 || Height64 > GDDGIRadianceCascadeMaxTextureDimension)
+        Height64 <= 0 || Height64 > GDDGIRadianceCascadeMaxTextureDimension ||
+        EstimatedRayStorageBytes > GDDGIRadianceCascadeMaxRayStorageBytes)
     {
         DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
-        UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: requested GPU storage exceeds the supported 2D texture capacity (%lld ray records). Reduce MaxActiveProbes or cascade ray counts."), TotalTexels);
+        UE_LOG(LogTemp, Error,
+            TEXT("Radiance Cascades: requested ray storage exceeds supported limits (%lld records, %.1f MiB; limit %.1f MiB). Reduce MaxActiveProbes or cascade ray counts."),
+            TotalTexels,
+            static_cast<double>(EstimatedRayStorageBytes) / (1024.0 * 1024.0),
+            static_cast<double>(GDDGIRadianceCascadeMaxRayStorageBytes) / (1024.0 * 1024.0));
         return;
     }
 
@@ -373,8 +383,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.BVHDataIdentity = CurrentBVH;
 
         if (CurrentBVH && CurrentBVH->NodeCount > 0 && CurrentBVH->TriangleCount > 0 &&
-            CurrentBVH->PackedNodes.Num() >= CurrentBVH->NodeCount * 3 &&
-            CurrentBVH->PackedTriangles.Num() >= CurrentBVH->TriangleCount * 4)
+            static_cast<int64>(CurrentBVH->PackedNodes.Num()) >= static_cast<int64>(CurrentBVH->NodeCount) * 3ll &&
+            static_cast<int64>(CurrentBVH->PackedTriangles.Num()) >= static_cast<int64>(CurrentBVH->TriangleCount) * 4ll)
         {
             TResourceArray<FVector4> NodeData;
             NodeData.Append(CurrentBVH->PackedNodes);
