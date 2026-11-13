@@ -93,12 +93,30 @@ bool IntersectBoundsWithNear(
 
 bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, float3 C, out float HitDistance)
 {
-    const float Epsilon = 1.0e-7f;
     float3 Edge1 = B - A;
     float3 Edge2 = C - A;
+    float DirectionLengthSquared = dot(Direction, Direction);
+    float Edge1LengthSquared = dot(Edge1, Edge1);
+    float Edge2LengthSquared = dot(Edge2, Edge2);
+
+    // Scale the parallel-ray threshold by the geometric magnitude. An
+    // absolute determinant epsilon incorrectly rejects small triangles and
+    // accepts poorly conditioned large-coordinate cases.
+    float DeterminantScale = sqrt(max(
+        DirectionLengthSquared * Edge1LengthSquared * Edge2LengthSquared,
+        0.0f));
+    if (DirectionLengthSquared <= 1.0e-20f ||
+        Edge1LengthSquared <= 1.0e-20f ||
+        Edge2LengthSquared <= 1.0e-20f ||
+        DeterminantScale <= 0.0f)
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
     float3 P = cross(Direction, Edge2);
     float Determinant = dot(Edge1, P);
-    if (abs(Determinant) < Epsilon)
+    if (abs(Determinant) <= 1.0e-7f * DeterminantScale)
     {
         HitDistance = -1.0f;
         return false;
@@ -122,7 +140,10 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
     }
 
     HitDistance = dot(Edge2, Q) * InverseDeterminant;
-    return HitDistance > Epsilon;
+    // The caller applies its own maximum distance. Only reject intersections
+    // behind or exactly at the ray origin; a fixed world-space epsilon here
+    // would make valid very-close geometry disappear.
+    return HitDistance > 0.0f;
 }
 
 
