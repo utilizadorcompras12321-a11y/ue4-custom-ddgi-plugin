@@ -216,7 +216,7 @@ namespace
 			Middle = FirstTriangle + TriangleCount / 2;
 			FDDGISoftwareTriangle* Data = Triangles.GetData();
 			std::sort(
-				Data + FirstTriangle, Data + Middle, Data + FirstTriangle + TriangleCount,
+				Data + FirstTriangle, Data + FirstTriangle + TriangleCount,
 				[Axis](const FDDGISoftwareTriangle& A, const FDDGISoftwareTriangle& B)
 				{
 					const float AValue = Axis == 0 ? A.Centroid.X : (Axis == 1 ? A.Centroid.Y : A.Centroid.Z);
