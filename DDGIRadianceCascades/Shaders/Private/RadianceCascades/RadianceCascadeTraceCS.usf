@@ -544,8 +544,13 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     uint Stack[64];
     uint StackSize = 0u;
-    Stack[StackSize++] = 0u;
     uint IterationCount = 0u;
+
+    // Empty geometry has no root node to read.
+    if (NodeCount > 0u && TriangleCount > 0u)
+    {
+        Stack[StackSize++] = 0u;
+    }
 
     [loop]
     while (StackSize > 0u && IterationCount < NodeCount)
@@ -599,10 +604,51 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         {
             uint LeftChild = (uint)max(Metadata.x, 0.0f);
             uint RightChild = (uint)max(Metadata.y, 0.0f);
-            if (StackSize + 2u <= 64u)
+            float LeftNear = 0.0f;
+            float RightNear = 0.0f;
+            bool bHitLeft = false;
+            bool bHitRight = false;
+
+            if (LeftChild < NodeCount)
+            {
+                uint LeftBase = LeftChild * 3u;
+                bHitLeft = IntersectBoundsWithNear(
+                    Origin, Direction,
+                    BVHNodes[LeftBase + 0u].xyz,
+                    BVHNodes[LeftBase + 1u].xyz,
+                    ClosestHit, LeftNear);
+            }
+            if (RightChild < NodeCount)
+            {
+                uint RightBase = RightChild * 3u;
+                bHitRight = IntersectBoundsWithNear(
+                    Origin, Direction,
+                    BVHNodes[RightBase + 0u].xyz,
+                    BVHNodes[RightBase + 1u].xyz,
+                    ClosestHit, RightNear);
+            }
+
+            // Push the farther child first; the nearer child is popped next.
+            if (bHitLeft && bHitRight && StackSize + 2u <= 64u)
+            {
+                if (LeftNear <= RightNear)
+                {
+                    Stack[StackSize++] = RightChild;
+                    Stack[StackSize++] = LeftChild;
+                }
+                else
+                {
+                    Stack[StackSize++] = LeftChild;
+                    Stack[StackSize++] = RightChild;
+                }
+            }
+            else if (bHitLeft && StackSize < 64u && (!bHitRight || LeftNear <= RightNear))
+            {
+                Stack[StackSize++] = LeftChild;
+            }
+            else if (bHitRight && StackSize < 64u)
             {
                 Stack[StackSize++] = RightChild;
-                Stack[StackSize++] = LeftChild;
             }
         }
     }
