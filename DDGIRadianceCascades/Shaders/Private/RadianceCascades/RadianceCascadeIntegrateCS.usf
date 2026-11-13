@@ -1,0 +1,59 @@
+#include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
+
+uint TextureWidth;
+uint TotalTexels;
+uint DispatchGroupsX;
+uint TotalRaysPerProbe;
+uint CascadeStorageOffset;
+uint CascadeRayCount;
+uint NextCascadeStorageOffset;
+uint RaySplitFactor;
+
+Texture2D<float4> InputRadianceTexture;
+Texture2D<float> HitDistanceTexture;
+RWTexture2D<float4> OutputRadianceUAV;
+
+[numthreads(64, 1, 1)]
+void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
+    if (LinearIndex >= TotalTexels || TotalRaysPerProbe == 0u)
+    {
+        return;
+    }
+
+    uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
+    uint PackedRayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
+    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
+    float4 Result = InputRadianceTexture.Load(int3(Pixel, 0));
+
+    const uint SafeSplitFactor = max(RaySplitFactor, 1u);
+    const bool bIsTargetCascadeRay =
+        PackedRayIndex >= CascadeStorageOffset &&
+        PackedRayIndex < CascadeStorageOffset + CascadeRayCount;
+
+    // A hit in this interval, or a hit in an earlier interval, terminates
+    // transport along this direction. Only empty intervals inherit farther radiance.
+    if (bIsTargetCascadeRay && HitDistanceTexture.Load(int3(Pixel, 0)) < 0.0f)
+    {
+        uint LocalRayIndex = PackedRayIndex - CascadeStorageOffset;
+        float3 IntegratedRadiance = 0.0f;
+
+        [loop]
+        for (uint ChildIndex = 0u; ChildIndex < SafeSplitFactor; ++ChildIndex)
+        {
+            uint ChildPackedRayIndex =
+                NextCascadeStorageOffset + LocalRayIndex * SafeSplitFactor + ChildIndex;
+            if (ChildPackedRayIndex < TotalRaysPerProbe)
+            {
+                uint ChildLinearIndex = ProbeIndex * TotalRaysPerProbe + ChildPackedRayIndex;
+                uint2 ChildPixel = uint2(ChildLinearIndex % TextureWidth, ChildLinearIndex / TextureWidth);
+                IntegratedRadiance += InputRadianceTexture.Load(int3(ChildPixel, 0)).rgb;
+            }
+        }
+
+        Result = float4(IntegratedRadiance / (float)SafeSplitFactor, 1.0f);
+    }
+
+    OutputRadianceUAV[Pixel] = Result;
+}
