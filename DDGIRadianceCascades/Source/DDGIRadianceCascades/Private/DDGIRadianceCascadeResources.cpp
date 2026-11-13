@@ -117,6 +117,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             TEXT("DDGIRadianceCascade_Directions"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, RadianceDesc, Storage.Radiance,
             TEXT("DDGIRadianceCascade_Radiance"), ERenderTargetTransience::NonTransient);
+        GRenderTargetPool.FindFreeElement(RHICmdList, RadianceDesc, Storage.RadianceScratch,
+            TEXT("DDGIRadianceCascade_RadianceScratch"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, DistanceDesc, Storage.HitDistance,
             TEXT("DDGIRadianceCascade_HitDistance"), ERenderTargetTransience::NonTransient);
         const FPooledRenderTargetDesc OriginDesc = FPooledRenderTargetDesc::Create2DDesc(
