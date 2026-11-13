@@ -42,7 +42,11 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             break;
         }
         CascadeOffset += CascadeRayCount;
-        CascadeRayCount = min(CascadeRayCount * RaySplitFactor, 65536u);
+        uint SafeSplit = clamp(RaySplitFactor, 1u, 4u);
+        if (CascadeRayCount <= 65536u / SafeSplit)
+        {
+            CascadeRayCount *= SafeSplit;
+        }
     }
 
     uint RayIndex = PackedRayIndex - CascadeOffset;
