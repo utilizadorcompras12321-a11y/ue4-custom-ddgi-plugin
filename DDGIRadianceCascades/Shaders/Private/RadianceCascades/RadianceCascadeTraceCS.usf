@@ -8,6 +8,13 @@ uint TotalRaysPerProbe;
 uint NodeCount;
 uint TriangleCount;
 float MaxTraceDistance;
+float4 StaticBackgroundColor;
+float StaticBackgroundIntensity;
+float GIIntensity;
+float4 ProbeGridOrigin;
+float BackgroundTransitionStart;
+float BackgroundTransitionEnd;
+uint bEnableStaticBackground;
 
 Texture2D<float4> DirectionsTexture;
 Texture2D<float4> RayOriginsTexture;
@@ -146,7 +153,17 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 
     HitDistanceUAV[Pixel] = bHit ? ClosestHit : -1.0f;
-    // Radiance is deliberately left black: this pass only establishes first-hit
-    // geometry. Material/emissive sampling and direct-light evaluation are next.
-    RadianceUAV[Pixel] = 0.0f;
+    // Misses receive the level's static background contribution. It fades in
+    // with distance from the Master Actor, independently of the ray direction.
+    float BackgroundFade = 0.0f;
+    if (bEnableStaticBackground != 0u)
+    {
+        float ProbeDistance = distance(Origin, ProbeGridOrigin.xyz);
+        float TransitionWidth = max(BackgroundTransitionEnd - BackgroundTransitionStart, 1.0e-3f);
+        BackgroundFade = smoothstep(BackgroundTransitionStart, BackgroundTransitionStart + TransitionWidth, ProbeDistance);
+    }
+
+    float3 BackgroundRadiance = StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity * BackgroundFade;
+    // Hit radiance remains zero until material/emissive and direct-light sampling are implemented.
+    RadianceUAV[Pixel] = float4(bHit ? 0.0f : BackgroundRadiance, 1.0f);
 }

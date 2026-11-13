@@ -175,6 +175,13 @@ public:
 		NodeCount.Bind(Initializer.ParameterMap, TEXT("NodeCount"));
 		TriangleCount.Bind(Initializer.ParameterMap, TEXT("TriangleCount"));
 		MaxTraceDistance.Bind(Initializer.ParameterMap, TEXT("MaxTraceDistance"));
+		StaticBackgroundColor.Bind(Initializer.ParameterMap, TEXT("StaticBackgroundColor"));
+		StaticBackgroundIntensity.Bind(Initializer.ParameterMap, TEXT("StaticBackgroundIntensity"));
+		GIIntensity.Bind(Initializer.ParameterMap, TEXT("GIIntensity"));
+		ProbeGridOrigin.Bind(Initializer.ParameterMap, TEXT("ProbeGridOrigin"));
+		BackgroundTransitionStart.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionStart"));
+		BackgroundTransitionEnd.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionEnd"));
+		bEnableStaticBackground.Bind(Initializer.ParameterMap, TEXT("bEnableStaticBackground"));
 		DirectionsTexture.Bind(Initializer.ParameterMap, TEXT("DirectionsTexture"));
 		RayOriginsTexture.Bind(Initializer.ParameterMap, TEXT("RayOriginsTexture"));
 		BVHNodes.Bind(Initializer.ParameterMap, TEXT("BVHNodes"));
@@ -199,6 +206,13 @@ public:
 		Ar << NodeCount;
 		Ar << TriangleCount;
 		Ar << MaxTraceDistance;
+		Ar << StaticBackgroundColor;
+		Ar << StaticBackgroundIntensity;
+		Ar << GIIntensity;
+		Ar << ProbeGridOrigin;
+		Ar << BackgroundTransitionStart;
+		Ar << BackgroundTransitionEnd;
+		Ar << bEnableStaticBackground;
 		Ar << DirectionsTexture;
 		Ar << RayOriginsTexture;
 		Ar << BVHNodes;
@@ -222,7 +236,14 @@ public:
 		uint32 InTotalRaysPerProbe,
 		uint32 InNodeCount,
 		uint32 InTriangleCount,
-		float InMaxTraceDistance)
+		float InMaxTraceDistance,
+		const FVector4& InStaticBackgroundColor,
+		float InStaticBackgroundIntensity,
+		float InGIIntensity,
+		const FVector4& InProbeGridOrigin,
+		float InBackgroundTransitionStart,
+		float InBackgroundTransitionEnd,
+		uint32 bInEnableStaticBackground)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 		const uint32 InTextureWidth = 4096;
@@ -234,6 +255,13 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, NodeCount, InNodeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, TriangleCount, InTriangleCount);
 		SetShaderValue(RHICmdList, ShaderRHI, MaxTraceDistance, InMaxTraceDistance);
+		SetShaderValue(RHICmdList, ShaderRHI, StaticBackgroundColor, InStaticBackgroundColor);
+		SetShaderValue(RHICmdList, ShaderRHI, StaticBackgroundIntensity, InStaticBackgroundIntensity);
+		SetShaderValue(RHICmdList, ShaderRHI, GIIntensity, InGIIntensity);
+		SetShaderValue(RHICmdList, ShaderRHI, ProbeGridOrigin, InProbeGridOrigin);
+		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionStart, InBackgroundTransitionStart);
+		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionEnd, InBackgroundTransitionEnd);
+		SetShaderValue(RHICmdList, ShaderRHI, bEnableStaticBackground, bInEnableStaticBackground);
 
 		if (DirectionsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, DirectionsTexture.GetBaseIndex(), DirectionsSRV);
 		if (RayOriginsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, RayOriginsTexture.GetBaseIndex(), OriginsSRV);
@@ -263,6 +291,13 @@ private:
 	FShaderParameter NodeCount;
 	FShaderParameter TriangleCount;
 	FShaderParameter MaxTraceDistance;
+	FShaderParameter StaticBackgroundColor;
+	FShaderParameter StaticBackgroundIntensity;
+	FShaderParameter GIIntensity;
+	FShaderParameter ProbeGridOrigin;
+	FShaderParameter BackgroundTransitionStart;
+	FShaderParameter BackgroundTransitionEnd;
+	FShaderParameter bEnableStaticBackground;
 	FShaderResourceParameter DirectionsTexture;
 	FShaderResourceParameter RayOriginsTexture;
 	FShaderResourceParameter BVHNodes;
@@ -408,7 +443,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		RHICmdList, DirectionsSRV, OriginsSRV, NodesSRV, TrianglesSRV,
 		RadianceUAV, HitDistanceUAV,
 		TotalTexels, GroupsX, ProbeCount, TotalRaysPerProbe,
-		NodeCount, TriangleCount, Config.RadianceCascades.MaxTraceDistance);
+		NodeCount, TriangleCount, Config.RadianceCascades.MaxTraceDistance,
+		FVector4(Config.StaticBackgroundColor.R, Config.StaticBackgroundColor.G, Config.StaticBackgroundColor.B, Config.StaticBackgroundColor.A),
+		Config.StaticBackgroundIntensity, Config.GIIntensity,
+		FVector4(Config.ProbeGridOrigin.X, Config.ProbeGridOrigin.Y, Config.ProbeGridOrigin.Z, 0.0f),
+		Config.BackgroundTransitionStart, Config.BackgroundTransitionEnd,
+		Config.bEnableStaticBackground ? 1u : 0u);
 	DispatchComputeShader(RHICmdList, *TraceShader, GroupsX, GroupsY, 1);
 	TraceShader->UnbindResources(RHICmdList);
 
