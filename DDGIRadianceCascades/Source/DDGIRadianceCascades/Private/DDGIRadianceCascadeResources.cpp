@@ -184,7 +184,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.UploadedProbeCount = 0;
         UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no 2D RHI resource."));
     }
-}
+
     // Upload the immutable CPU BVH once per snapshot. Master Actor movement
     // republishes probe origins but keeps the same shared BVH pointer.
     const FDDGISoftwareBVHData* CurrentBVH = Config.SoftwareBVH.Get();
@@ -244,6 +244,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             }
         }
     }
+}
 
 void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Scene)
 {
