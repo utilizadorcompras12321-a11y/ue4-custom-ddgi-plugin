@@ -66,6 +66,7 @@ public:
 	bool HasMasterActor() const { return ActiveMasterActor.IsValid(); }
 
 private:
+	int32 CachedSoftwareBVHTriangleLimit = INDEX_NONE;
 	void CopyConfigFromActor(const ADDGIMasterActor* InActor);
 	void PublishConfig(bool bHasConfig);
 
