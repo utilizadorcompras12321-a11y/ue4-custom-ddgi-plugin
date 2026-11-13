@@ -141,7 +141,7 @@ struct FDDGIRadianceCascadeConfig
 		}
 	}
 
-	// Current logical format stores one float4 per ray (radiance + hit distance).
+	// GPU format uses half-float RGBA radiance plus one R32F hit-distance texel.
 	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 16) const
 	{
 		return static_cast<int64>(FMath::Max(0, ProbeCount)) *
