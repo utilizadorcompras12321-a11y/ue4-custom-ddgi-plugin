@@ -23,7 +23,7 @@ public:
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
 		CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
 		BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
-		EffectiveSplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
+		RaySplitFactor.Bind(Initializer.ParameterMap, TEXT("RaySplitFactor"));
 		TextureWidth.Bind(Initializer.ParameterMap, TEXT("TextureWidth"));
 		TotalTexels.Bind(Initializer.ParameterMap, TEXT("TotalTexels"));
 		DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
@@ -46,7 +46,7 @@ public:
 		Ar << TotalRaysPerProbe;
 		Ar << CascadeCount;
 		Ar << BaseRayCount;
-		Ar << EffectiveSplitFactor;
+		Ar << RaySplitFactor;
 		Ar << TextureWidth;
 		Ar << TotalTexels;
 		Ar << DispatchGroupsX;
@@ -80,7 +80,7 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
-		SetShaderValue(RHICmdList, ShaderRHI, EffectiveSplitFactor, InEffectiveSplitFactor);
+		SetShaderValue(RHICmdList, ShaderRHI, RaySplitFactor, InRaySplitFactor);
 		SetShaderValue(RHICmdList, ShaderRHI, TextureWidth, InTextureWidth);
 		SetShaderValue(RHICmdList, ShaderRHI, TotalTexels, InTotalTexels);
 		SetShaderValue(RHICmdList, ShaderRHI, DispatchGroupsX, InDispatchGroupsX);
@@ -369,7 +369,7 @@ public:
 		CascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("CascadeStorageOffset"));
 		CascadeRayCount.Bind(Initializer.ParameterMap, TEXT("CascadeRayCount"));
 		NextCascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("NextCascadeStorageOffset"));
-		RaySplitFactor.Bind(Initializer.ParameterMap, TEXT("RaySplitFactor"));
+		RaySplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
 		InputRadianceTexture.Bind(Initializer.ParameterMap, TEXT("InputRadianceTexture"));
 		HitDistanceTexture.Bind(Initializer.ParameterMap, TEXT("HitDistanceTexture"));
 		OutputRadianceUAV.Bind(Initializer.ParameterMap, TEXT("OutputRadianceUAV"));
@@ -390,7 +390,7 @@ public:
 		Ar << CascadeStorageOffset;
 		Ar << CascadeRayCount;
 		Ar << NextCascadeStorageOffset;
-		Ar << RaySplitFactor;
+		Ar << EffectiveSplitFactor;
 		Ar << InputRadianceTexture;
 		Ar << HitDistanceTexture;
 		Ar << OutputRadianceUAV;
@@ -419,7 +419,7 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeStorageOffset, InCascadeStorageOffset);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeRayCount, InCascadeRayCount);
 		SetShaderValue(RHICmdList, ShaderRHI, NextCascadeStorageOffset, InNextCascadeStorageOffset);
-		SetShaderValue(RHICmdList, ShaderRHI, RaySplitFactor, InRaySplitFactor);
+		SetShaderValue(RHICmdList, ShaderRHI, EffectiveSplitFactor, InEffectiveSplitFactor);
 		if (InputRadianceTexture.IsBound())
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, InputRadianceTexture.GetBaseIndex(), InputRadianceSRV);
