@@ -21,6 +21,8 @@ struct FDDGIMasterConfig
 	UPROPERTY() int32 TotalRaysPerProbe = 0;
 	UPROPERTY() int64 EstimatedRadianceStorageBytes = 0;
 	UPROPERTY() float ProbeSpacing = 200.0f;
+	UPROPERTY() FVector ProbeGridOrigin = FVector::ZeroVector;
+	UPROPERTY() TArray<FVector4> ProbePositions;
 	UPROPERTY() int32 MaxActiveProbes = 32768;
 	UPROPERTY() int32 ProbeUpdateBudget = 50000;
 	UPROPERTY() bool bEnableStaticBackground = true;
