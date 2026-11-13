@@ -138,6 +138,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.ProbeGridOrigin = InActor->GetActorLocation();
 	Config.MaxActiveProbes = FMath::Max(1, InActor->MaxActiveProbes);
 	DDGIBuildSparseProbePositions(Config.ProbeGridOrigin, Config.ProbeSpacing, Config.DynamicGIDistance, Config.MaxActiveProbes, Config.ProbePositions);
+	Config.ProbeCount = Config.ProbePositions.Num();
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.MaxActiveProbes);
 	Config.ProbeUpdateBudget = FMath::Max(0, InActor->ProbeUpdateBudget);
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
