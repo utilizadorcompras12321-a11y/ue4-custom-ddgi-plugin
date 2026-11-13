@@ -486,7 +486,8 @@ void DDGISoftwareBVH::BuildStaticWorld(
 	Nodes.Reserve(Triangles.Num() / 2);
 	BuildNode(Triangles, 0, Triangles.Num(), Nodes);
 
-	OutPackedTriangles.Reserve(Triangles.Num() * 3);
+	// Each triangle occupies four float4 entries in the shader buffer.
+	OutPackedTriangles.Reserve(Triangles.Num() * 4);
 	for (const FDDGISoftwareTriangle& Triangle : Triangles)
 	{
 		// XYZ stores positions; W stores the corresponding emissive channel.
