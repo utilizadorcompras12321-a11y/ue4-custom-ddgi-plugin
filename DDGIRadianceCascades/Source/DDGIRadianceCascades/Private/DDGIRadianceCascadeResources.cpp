@@ -10,6 +10,22 @@
 
 namespace
 {
+	FORCEINLINE uint32 DDGIHashProbeCell(const FIntVector& Cell)
+	{
+		uint32 Hash = static_cast<uint32>(Cell.X) * 0x8DA6B343u;
+		Hash ^= static_cast<uint32>(Cell.Y) * 0xD8163841u;
+		Hash ^= static_cast<uint32>(Cell.Z) * 0xCB1AB31Fu;
+		Hash ^= Hash >> 16;
+		Hash *= 0x7FEB352Du;
+		Hash ^= Hash >> 15;
+		Hash *= 0x846CA68Bu;
+		Hash ^= Hash >> 16;
+		return Hash;
+	}
+}
+
+namespace
+{
 	static const int32 GDDGIRadianceCascadeTextureWidth = 4096;
 	static const int32 GDDGIRadianceCascadeMaxTextureDimension = 16384;
 
@@ -21,6 +37,11 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> RayOrigins;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
+		FBufferRHIRef ProbeSpatialHash;
+		FShaderResourceViewRHIRef ProbeSpatialHashSRV;
+		uint32 ProbeSpatialHashCapacity = 0;
+		uint32 ProbeSpatialHashProbeCount = 0;
+		float ProbeSpatialHashSpacing = 0.0f;
 		FBufferRHIRef BVHNodes;
 		FShaderResourceViewRHIRef BVHNodesSRV;
 		FBufferRHIRef BVHTriangles;
@@ -43,6 +64,11 @@ namespace
 			HitDistance.SafeRelease();
 			RayOrigins.SafeRelease();
 			ProbePositions.SafeRelease();
+			ProbeSpatialHash.SafeRelease();
+			ProbeSpatialHashSRV.SafeRelease();
+			ProbeSpatialHashCapacity = 0;
+			ProbeSpatialHashProbeCount = 0;
+			ProbeSpatialHashSpacing = 0.0f;
 			BVHNodes.SafeRelease();
 			BVHNodesSRV.SafeRelease();
 			BVHTriangles.SafeRelease();
@@ -188,6 +214,104 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     {
         Storage.UploadedProbeCount = 0;
         UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no 2D RHI resource."));
+    }
+
+
+    // Build a deterministic open-addressed spatial hash for sparse probe cells.
+    // Probe positions are generated on a regular lattice around ProbeGridOrigin,
+    // so integer cell coordinates remain stable when the Master Actor translates.
+    const uint32 ProbeCountForHash = static_cast<uint32>(FMath::Min(Config.ProbePositions.Num(), Config.MaxActiveProbes));
+    const float SafeProbeSpacing = FMath::Max(1.0f, Config.ProbeSpacing);
+    uint32 RequiredHashCapacity = 2u;
+    while (RequiredHashCapacity < FMath::Max(2u, ProbeCountForHash * 2u) && RequiredHashCapacity < (1u << 30))
+    {
+        RequiredHashCapacity <<= 1u;
+    }
+    const bool bProbeHashMatches =
+        Storage.ProbeSpatialHash.IsValid() &&
+        Storage.ProbeSpatialHashSRV.IsValid() &&
+        Storage.ProbeSpatialHashCapacity == RequiredHashCapacity &&
+        Storage.ProbeSpatialHashProbeCount == ProbeCountForHash &&
+        FMath::IsNearlyEqual(Storage.ProbeSpatialHashSpacing, SafeProbeSpacing, 1.0e-4f);
+    if (!bProbeHashMatches)
+    {
+        Storage.ProbeSpatialHash.SafeRelease();
+        Storage.ProbeSpatialHashSRV.SafeRelease();
+
+        TResourceArray<FVector4> HashEntries;
+        HashEntries.SetNumUninitialized(static_cast<int32>(RequiredHashCapacity));
+        for (FVector4& Entry : HashEntries)
+        {
+            Entry = FVector4(0.0f, 0.0f, 0.0f, -1.0f);
+        }
+
+        bool bHashBuildSucceeded = true;
+        for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
+        {
+            const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
+            const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - Config.ProbeGridOrigin;
+            const FIntVector Cell(
+                FMath::RoundToInt(Relative.X / SafeProbeSpacing),
+                FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
+                FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
+            uint32 Slot = DDGIHashProbeCell(Cell) & (RequiredHashCapacity - 1u);
+            bool bInserted = false;
+            for (uint32 ProbeAttempt = 0u; ProbeAttempt < RequiredHashCapacity; ++ProbeAttempt)
+            {
+                FVector4& Entry = HashEntries[static_cast<int32>(Slot)];
+                if (Entry.W < 0.0f)
+                {
+                    Entry = FVector4(
+                        static_cast<float>(Cell.X),
+                        static_cast<float>(Cell.Y),
+                        static_cast<float>(Cell.Z),
+                        static_cast<float>(ProbeIndex));
+                    bInserted = true;
+                    break;
+                }
+                if (FMath::RoundToInt(Entry.X) == Cell.X &&
+                    FMath::RoundToInt(Entry.Y) == Cell.Y &&
+                    FMath::RoundToInt(Entry.Z) == Cell.Z)
+                {
+                    bHashBuildSucceeded = false;
+                    break;
+                }
+                Slot = (Slot + 1u) & (RequiredHashCapacity - 1u);
+            }
+            if (!bInserted)
+            {
+                bHashBuildSucceeded = false;
+                break;
+            }
+        }
+        if (bHashBuildSucceeded)
+        {
+            FRHIResourceCreateInfo HashCreateInfo(TEXT("DDGIRadianceCascade_ProbeSpatialHash"));
+            HashCreateInfo.ResourceArray = &HashEntries;
+            Storage.ProbeSpatialHash = RHICreateStructuredBuffer(
+                sizeof(FVector4),
+                static_cast<uint32>(HashEntries.GetResourceDataSize()),
+                BUF_ShaderResource,
+                HashCreateInfo);
+            if (Storage.ProbeSpatialHash.IsValid())
+            {
+                Storage.ProbeSpatialHashSRV = RHICreateShaderResourceView(Storage.ProbeSpatialHash);
+            }
+        }
+        if (!Storage.ProbeSpatialHash.IsValid() || !Storage.ProbeSpatialHashSRV.IsValid())
+        {
+            Storage.ProbeSpatialHash.SafeRelease();
+            Storage.ProbeSpatialHashSRV.SafeRelease();
+            Storage.ProbeSpatialHashCapacity = 0;
+            Storage.ProbeSpatialHashProbeCount = 0;
+            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to build sparse probe spatial hash."));
+        }
+        else
+        {
+            Storage.ProbeSpatialHashCapacity = RequiredHashCapacity;
+            Storage.ProbeSpatialHashProbeCount = ProbeCountForHash;
+            Storage.ProbeSpatialHashSpacing = SafeProbeSpacing;
+        }
     }
 
     // Upload the immutable CPU BVH once per snapshot. Master Actor movement
@@ -479,6 +603,30 @@ bool DDGIGetSoftwareBVHResources_RenderThread(
 	OutNodeCount = Storage->BVHNodeCount;
 	OutTriangleCount = Storage->BVHTriangleCount;
 	return true;
+}
+
+bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
+    const FSceneInterface* Scene,
+    FShaderResourceViewRHIRef& OutSpatialHashSRV,
+    uint32& OutHashCapacity,
+    float& OutProbeSpacing)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutSpatialHashSRV.SafeRelease();
+    OutHashCapacity = 0;
+    OutProbeSpacing = 0.0f;
+
+    const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || !Storage->ProbeSpatialHashSRV.IsValid() ||
+        Storage->ProbeSpatialHashCapacity == 0 || Storage->UploadedProbeCount <= 0)
+    {
+        return false;
+    }
+
+    OutSpatialHashSRV = Storage->ProbeSpatialHashSRV;
+    OutHashCapacity = Storage->ProbeSpatialHashCapacity;
+    OutProbeSpacing = Storage->ProbeSpatialHashSpacing;
+    return true;
 }
 
 bool DDGIGetRadianceCascadeProbePositions_RenderThread(

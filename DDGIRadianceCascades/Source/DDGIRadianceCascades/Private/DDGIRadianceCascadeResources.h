@@ -60,6 +60,13 @@ bool DDGIGetSoftwareBVHResources_RenderThread(
 	uint32& OutNodeCount,
 	uint32& OutTriangleCount);
 
+/** Returns the deterministic GPU spatial hash for sparse probe cell lookup. */
+bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
+	const FSceneInterface* Scene,
+	FShaderResourceViewRHIRef& OutSpatialHashSRV,
+	uint32& OutHashCapacity,
+	float& OutProbeSpacing);
+
 /** Returns the uploaded sparse probe-origin texture for later tracing passes. */
 bool DDGIGetRadianceCascadeProbePositions_RenderThread(
 	FRDGBuilder& GraphBuilder,
