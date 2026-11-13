@@ -256,18 +256,23 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 		NewBVH->SkippedMovable = BuildStats.SkippedMovable;
 		NewBVH->SkippedInstanced = BuildStats.SkippedInstanced;
 		NewBVH->SkippedInvalidTriangles = BuildStats.SkippedInvalidTriangles;
+		NewBVH->MaterialsUsingDefaultBaseColor = BuildStats.MaterialsUsingDefaultBaseColor;
 		NewBVH->TriangleCount = BuildStats.TriangleCount;
 		NewBVH->NodeCount = BuildStats.NodeCount;
 		Config.SoftwareBVH = NewBVH;
 		CachedSoftwareBVHTriangleLimit = Config.MaxSoftwareTriangles;
 
 		UE_LOG(LogTemp, Log,
-			TEXT("Radiance Cascades software BVH: %d triangles, %d nodes, depth %d, %d leaves (triangles/leaf min %d avg %.2f max %d), normalized leaf cost %.3f, %d static components. Skipped: %d no CPU access, %d movable, %d instanced, %d invalid."),
+			TEXT("Radiance Cascades software BVH: %d triangles, %d nodes, depth %d, %d leaves (triangles/leaf min %d avg %.2f max %d), normalized leaf cost %.3f, %d static components. Skipped: %d no CPU access, %d movable, %d instanced, %d invalid. %d material slots use default DDGI albedo."),
 			NewBVH->TriangleCount, NewBVH->NodeCount, BuildStats.MaxDepth, BuildStats.LeafCount,
 			BuildStats.MinLeafTriangleCount, BuildStats.AverageLeafTriangleCount,
 			BuildStats.MaxLeafTriangleCount, BuildStats.EstimatedSAHCost,
 			NewBVH->IncludedComponents, NewBVH->SkippedNoCPUAccess, NewBVH->SkippedMovable,
-			NewBVH->SkippedInstanced, NewBVH->SkippedInvalidTriangles);
+			NewBVH->SkippedInstanced, NewBVH->SkippedInvalidTriangles, BuildStats.MaterialsUsingDefaultBaseColor);
+		if (BuildStats.MaterialsUsingDefaultBaseColor > 0)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI: %d material slots do not expose the DDGI_BaseColor vector parameter; their GI albedo is approximated as neutral 0.18 gray. Material textures and arbitrary material graphs are not evaluated."), BuildStats.MaterialsUsingDefaultBaseColor);
+		}
 	}
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;

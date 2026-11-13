@@ -22,7 +22,7 @@ namespace
 		FVector BoundsMin;
 		FVector BoundsMax;
 		FVector EmissiveRadiance = FVector::ZeroVector;
-		FVector BaseColor = FVector::OneVector;
+		FVector BaseColor = FVector(0.18f, 0.18f, 0.18f);
 	};
 
 	struct FDDGISoftwareBVHNode
@@ -476,7 +476,9 @@ void DDGISoftwareBVH::BuildStaticWorld(
 			MaterialEmissiveRadiance.Init(FVector::ZeroVector, Component->GetNumMaterials());
 
 			TArray<FVector> MaterialBaseColor;
-			MaterialBaseColor.Init(FVector::OneVector, Component->GetNumMaterials());
+			// Materials without an explicit DDGI_BaseColor parameter use a neutral 18% diffuse fallback.
+			// Arbitrary material graphs and texture samples are not evaluated by this CPU BVH.
+			MaterialBaseColor.Init(FVector(0.18f, 0.18f, 0.18f), Component->GetNumMaterials());
 			const FMaterialParameterInfo BaseColorParameterInfo(FName(TEXT("DDGI_BaseColor")));
 			const FMaterialParameterInfo EmissiveParameterInfo(FName(TEXT("DDGI_EmissiveRadiance")));
 			for (int32 MaterialIndex = 0; MaterialIndex < Component->GetNumMaterials(); ++MaterialIndex)
@@ -502,6 +504,10 @@ void DDGISoftwareBVH::BuildStaticWorld(
 						FMath::Max(0.0f, BaseColorValue.R),
 						FMath::Max(0.0f, BaseColorValue.G),
 						FMath::Max(0.0f, BaseColorValue.B));
+				}
+				else
+				{
+					++OutStats.MaterialsUsingDefaultBaseColor;
 				}
 			}
 
