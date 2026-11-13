@@ -45,14 +45,10 @@ class FDDGIRadianceCascadeInitializeCS : public FGlobalShader
     SHADER_USE_PARAMETER_STRUCT(FDDGIRadianceCascadeInitializeCS, FGlobalShader)
 
     BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-        SHADER_PARAMETER(uint32, NumProbes)
         SHADER_PARAMETER(uint32, TotalRaysPerProbe)
         SHADER_PARAMETER(uint32, CascadeCount)
         SHADER_PARAMETER(uint32, BaseRayCount)
         SHADER_PARAMETER(uint32, RaySplitFactor)
-        SHADER_PARAMETER(float, BaseSegmentLength)
-        SHADER_PARAMETER(float, CascadeScale)
-        SHADER_PARAMETER(float, MaxTraceDistance)
         SHADER_PARAMETER(uint32, TextureWidth)
         SHADER_PARAMETER(uint32, TotalTexels)
         SHADER_PARAMETER(uint32, DispatchGroupsX)
@@ -573,16 +569,12 @@ namespace DDGIVolumeUpdate
             {
                 FDDGIRadianceCascadeInitializeCS::FParameters* PassParameters =
                     GraphBuilder.AllocParameters<FDDGIRadianceCascadeInitializeCS::FParameters>();
-                PassParameters->NumProbes = static_cast<uint32>(RadianceCascadeConfig.MaxActiveProbes);
                 PassParameters->TotalRaysPerProbe = static_cast<uint32>(RadianceCascadeConfig.TotalRaysPerProbe);
                 PassParameters->CascadeCount = static_cast<uint32>(RadianceCascadeConfig.RadianceCascades.GetSafeCascadeCount());
                 PassParameters->BaseRayCount = static_cast<uint32>(FMath::Clamp(RadianceCascadeConfig.RadianceCascades.BaseRayCount, 1, 64));
                 PassParameters->RaySplitFactor = static_cast<uint32>(FMath::Clamp(RadianceCascadeConfig.RadianceCascades.RaySplitFactor, 1, 4));
-                PassParameters->BaseSegmentLength = RadianceCascadeConfig.RadianceCascades.BaseSegmentLength;
-                PassParameters->CascadeScale = RadianceCascadeConfig.RadianceCascades.CascadeScale;
-                PassParameters->MaxTraceDistance = RadianceCascadeConfig.RadianceCascades.MaxTraceDistance;
                 PassParameters->TextureWidth = 4096;
-                PassParameters->TotalTexels = PassParameters->NumProbes * PassParameters->TotalRaysPerProbe;
+                PassParameters->TotalTexels = static_cast<uint32>(RadianceCascadeConfig.MaxActiveProbes) * PassParameters->TotalRaysPerProbe;
                 PassParameters->DispatchGroupsX = FMath::Min(FMath::DivideAndRoundUp(PassParameters->TotalTexels, 64u), 65535u);
                 PassParameters->DirectionsUAV = GraphBuilder.CreateUAV(DirectionsTexture);
                 PassParameters->RadianceUAV = GraphBuilder.CreateUAV(RadianceTexture);

@@ -1,13 +1,9 @@
 #include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
 
-uint NumProbes;
 uint TotalRaysPerProbe;
 uint CascadeCount;
 uint BaseRayCount;
 uint RaySplitFactor;
-float BaseSegmentLength;
-float CascadeScale;
-float MaxTraceDistance;
 uint TextureWidth;
 uint TotalTexels;
 uint DispatchGroupsX;
