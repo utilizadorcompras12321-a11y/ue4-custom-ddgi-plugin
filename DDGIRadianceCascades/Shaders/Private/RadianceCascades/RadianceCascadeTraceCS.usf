@@ -7,6 +7,9 @@ uint ProbeCount;
 uint TotalRaysPerProbe;
 uint NodeCount;
 uint TriangleCount;
+uint CascadeCount;
+float BaseSegmentLength;
+float CascadeScale;
 float MaxTraceDistance;
 float4 StaticBackgroundColor;
 float StaticBackgroundIntensity;
@@ -151,7 +154,13 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
     float3 Origin = RayOriginsTexture.Load(int3(Pixel, 0)).xyz;
-    float3 Direction = normalize(DirectionsTexture.Load(int3(Pixel, 0)).xyz);
+    float4 PackedDirection = DirectionsTexture.Load(int3(Pixel, 0));
+    float3 Direction = normalize(PackedDirection.xyz);
+    uint CascadeIndex = min((uint)max(PackedDirection.w, 0.0f), max(CascadeCount, 1u) - 1u);
+    float2 CascadeInterval = DDGIRadianceCascadeDistanceInterval(
+        (int)CascadeIndex, BaseSegmentLength, CascadeScale, MaxTraceDistance);
+    float CascadeStartDistance = CascadeInterval.x;
+    float CascadeEndDistance = CascadeInterval.y;
     float ClosestHit = MaxTraceDistance;
     bool bHit = false;
     uint ClosestTriangleIndex = 0u;
@@ -221,11 +230,20 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         }
     }
 
-    HitDistanceUAV[Pixel] = bHit ? ClosestHit : -1.0f;
-    // Misses receive the level's static background contribution. It fades in
-    // with distance from the Master Actor, independently of the ray direction.
+    // Cascades own disjoint ray-distance intervals. A hit before this
+    // interval means an earlier surface blocks the ray; a hit beyond it
+    // belongs to a farther cascade.
+    bool bBlockedByEarlierSurface = bHit && ClosestHit < CascadeStartDistance;
+    bool bHitInThisInterval = bHit &&
+        ClosestHit >= CascadeStartDistance &&
+        ClosestHit <= CascadeEndDistance;
+    HitDistanceUAV[Pixel] = bHitInThisInterval || bBlockedByEarlierSurface ? ClosestHit : -1.0f;
+
+    // The static environment is injected only by the farthest cascade.
+    // Injecting it into every interval would count the same environment many times.
     float BackgroundFade = 0.0f;
-    if (bEnableStaticBackground != 0u)
+    if (bEnableStaticBackground != 0u && CascadeIndex + 1u == CascadeCount &&
+        !bHitInThisInterval && !bBlockedByEarlierSurface)
     {
         float ProbeDistance = distance(Origin, ProbeGridOrigin.xyz);
         float TransitionWidth = max(BackgroundTransitionEnd - BackgroundTransitionStart, 1.0e-3f);
@@ -235,7 +253,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 BackgroundRadiance = StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity * BackgroundFade;
     float3 HitEmissiveRadiance = 0.0f;
     float3 HitDirectRadiance = 0.0f;
-    if (bHit)
+    if (bHitInThisInterval)
     {
         uint HitTriangleBase = ClosestTriangleIndex * 4u;
         HitEmissiveRadiance = float3(
@@ -274,5 +292,5 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 
     RadianceUAV[Pixel] = float4(
-        bHit ? (HitEmissiveRadiance + HitDirectRadiance) : BackgroundRadiance, 1.0f);
+        bHitInThisInterval ? (HitEmissiveRadiance + HitDirectRadiance) : BackgroundRadiance, 1.0f);
 }

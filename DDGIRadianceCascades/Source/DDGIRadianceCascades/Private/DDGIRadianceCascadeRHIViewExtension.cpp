@@ -174,6 +174,9 @@ public:
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
 		NodeCount.Bind(Initializer.ParameterMap, TEXT("NodeCount"));
 		TriangleCount.Bind(Initializer.ParameterMap, TEXT("TriangleCount"));
+		CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
+		BaseSegmentLength.Bind(Initializer.ParameterMap, TEXT("BaseSegmentLength"));
+		CascadeScale.Bind(Initializer.ParameterMap, TEXT("CascadeScale"));
 		MaxTraceDistance.Bind(Initializer.ParameterMap, TEXT("MaxTraceDistance"));
 		StaticBackgroundColor.Bind(Initializer.ParameterMap, TEXT("StaticBackgroundColor"));
 		StaticBackgroundIntensity.Bind(Initializer.ParameterMap, TEXT("StaticBackgroundIntensity"));
@@ -210,6 +213,9 @@ public:
 		Ar << TotalRaysPerProbe;
 		Ar << NodeCount;
 		Ar << TriangleCount;
+		Ar << CascadeCount;
+		Ar << BaseSegmentLength;
+		Ar << CascadeScale;
 		Ar << MaxTraceDistance;
 		Ar << StaticBackgroundColor;
 		Ar << StaticBackgroundIntensity;
@@ -246,6 +252,9 @@ public:
 		uint32 InTotalRaysPerProbe,
 		uint32 InNodeCount,
 		uint32 InTriangleCount,
+		uint32 InCascadeCount,
+		float InBaseSegmentLength,
+		float InCascadeScale,
 		float InMaxTraceDistance,
 		const FVector4& InStaticBackgroundColor,
 		float InStaticBackgroundIntensity,
@@ -268,6 +277,9 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
 		SetShaderValue(RHICmdList, ShaderRHI, NodeCount, InNodeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, TriangleCount, InTriangleCount);
+		SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
+		SetShaderValue(RHICmdList, ShaderRHI, BaseSegmentLength, InBaseSegmentLength);
+		SetShaderValue(RHICmdList, ShaderRHI, CascadeScale, InCascadeScale);
 		SetShaderValue(RHICmdList, ShaderRHI, MaxTraceDistance, InMaxTraceDistance);
 		SetShaderValue(RHICmdList, ShaderRHI, StaticBackgroundColor, InStaticBackgroundColor);
 		SetShaderValue(RHICmdList, ShaderRHI, StaticBackgroundIntensity, InStaticBackgroundIntensity);
@@ -309,6 +321,9 @@ private:
 	FShaderParameter TotalRaysPerProbe;
 	FShaderParameter NodeCount;
 	FShaderParameter TriangleCount;
+	FShaderParameter CascadeCount;
+	FShaderParameter BaseSegmentLength;
+	FShaderParameter CascadeScale;
 	FShaderParameter MaxTraceDistance;
 	FShaderParameter StaticBackgroundColor;
 	FShaderParameter StaticBackgroundIntensity;
@@ -467,7 +482,10 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		RHICmdList, DirectionsSRV, OriginsSRV, NodesSRV, TrianglesSRV,
 		RadianceUAV, HitDistanceUAV,
 		TotalTexels, GroupsX, ProbeCount, TotalRaysPerProbe,
-		NodeCount, TriangleCount, Config.RadianceCascades.MaxTraceDistance,
+		NodeCount, TriangleCount,
+		static_cast<uint32>(Config.RadianceCascades.GetSafeCascadeCount()),
+		Config.RadianceCascades.BaseSegmentLength, Config.RadianceCascades.CascadeScale,
+		Config.RadianceCascades.MaxTraceDistance,
 		FVector4(Config.StaticBackgroundColor.R, Config.StaticBackgroundColor.G, Config.StaticBackgroundColor.B, Config.StaticBackgroundColor.A),
 		Config.StaticBackgroundIntensity, Config.GIIntensity,
 		FVector4(Config.ProbeGridOrigin.X, Config.ProbeGridOrigin.Y, Config.ProbeGridOrigin.Z, 0.0f),
