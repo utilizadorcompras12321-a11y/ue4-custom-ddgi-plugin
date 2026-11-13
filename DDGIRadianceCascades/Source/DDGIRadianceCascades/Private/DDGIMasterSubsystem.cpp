@@ -76,6 +76,9 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.RadianceCascades.BaseSegmentLength = FMath::Max(1.0f, InActor->BaseSegmentLength);
 	Config.RadianceCascades.CascadeScale = FMath::Max(1.01f, InActor->CascadeScale);
 	Config.RadianceCascades.MaxTraceDistance = FMath::Max(1.0f, InActor->DynamicGIDistance);
+	Config.RadianceCascades.BuildCascadeSlices(Config.RadianceCascadeSlices);
+	Config.TotalRaysPerProbe = Config.RadianceCascades.GetTotalRayCount();
+	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.MaxActiveProbes);
 	Config.ProbeSpacing = FMath::Max(1.0f, InActor->ProbeSpacing);
 	Config.MaxActiveProbes = FMath::Max(1, InActor->MaxActiveProbes);
 	Config.ProbeUpdateBudget = FMath::Max(0, InActor->ProbeUpdateBudget);

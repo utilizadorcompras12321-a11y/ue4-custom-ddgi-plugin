@@ -17,6 +17,9 @@ struct FDDGIMasterConfig
 	UPROPERTY() float GIIntensity = 1.0f;
 	UPROPERTY() float DynamicGIDistance = 10000.0f;
 	UPROPERTY() FDDGIRadianceCascadeConfig RadianceCascades;
+	UPROPERTY() TArray<FDDGIRadianceCascadeSlice> RadianceCascadeSlices;
+	UPROPERTY() int32 TotalRaysPerProbe = 0;
+	UPROPERTY() int64 EstimatedRadianceStorageBytes = 0;
 	UPROPERTY() float ProbeSpacing = 200.0f;
 	UPROPERTY() int32 MaxActiveProbes = 32768;
 	UPROPERTY() int32 ProbeUpdateBudget = 50000;
