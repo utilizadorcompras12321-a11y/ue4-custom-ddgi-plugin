@@ -161,7 +161,9 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         (int)CascadeIndex, BaseSegmentLength, CascadeScale, MaxTraceDistance);
     float CascadeStartDistance = CascadeInterval.x;
     float CascadeEndDistance = CascadeInterval.y;
-    float ClosestHit = MaxTraceDistance;
+    // Stop BVH traversal at this interval's end; hits before the interval are
+    // still detected so they can occlude farther cascades.
+    float ClosestHit = CascadeEndDistance;
     bool bHit = false;
     uint ClosestTriangleIndex = 0u;
 
