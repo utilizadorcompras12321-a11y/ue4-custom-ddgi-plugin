@@ -272,29 +272,39 @@ float3 TraceDeterministicDiffuseBounce(
     uint IgnoreTriangleIndex)
 {
     float3 Normal = normalize(SurfaceNormal);
-    float3 ReferenceUp = abs(Normal.z) < 0.999f
-        ? float3(0.0f, 0.0f, 1.0f)
-        : float3(0.0f, 1.0f, 0.0f);
-    float3 Tangent = normalize(cross(ReferenceUp, Normal));
-    float3 Bitangent = normalize(cross(Normal, Tangent));
+
+    // Stable orthonormal basis (Frisvad/Duff construction). Unlike a
+    // cross-product against a selected world-up vector, this avoids a basis
+    // switch seam when the surface normal approaches the pole threshold.
+    float BasisSign = Normal.z >= 0.0f ? 1.0f : -1.0f;
+    float BasisA = -1.0f / (BasisSign + Normal.z);
+    float BasisB = Normal.x * Normal.y * BasisA;
+    float3 Tangent = float3(
+        1.0f + BasisSign * Normal.x * Normal.x * BasisA,
+        BasisSign * BasisB,
+        -BasisSign * Normal.x);
+    float3 Bitangent = float3(
+        BasisB,
+        BasisSign + Normal.y * Normal.y * BasisA,
+        -Normal.y);
 
     float3 IncomingRadianceSum = 0.0f;
     const uint SampleCount = 4u;
-    const float GoldenRatioConjugate = 0.6180339887498948f;
-    const float TwoPi = 6.283185307179586f;
+    const float CosTheta = 0.6666666666666667f;
+    const float SinTheta = 0.7453559924999299f;
+    const float HalfPi = 1.5707963267948966f;
 
+    // Fourfold-symmetric cosine-weighted quadrature. The azimuths are evenly
+    // spaced and the cosine is the exact first moment (2/3) of a cosine
+    // hemisphere distribution. No random values or frame-dependent inputs.
     [unroll]
     for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
     {
-        float U = ((float)SampleIndex + 0.5f) / (float)SampleCount;
-        float V = frac(((float)SampleIndex + 0.5f) * GoldenRatioConjugate);
-        float Radius = sqrt(U);
-        float Phi = TwoPi * V;
-        float Z = sqrt(saturate(1.0f - U));
+        float Phi = ((float)SampleIndex + 0.5f) * HalfPi;
         float3 SecondaryDirection = normalize(
-            Tangent * (Radius * cos(Phi)) +
-            Bitangent * (Radius * sin(Phi)) +
-            Normal * Z);
+            Tangent * (SinTheta * cos(Phi)) +
+            Bitangent * (SinTheta * sin(Phi)) +
+            Normal * CosTheta);
 
         float SecondaryDistance;
         uint SecondaryTriangleIndex;
