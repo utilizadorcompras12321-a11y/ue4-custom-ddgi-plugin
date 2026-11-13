@@ -142,7 +142,7 @@ struct FDDGIRadianceCascadeConfig
 	}
 
 	// GPU format uses half-float RGBA radiance plus one R32F hit-distance texel.
-	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 12) const
+	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 20) const
 	{
 		return static_cast<int64>(FMath::Max(0, ProbeCount)) *
 			static_cast<int64>(GetTotalRayCount()) *

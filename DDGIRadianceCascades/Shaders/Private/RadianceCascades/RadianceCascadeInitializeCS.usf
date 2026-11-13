@@ -1,0 +1,81 @@
+#include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
+
+uint NumProbes;
+uint TotalRaysPerProbe;
+uint CascadeCount;
+uint BaseRayCount;
+uint RaySplitFactor;
+float BaseSegmentLength;
+float CascadeScale;
+float MaxTraceDistance;
+uint TextureWidth;
+uint TotalTexels;
+
+RWTexture2D<float4> DirectionsUAV;
+RWTexture2D<float4> RadianceUAV;
+RWTexture2D<float> HitDistanceUAV;
+
+float3 DDGIRadianceCascadeBaseDirection(uint RayIndex, uint RayCount)
+{
+    const float GoldenAngle = 2.39996322972865332f;
+    float Y = 1.0f - 2.0f * ((float)RayIndex + 0.5f) / (float)max(RayCount, 1u);
+    float Radius = sqrt(saturate(1.0f - Y * Y));
+    float Angle = (float)RayIndex * GoldenAngle;
+    return normalize(float3(cos(Angle) * Radius, Y, sin(Angle) * Radius));
+}
+
+[numthreads(64, 1, 1)]
+void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    uint LinearIndex = DispatchThreadId.x;
+    if (LinearIndex >= TotalTexels || TotalRaysPerProbe == 0u)
+    {
+        return;
+    }
+
+    uint PackedRayIndex = LinearIndex % TotalRaysPerProbe;
+    uint CascadeIndex = 0u;
+    uint CascadeOffset = 0u;
+    uint CascadeRayCount = BaseRayCount;
+
+    [loop]
+    for (uint Cascade = 0u; Cascade < CascadeCount; ++Cascade)
+    {
+        if (PackedRayIndex < CascadeOffset + CascadeRayCount)
+        {
+            CascadeIndex = Cascade;
+            break;
+        }
+        CascadeOffset += CascadeRayCount;
+        CascadeRayCount = min(CascadeRayCount * RaySplitFactor, 65536u);
+    }
+
+    uint RayIndex = PackedRayIndex - CascadeOffset;
+    uint BaseRayIndex = RayIndex;
+    [loop]
+    for (uint ParentLevel = CascadeIndex; ParentLevel > 0u; --ParentLevel)
+    {
+        BaseRayIndex /= RaySplitFactor;
+    }
+
+    float3 Direction = DDGIRadianceCascadeBaseDirection(BaseRayIndex, BaseRayCount);
+    uint PreviousCascadeRayCount = BaseRayCount;
+    uint ChildScale = 1u;
+
+    [loop]
+    for (uint Level = 1u; Level <= CascadeIndex; ++Level)
+    {
+        uint ChildIndexAtLevel = RayIndex / max(1u, (uint)pow((float)RaySplitFactor, (float)(CascadeIndex - Level)));
+        uint ParentIndexAtLevel = ChildIndexAtLevel / RaySplitFactor;
+        float ParentConeHalfAngle = acos(clamp(1.0f - 2.0f / (float)max(PreviousCascadeRayCount, 1u), -1.0f, 1.0f));
+        Direction = DDGIRadianceCascadeChildRayDirection(
+            Direction, ChildIndexAtLevel, RaySplitFactor,
+            ParentConeHalfAngle, ParentIndexAtLevel);
+        PreviousCascadeRayCount *= RaySplitFactor;
+    }
+
+    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
+    DirectionsUAV[Pixel] = float4(Direction, (float)CascadeIndex);
+    RadianceUAV[Pixel] = 0.0f;
+    HitDistanceUAV[Pixel] = -1.0f;
+}

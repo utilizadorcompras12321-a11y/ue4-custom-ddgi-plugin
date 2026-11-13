@@ -35,6 +35,39 @@
 #include "DDGIVolumeComponent.h"
 #include "DDGIMasterSubsystem.h"
 #include "DDGIVolumeDescGPU.h"
+#include "DDGIRadianceCascadeResources.h"
+
+
+class FDDGIRadianceCascadeInitializeCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGIRadianceCascadeInitializeCS)
+    SHADER_USE_PARAMETER_STRUCT(FDDGIRadianceCascadeInitializeCS, FGlobalShader)
+
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER(uint32, NumProbes)
+        SHADER_PARAMETER(uint32, TotalRaysPerProbe)
+        SHADER_PARAMETER(uint32, CascadeCount)
+        SHADER_PARAMETER(uint32, BaseRayCount)
+        SHADER_PARAMETER(uint32, RaySplitFactor)
+        SHADER_PARAMETER(float, BaseSegmentLength)
+        SHADER_PARAMETER(float, CascadeScale)
+        SHADER_PARAMETER(float, MaxTraceDistance)
+        SHADER_PARAMETER(uint32, TextureWidth)
+        SHADER_PARAMETER(uint32, TotalTexels)
+        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, DirectionsUAV)
+        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RadianceUAV)
+        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, HitDistanceUAV)
+    END_SHADER_PARAMETER_STRUCT()
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+
+IMPLEMENT_GLOBAL_SHADER(FDDGIRadianceCascadeInitializeCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeInitializeCS.usf",
+    "RadianceCascadeInitializeCS", SF_Compute);
 
 #define LOCTEXT_NAMESPACE "FDDGIRadianceCascadesPlugin"
 
@@ -526,7 +559,40 @@ namespace DDGIVolumeUpdate
 	{
 		check(IsInRenderingThread() || IsInParallelRenderingThread());
 
-		// Gather the list of volumes to update and load data if it's available.
+        // Initialize the packed local-space ray hierarchy once per allocation.
+        FDDGIMasterConfig RadianceCascadeConfig;
+        if (DDGIGetMasterConfig_RenderThread(&Scene, RadianceCascadeConfig))
+        {
+            FRDGTexture* DirectionsTexture = nullptr;
+            FRDGTexture* RadianceTexture = nullptr;
+            FRDGTexture* HitDistanceTexture = nullptr;
+            if (DDGIGetRadianceCascadeInitializationTextures_RenderThread(
+                GraphBuilder, &Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture))
+            {
+                FDDGIRadianceCascadeInitializeCS::FParameters* PassParameters =
+                    GraphBuilder.AllocParameters<FDDGIRadianceCascadeInitializeCS::FParameters>();
+                PassParameters->NumProbes = static_cast<uint32>(RadianceCascadeConfig.MaxActiveProbes);
+                PassParameters->TotalRaysPerProbe = static_cast<uint32>(RadianceCascadeConfig.TotalRaysPerProbe);
+                PassParameters->CascadeCount = static_cast<uint32>(RadianceCascadeConfig.RadianceCascades.GetSafeCascadeCount());
+                PassParameters->BaseRayCount = static_cast<uint32>(FMath::Clamp(RadianceCascadeConfig.RadianceCascades.BaseRayCount, 1, 64));
+                PassParameters->RaySplitFactor = static_cast<uint32>(FMath::Clamp(RadianceCascadeConfig.RadianceCascades.RaySplitFactor, 1, 4));
+                PassParameters->BaseSegmentLength = RadianceCascadeConfig.RadianceCascades.BaseSegmentLength;
+                PassParameters->CascadeScale = RadianceCascadeConfig.RadianceCascades.CascadeScale;
+                PassParameters->MaxTraceDistance = RadianceCascadeConfig.RadianceCascades.MaxTraceDistance;
+                PassParameters->TextureWidth = 4096;
+                PassParameters->TotalTexels = PassParameters->NumProbes * PassParameters->TotalRaysPerProbe;
+                PassParameters->DirectionsUAV = GraphBuilder.CreateUAV(DirectionsTexture);
+                PassParameters->RadianceUAV = GraphBuilder.CreateUAV(RadianceTexture);
+                PassParameters->HitDistanceUAV = GraphBuilder.CreateUAV(HitDistanceTexture);
+
+                TShaderMapRef<FDDGIRadianceCascadeInitializeCS> ComputeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+                const uint32 GroupCount = FMath::DivideAndRoundUp(PassParameters->TotalTexels, 64u);
+                FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("DDGI Radiance Cascades Initialize"),
+                    ComputeShader, PassParameters, FIntVector(GroupCount, 1, 1));
+            }
+        }
+
+        // Gather the list of volumes to update and load data if it's available.
 		// Loading static data is the only thing that happens if ray tracing is not available.
 		TArray<FDDGIVolumeSceneProxy*> sceneVolumes;
 		float totalPriority = 0.0f;

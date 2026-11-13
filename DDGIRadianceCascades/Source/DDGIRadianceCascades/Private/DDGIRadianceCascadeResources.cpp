@@ -3,6 +3,7 @@
 
 #include "RHICommandList.h"
 #include "RenderTargetPool.h"
+#include "RenderGraph.h"
 #include "PostProcess/SceneRenderTargets.h"
 #include "SceneInterface.h"
 
@@ -13,19 +14,23 @@ namespace
 
 	struct FDDGIRadianceCascadeGPUStorage
 	{
+		TRefCountPtr<IPooledRenderTarget> Directions;
 		TRefCountPtr<IPooledRenderTarget> Radiance;
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
+		bool bNeedsInitialization = true;
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
 		int32 TotalRaysPerProbe = 0;
 		int32 ProbeCapacity = 0;
 
 		void Release()
 		{
+			Directions.SafeRelease();
 			Radiance.SafeRelease();
 			HitDistance.SafeRelease();
 			Dimensions = FIntPoint::ZeroValue;
 			TotalRaysPerProbe = 0;
 			ProbeCapacity = 0;
+			bNeedsInitialization = true;
 		}
 	};
 
@@ -62,6 +67,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 	if (Storage.Dimensions == RequiredDimensions &&
 		Storage.TotalRaysPerProbe == Config.TotalRaysPerProbe &&
 		Storage.ProbeCapacity == Config.MaxActiveProbes &&
+		Storage.Directions.IsValid() &&
 		Storage.Radiance.IsValid() &&
 		Storage.HitDistance.IsValid())
 	{
@@ -70,7 +76,10 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
 	Storage.Release();
 
-	// One half-float RGBA texel stores radiance; one R32F texel stores hit distance.
+	// Half-float RGBA texels store direction and radiance; R32F stores hit distance.
+	const FPooledRenderTargetDesc DirectionDesc = FPooledRenderTargetDesc::Create2DDesc(
+		RequiredDimensions, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_None,
+		TexCreate_ShaderResource | TexCreate_UAV, false);
 	const FPooledRenderTargetDesc RadianceDesc = FPooledRenderTargetDesc::Create2DDesc(
 		RequiredDimensions, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_None,
 		TexCreate_ShaderResource | TexCreate_UAV, false);
@@ -78,12 +87,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 		RequiredDimensions, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_None,
 		TexCreate_ShaderResource | TexCreate_UAV, false);
 
+	GRenderTargetPool.FindFreeElement(RHICmdList, DirectionDesc, Storage.Directions,
+		TEXT("DDGIRadianceCascade_Directions"), ERenderTargetTransience::NonTransient);
 	GRenderTargetPool.FindFreeElement(RHICmdList, RadianceDesc, Storage.Radiance,
 		TEXT("DDGIRadianceCascade_Radiance"), ERenderTargetTransience::NonTransient);
 	GRenderTargetPool.FindFreeElement(RHICmdList, DistanceDesc, Storage.HitDistance,
 		TEXT("DDGIRadianceCascade_HitDistance"), ERenderTargetTransience::NonTransient);
 
-	if (!Storage.Radiance.IsValid() || !Storage.HitDistance.IsValid())
+	if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.HitDistance.IsValid())
 	{
 		Storage.Release();
 		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate persistent GPU textures."));
@@ -103,4 +114,30 @@ void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Sce
 		Storage->Release();
 		GDDGIRadianceCascadeStorage_RenderThread.Remove(Scene);
 	}
+}
+
+bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
+    FRDGBuilder& GraphBuilder,
+    const FSceneInterface* Scene,
+    FRDGTexture*& OutDirections,
+    FRDGTexture*& OutRadiance,
+    FRDGTexture*& OutHitDistance)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutDirections = nullptr;
+    OutRadiance = nullptr;
+    OutHitDistance = nullptr;
+
+    FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || !Storage->bNeedsInitialization ||
+        !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() || !Storage->HitDistance.IsValid())
+    {
+        return false;
+    }
+
+    OutDirections = GraphBuilder.RegisterExternalTexture(Storage->Directions);
+    OutRadiance = GraphBuilder.RegisterExternalTexture(Storage->Radiance);
+    OutHitDistance = GraphBuilder.RegisterExternalTexture(Storage->HitDistance);
+    Storage->bNeedsInitialization = false;
+    return OutDirections && OutRadiance && OutHitDistance;
 }
