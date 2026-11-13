@@ -77,7 +77,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbeCapacity == Config.MaxActiveProbes &&
         Storage.Directions.IsValid() &&
         Storage.Radiance.IsValid() &&
-        Storage.HitDistance.IsValid();
+        Storage.HitDistance.IsValid() &&
+        Storage.RayOrigins.IsValid();
 
     if (!bRayStorageMatches)
     {
