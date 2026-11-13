@@ -193,7 +193,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Upload the immutable CPU BVH once per snapshot. Master Actor movement
     // republishes probe origins but keeps the same shared BVH pointer.
     const FDDGISoftwareBVHData* CurrentBVH = Config.SoftwareBVH.Get();
-    if (Storage.BVHDataIdentity != CurrentBVH)
+    if (Storage.BVHDataIdentity != CurrentBVH || !Storage.BVHNodesSRV.IsValid() || !Storage.BVHTrianglesSRV.IsValid())
     {
         Storage.BVHNodes.SafeRelease();
         Storage.BVHNodesSRV.SafeRelease();
@@ -249,6 +249,38 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             {
                 UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate BVH structured buffers."));
             }
+        }
+        else
+        {
+            // Keep valid, zero-count SRVs so the trace shader can still run its
+            // background-only path when the world contains no supported triangles.
+            TResourceArray<FVector4> EmptyNodeData;
+            EmptyNodeData.AddZeroed(3);
+            FRHIResourceCreateInfo EmptyNodeCreateInfo(TEXT("DDGIRadianceCascade_EmptyBVHNodes"));
+            EmptyNodeCreateInfo.ResourceArray = &EmptyNodeData;
+            Storage.BVHNodes = RHICreateStructuredBuffer(
+                sizeof(FVector4),
+                static_cast<uint32>(EmptyNodeData.GetResourceDataSize()),
+                BUF_ShaderResource,
+                EmptyNodeCreateInfo);
+
+            TResourceArray<FVector4> EmptyTriangleData;
+            EmptyTriangleData.AddZeroed(4);
+            FRHIResourceCreateInfo EmptyTriangleCreateInfo(TEXT("DDGIRadianceCascade_EmptyBVHTriangles"));
+            EmptyTriangleCreateInfo.ResourceArray = &EmptyTriangleData;
+            Storage.BVHTriangles = RHICreateStructuredBuffer(
+                sizeof(FVector4),
+                static_cast<uint32>(EmptyTriangleData.GetResourceDataSize()),
+                BUF_ShaderResource,
+                EmptyTriangleCreateInfo);
+
+            if (Storage.BVHNodes.IsValid() && Storage.BVHTriangles.IsValid())
+            {
+                Storage.BVHNodesSRV = RHICreateShaderResourceView(Storage.BVHNodes);
+                Storage.BVHTrianglesSRV = RHICreateShaderResourceView(Storage.BVHTriangles);
+            }
+            Storage.BVHNodeCount = 0;
+            Storage.BVHTriangleCount = 0;
         }
     }
 }
@@ -437,8 +469,7 @@ bool DDGIGetSoftwareBVHResources_RenderThread(
 	OutTriangleCount = 0;
 
 	const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
-	if (!Storage || !Storage->BVHNodesSRV.IsValid() || !Storage->BVHTrianglesSRV.IsValid() ||
-		Storage->BVHNodeCount == 0 || Storage->BVHTriangleCount == 0)
+	if (!Storage || !Storage->BVHNodesSRV.IsValid() || !Storage->BVHTrianglesSRV.IsValid())
 	{
 		return false;
 	}

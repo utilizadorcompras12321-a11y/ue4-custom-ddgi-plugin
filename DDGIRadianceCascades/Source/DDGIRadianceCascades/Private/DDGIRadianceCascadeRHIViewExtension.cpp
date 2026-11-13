@@ -577,7 +577,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	uint32 TriangleCount = 0;
 	if (!DDGIGetSoftwareBVHResources_RenderThread(Scene, NodesSRV, TrianglesSRV, NodeCount, TriangleCount))
 	{
-		// No supported static geometry was captured; keep miss distances from initialization.
+		// The resource manager supplies valid zero-count buffers for an empty BVH.
 		return;
 	}
 
@@ -630,8 +630,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		FTexture2DRHIRef CurrentInputRadiance = RadianceTexture;
 		FTexture2DRHIRef CurrentOutputRadiance = RadianceScratchTexture;
 		const uint32 CascadeCount = static_cast<uint32>(Config.RadianceCascades.GetSafeCascadeCount());
-		const uint32 RaySplitFactor = static_cast<uint32>(FMath::Clamp(Config.RadianceCascades.RaySplitFactor, 1, 4));
-		const uint32 BaseRayCount = static_cast<uint32>(FMath::Clamp(Config.RadianceCascades.BaseRayCount, 1, 64));
 		const uint32 TotalRays = static_cast<uint32>(Config.TotalRaysPerProbe);
 		const uint32 TotalProbeTexels = ProbeCount * TotalRays;
 		const uint32 IntegrationGroups = FMath::Min(FMath::DivideAndRoundUp(TotalProbeTexels, 64u), 65535u);
