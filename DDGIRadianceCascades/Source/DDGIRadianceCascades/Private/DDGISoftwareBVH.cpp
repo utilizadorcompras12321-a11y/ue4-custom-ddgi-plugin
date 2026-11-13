@@ -18,6 +18,7 @@ namespace
 		FVector B;
 		FVector C;
 		FVector Centroid;
+		int32 OriginalIndex = INDEX_NONE;
 		FVector BoundsMin;
 		FVector BoundsMax;
 		FVector EmissiveRadiance = FVector::ZeroVector;
@@ -192,7 +193,7 @@ namespace
 			const float AxisMinimum = CentroidMinAxis[BestAxis];
 			const float AxisSize = AxisExtent[BestAxis];
 			FDDGISoftwareTriangle* Data = Triangles.GetData();
-			const auto PartitionEnd = std::partition(
+			const auto PartitionEnd = std::stable_partition(
 				Data + FirstTriangle, Data + FirstTriangle + TriangleCount,
 				[BestAxis, AxisMinimum, AxisSize, BestSplitBin, BinCount](const FDDGISoftwareTriangle& Triangle)
 				{
@@ -214,13 +215,13 @@ namespace
 			else if (Extent.Z > Extent.X && Extent.Z > Extent.Y) Axis = 2;
 			Middle = FirstTriangle + TriangleCount / 2;
 			FDDGISoftwareTriangle* Data = Triangles.GetData();
-			std::nth_element(
+			std::sort(
 				Data + FirstTriangle, Data + Middle, Data + FirstTriangle + TriangleCount,
 				[Axis](const FDDGISoftwareTriangle& A, const FDDGISoftwareTriangle& B)
 				{
-					if (Axis == 0) return A.Centroid.X < B.Centroid.X;
-					if (Axis == 1) return A.Centroid.Y < B.Centroid.Y;
-					return A.Centroid.Z < B.Centroid.Z;
+					const float AValue = Axis == 0 ? A.Centroid.X : (Axis == 1 ? A.Centroid.Y : A.Centroid.Z);
+					const float BValue = Axis == 0 ? B.Centroid.X : (Axis == 1 ? B.Centroid.Y : B.Centroid.Z);
+					return AValue == BValue ? A.OriginalIndex < B.OriginalIndex : AValue < BValue;
 				});
 		}
 
@@ -433,6 +434,7 @@ void DDGISoftwareBVH::BuildStaticWorld(
 				}
 
 				FDDGISoftwareTriangle& Triangle = Triangles.AddDefaulted_GetRef();
+				Triangle.OriginalIndex = Triangles.Num() - 1;
 				Triangle.A = A;
 				Triangle.B = B;
 				Triangle.C = C;
