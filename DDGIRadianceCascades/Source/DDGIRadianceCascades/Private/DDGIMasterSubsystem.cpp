@@ -232,7 +232,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.MaxActiveProbes = FMath::Clamp(InActor->MaxActiveProbes, 1, 32768);
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.MaxActiveProbes);
 	Config.ProbeUpdateBudget = FMath::Max(0, InActor->ProbeUpdateBudget);
-	Config.MaxSoftwareTriangles = FMath::Max(1, InActor->MaxSoftwareTriangles);
+	Config.MaxSoftwareTriangles = FMath::Clamp(InActor->MaxSoftwareTriangles, 1, 250000);
 
 	// Build the immutable static-scene BVH once. Moving the Master Actor only
 	// moves probe origins; it must not rebuild the world geometry every tick.

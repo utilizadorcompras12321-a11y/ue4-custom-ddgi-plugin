@@ -44,7 +44,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "1", ClampMax = "32768", UIMin = "1", UIMax = "32768"))
 	int32 MaxActiveProbes = 32768;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "1", UIMin = "1000"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "1", ClampMax = "250000", UIMin = "1000", UIMax = "250000"))
 	int32 MaxSoftwareTriangles = 250000;
 
 	// Retained for later probe scheduling; does not cap BVH construction.

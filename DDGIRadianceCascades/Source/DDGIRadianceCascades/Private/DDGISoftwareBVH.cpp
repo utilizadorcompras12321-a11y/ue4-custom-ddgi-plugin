@@ -12,6 +12,8 @@
 
 namespace
 {
+	static const int32 GDDGISoftwareBVHHardTriangleLimit = 250000;
+
 	struct FDDGISoftwareTriangle
 	{
 		FVector A;
@@ -397,6 +399,10 @@ void DDGISoftwareBVH::BuildStaticWorld(
 		return;
 	}
 
+	// Keep CPU build memory and GPU structured-buffer sizes bounded even if
+	// an external caller supplies an extreme Blueprint/config value.
+	MaxTriangleCount = FMath::Min(MaxTriangleCount, GDDGISoftwareBVHHardTriangleLimit);
+
 	TArray<FDDGISoftwareTriangle> Triangles;
 	Triangles.Reserve(FMath::Min(MaxTriangleCount, 65536));
 	bool bHasWorldOrigin = false;
@@ -463,22 +469,26 @@ void DDGISoftwareBVH::BuildStaticWorld(
 				bHasWorldOrigin = true;
 			}
 			const FVector ComponentRelativeLocation = ComponentTransform.GetLocation() - OutWorldOrigin;
-			const int32 ComponentTriangleCount = static_cast<int32>(IndexCount / 3);
+			const int32 ComponentTriangleCount = static_cast<int32>(IndexCount / 3u);
+			const int32 RemainingTriangleCapacity = MaxTriangleCount - Triangles.Num();
+			const int32 TrianglesToProcess = FMath::Min(ComponentTriangleCount, RemainingTriangleCapacity);
+			if (TrianglesToProcess <= 0)
+			{
+				break;
+			}
 			bool bAddedAnyTriangle = false;
 
-			// Resolve each triangle's material from the LOD section ranges.
-			// Only the explicit DDGI emissive parameter is sampled here; the
-			// software BVH does not evaluate arbitrary material graphs.
+			// Resolve material indices only for triangles that can still enter the BVH.
 			TArray<int32> TriangleMaterialIndices;
-			TriangleMaterialIndices.Init(INDEX_NONE, ComponentTriangleCount);
+			TriangleMaterialIndices.Init(INDEX_NONE, TrianglesToProcess);
 			for (const FStaticMeshSection& Section : LOD.Sections)
 			{
-				const int32 FirstSectionTriangle = static_cast<int32>(Section.FirstIndex / 3u);
-				const int32 EndSectionTriangle = FMath::Min(
-					FirstSectionTriangle + static_cast<int32>(Section.NumTriangles),
-					ComponentTriangleCount);
-				for (int32 SectionTriangle = FirstSectionTriangle;
-					SectionTriangle < EndSectionTriangle; ++SectionTriangle)
+				const int64 FirstSectionTriangle = static_cast<int64>(Section.FirstIndex / 3u);
+				const int64 SectionEndTriangle = FirstSectionTriangle + static_cast<int64>(Section.NumTriangles);
+				const int32 ClampedFirstTriangle = static_cast<int32>(FMath::Min<int64>(FirstSectionTriangle, TrianglesToProcess));
+				const int32 ClampedEndTriangle = static_cast<int32>(FMath::Min<int64>(SectionEndTriangle, TrianglesToProcess));
+				for (int32 SectionTriangle = ClampedFirstTriangle;
+					SectionTriangle < ClampedEndTriangle; ++SectionTriangle)
 				{
 					TriangleMaterialIndices[SectionTriangle] = static_cast<int32>(Section.MaterialIndex);
 				}
@@ -523,12 +533,8 @@ void DDGISoftwareBVH::BuildStaticWorld(
 				}
 			}
 
-			for (int32 TriangleIndex = 0; TriangleIndex < ComponentTriangleCount; ++TriangleIndex)
+			for (int32 TriangleIndex = 0; TriangleIndex < TrianglesToProcess; ++TriangleIndex)
 			{
-				if (Triangles.Num() >= MaxTriangleCount)
-				{
-					break;
-				}
 
 				const uint32 I0 = LOD.IndexBuffer.GetIndex(TriangleIndex * 3 + 0);
 				const uint32 I1 = LOD.IndexBuffer.GetIndex(TriangleIndex * 3 + 1);
