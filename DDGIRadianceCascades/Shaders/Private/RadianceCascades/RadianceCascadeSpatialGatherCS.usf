@@ -1,5 +1,5 @@
 #include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
-uint TextureWidth, TotalTexels, DispatchGroupsX, ProbeCount, TotalRaysPerProbe, HashCapacity;
+uint TextureWidth, TotalTexels, DispatchGroupsX, ProbeCount, TotalRaysPerProbe, HashCapacity, TriangleCount;
 float ProbeSpacing;
 float4 ProbeGridOrigin;
 Texture2D<float4> RadianceTexture;
@@ -68,6 +68,11 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     if (CenterHasSurfaceTag)
     {
         uint CenterTriangleIndex = CenterTriangleTag - 1u;
+        if (CenterTriangleIndex >= TriangleCount)
+        {
+            OutputRadianceUAV[Pixel] = CenterRadianceSample;
+            return;
+        }
         uint CenterTriangleBase = CenterTriangleIndex * 4u;
         CenterNormal = normalize(cross(
             BVHTriangles[CenterTriangleBase + 1u].xyz - BVHTriangles[CenterTriangleBase].xyz,
@@ -103,6 +108,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             float3 NeighborHitPosition = NeighborRayOrigin + NeighborDirection * NeighborHitDistance;
             if (distance(CenterHitPosition, NeighborHitPosition) > SafeSpacing * 1.25f) continue;
             uint NeighborTriangleIndex = NeighborTriangleTag - 1u;
+            if (NeighborTriangleIndex >= TriangleCount) continue;
             uint NeighborTriangleBase = NeighborTriangleIndex * 4u;
             float3 NeighborNormal = normalize(cross(
                 BVHTriangles[NeighborTriangleBase + 1u].xyz - BVHTriangles[NeighborTriangleBase].xyz,
