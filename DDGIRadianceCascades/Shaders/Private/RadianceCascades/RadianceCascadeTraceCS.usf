@@ -32,6 +32,18 @@ RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<uint> HitTriangleIndexUAV;
 
+// Position-relative ray bias: enough to cover several float ULPs at the
+// current coordinate magnitude, but never use a scene-independent 0.5 cm.
+float ComputeRayOriginBias(float3 Position)
+{
+    const float FloatEpsilon = 1.192092896e-7f;
+    const float MinimumBias = 0.001f;
+    float CoordinateMagnitude = max(
+        max(abs(Position.x), abs(Position.y)),
+        abs(Position.z));
+    return max(MinimumBias, CoordinateMagnitude * FloatEpsilon * 4.0f);
+}
+
 bool IntersectBounds(float3 Origin, float3 Direction, float3 BoundsMin, float3 BoundsMax, float MaxDistance)
 {
     // A nearly parallel ray can only intersect this slab when its origin
@@ -433,7 +445,7 @@ float3 EvaluateHitSurfaceRadiance(
         float NdotL = saturate(dot(Normal, ToLight));
         if (NdotL > 0.0f)
         {
-            float3 ShadowOrigin = HitPosition + Normal * 0.5f;
+            float3 ShadowOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
             const float DirectionalShadowDistance = 1000000.0f;
             if (!TraceAnyHit(ShadowOrigin, ToLight, DirectionalShadowDistance, TriangleIndex))
             {
@@ -484,7 +496,7 @@ float3 TraceDeterministicTertiaryBounce(
             Normal * CosTheta);
         float TertiaryDistance;
         uint TertiaryTriangleIndex;
-        float3 TertiaryOrigin = HitPosition + Normal * 0.5f;
+        float3 TertiaryOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
         if (TraceClosestHit(
             TertiaryOrigin,
             TertiaryDirection,
@@ -551,7 +563,7 @@ float3 TraceDeterministicDiffuseBounce(
 
         float SecondaryDistance;
         uint SecondaryTriangleIndex;
-        float3 SecondaryOrigin = HitPosition + Normal * 0.5f;
+        float3 SecondaryOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
         if (TraceClosestHit(
             SecondaryOrigin,
             SecondaryDirection,
@@ -784,7 +796,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             float NdotL = saturate(dot(GeometricNormal, ToLight));
             if (NdotL > 0.0f)
             {
-                float3 ShadowOrigin = HitPosition + GeometricNormal * 0.5f;
+                float3 ShadowOrigin = HitPosition + GeometricNormal * ComputeRayOriginBias(HitPosition);
                 const float DirectionalShadowDistance = 1000000.0f;
                 const bool bOccluded = TraceAnyHit(
                     ShadowOrigin, ToLight, DirectionalShadowDistance, ClosestTriangleIndex);
