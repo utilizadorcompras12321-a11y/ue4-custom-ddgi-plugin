@@ -123,7 +123,9 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         bool CenterHit = CenterHitDistance >= 0.0f;
         bool NeighborHit = NeighborHitDistance >= 0.0f;
         if (CenterHit != NeighborHit) continue;
-        if (CenterHit && abs(CenterHitDistance - NeighborHitDistance) > SafeSpacing * 0.75f) continue;
+        // Hit distances are measured from different probe origins. Their values
+        // can differ by nearly one probe spacing even when both rays hit the
+        // same plane; compare reconstructed world hit positions below instead.
         uint NeighborTriangleTag = HitTriangleIndexTexture.Load(int3(NeighborPixel,0));
         bool NeighborHasSurfaceTag = NeighborTriangleTag > 0u;
         if (CenterHasSurfaceTag != NeighborHasSurfaceTag) continue;
