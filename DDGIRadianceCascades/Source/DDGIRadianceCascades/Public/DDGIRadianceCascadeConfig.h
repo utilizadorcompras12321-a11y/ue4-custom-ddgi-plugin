@@ -141,7 +141,7 @@ struct FDDGIRadianceCascadeConfig
 		}
 	}
 
-	// GPU format uses half-float RGBA radiance plus one R32F hit-distance texel.
+	// Current GPU layout: half-float RGBA direction + half-float RGBA radiance + R32F hit distance (20 bytes per ray).
 	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 20) const
 	{
 		return static_cast<int64>(FMath::Max(0, ProbeCount)) *
