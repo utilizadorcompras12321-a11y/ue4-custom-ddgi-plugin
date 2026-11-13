@@ -786,7 +786,11 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             BVHTriangles[HitTriangleBase + 1u].w,
             BVHTriangles[HitTriangleBase + 2u].w) * GIIntensity;
 
-        if (dot(GeometricNormal, GeometricNormal) > 0.0f && bHasDirectionalLight != 0u)
+        // A black diffuse albedo cannot receive direct diffuse light.
+        // Keep emissive radiance above, but skip the pointless shadow traversal.
+        if (dot(GeometricNormal, GeometricNormal) > 0.0f &&
+            bHasDirectionalLight != 0u &&
+            any(HitBaseColor > 1.0e-6f))
         {
             float3 ToLight = normalize(DirectionalLightDirection.xyz);
             float NdotL = saturate(dot(GeometricNormal, ToLight));
@@ -807,7 +811,11 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         // One deterministic diffuse bounce: secondary rays evaluate direct
         // and emissive radiance at the next surface, then the primary hit
         // reflects their average according to its diffuse base color.
-        if (dot(GeometricNormal, GeometricNormal) > 0.0f)
+        // A zero-albedo surface reflects no diffuse indirect light.
+        // Avoid four secondary BVH rays when their contribution is guaranteed
+        // to be zero after multiplication by HitBaseColor.
+        if (dot(GeometricNormal, GeometricNormal) > 0.0f &&
+            any(HitBaseColor > 1.0e-6f))
         {
             float3 IncomingBounceRadiance = TraceDeterministicDiffuseBounce(
                 HitPosition, GeometricNormal, ClosestTriangleIndex);
