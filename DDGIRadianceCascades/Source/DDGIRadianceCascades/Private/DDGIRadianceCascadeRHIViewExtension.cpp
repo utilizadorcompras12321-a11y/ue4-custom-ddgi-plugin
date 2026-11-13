@@ -369,7 +369,7 @@ public:
 		CascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("CascadeStorageOffset"));
 		CascadeRayCount.Bind(Initializer.ParameterMap, TEXT("CascadeRayCount"));
 		NextCascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("NextCascadeStorageOffset"));
-		RaySplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
+		EffectiveSplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
 		InputRadianceTexture.Bind(Initializer.ParameterMap, TEXT("InputRadianceTexture"));
 		HitDistanceTexture.Bind(Initializer.ParameterMap, TEXT("HitDistanceTexture"));
 		OutputRadianceUAV.Bind(Initializer.ParameterMap, TEXT("OutputRadianceUAV"));
