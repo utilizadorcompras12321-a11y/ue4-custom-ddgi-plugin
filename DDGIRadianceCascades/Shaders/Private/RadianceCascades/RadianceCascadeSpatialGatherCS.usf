@@ -55,6 +55,13 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     float3 RadianceSum = CenterRadianceSample.rgb;
     float3 CenterHitPosition = CenterRayOrigin + CenterDirection * max(CenterHitDistance, 0.0f);
     bool CenterHasSurfaceTag = CenterRadianceSample.a >= 1.0f;
+    // A positive distance without a triangle tag means an earlier cascade
+    // already blocked this ray. Preserve it; there is no local surface to gather.
+    if (CenterHitDistance >= 0.0f && !CenterHasSurfaceTag)
+    {
+        OutputRadianceUAV[Pixel] = CenterRadianceSample;
+        return;
+    }
     float3 CenterNormal = 0.0f;
     if (CenterHasSurfaceTag)
     {
