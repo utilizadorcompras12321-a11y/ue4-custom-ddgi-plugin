@@ -96,7 +96,10 @@ namespace
 		const int32 MaxShell = FMath::CeilToInt(SafeRadius / EffectiveSpacing);
 		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
 		OutPositions.Reserve(SafeMaxProbeCount);
-		OutPositions.Add(FVector4(Origin.X, Origin.Y, Origin.Z, 1.0f));
+		// Store probe positions relative to ProbeGridOrigin. The origin is
+		// supplied separately to shaders, so translating the actor never
+		// accumulates float error in every probe position.
+		OutPositions.Add(FVector4(0.0f, 0.0f, 0.0f, 1.0f));
 
 		for (int32 Z = -MaxShell; Z <= MaxShell; ++Z)
 		{
@@ -115,7 +118,7 @@ namespace
 					{
 						continue;
 					}
-					const FVector Position = Origin + FVector(
+					const FVector Position(
 						static_cast<float>(DX),
 						static_cast<float>(DY),
 						static_cast<float>(DZ));
@@ -134,7 +137,7 @@ namespace
 		uint32 Hash = 2166136261u;
 		for (const FVector4& Position : ProbePositions)
 		{
-			const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - ProbeGridOrigin;
+			const FVector Relative(Position.X, Position.Y, Position.Z);
 			const FIntVector Cell(
 				FMath::RoundToInt(Relative.X / SafeProbeSpacing),
 				FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
@@ -239,13 +242,7 @@ void UDDGIMasterSubsystem::RefreshProbeGridOrigin(ADDGIMasterActor* InActor)
 	}
 
 	Config.ProbeGridOrigin = NewOrigin;
-	for (FVector4& ProbePosition : Config.ProbePositions)
-	{
-		ProbePosition.X += Delta.X;
-		ProbePosition.Y += Delta.Y;
-		ProbePosition.Z += Delta.Z;
-	}
-
+	// ProbePositions are grid-relative offsets and therefore do not change.
 	PublishConfig(true);
 }
 
