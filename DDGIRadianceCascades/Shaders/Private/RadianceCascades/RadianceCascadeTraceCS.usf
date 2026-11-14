@@ -439,17 +439,26 @@ bool TraceClosestHit(
                 float3 CandidateA = BVHTriangles[TriangleBase + 0u].xyz;
                 float3 CandidateB = BVHTriangles[TriangleBase + 1u].xyz;
                 float3 CandidateC = BVHTriangles[TriangleBase + 2u].xyz;
-                float CandidateDistance;
-                if (IntersectTriangle(Origin, Direction,
-                    CandidateA, CandidateB, CandidateC,
-                    CandidateDistance) && CandidateDistance < ClosestDistance)
+                float CandidateDistance = MaxDistance;
+                bool bTriangleHit = IntersectTriangle(
+                    Origin,
+                    Direction,
+                    CandidateA,
+                    CandidateB,
+                    CandidateC,
+                    CandidateDistance);
+
+                if (bTriangleHit)
                 {
-                    ClosestDistance = CandidateDistance;
-                    ClosestTriangleIndex = TriangleIndex;
-                    ClosestA = CandidateA;
-                    ClosestB = CandidateB;
-                    ClosestC = CandidateC;
-                    bFoundHit = true;
+                    if (CandidateDistance < ClosestDistance)
+                    {
+                        ClosestDistance = CandidateDistance;
+                        ClosestTriangleIndex = TriangleIndex;
+                        ClosestA = CandidateA;
+                        ClosestB = CandidateB;
+                        ClosestC = CandidateC;
+                        bFoundHit = true;
+                    }
                 }
             }
         }
