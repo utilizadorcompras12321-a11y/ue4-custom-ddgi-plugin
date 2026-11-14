@@ -77,6 +77,7 @@ public:
 	void RegisterMasterActor(ADDGIMasterActor* InActor);
 	void UnregisterMasterActor(ADDGIMasterActor* InActor);
 	void RefreshConfig(ADDGIMasterActor* InActor);
+	void RebuildSoftwareBVH(ADDGIMasterActor* InActor);
 	void RefreshProbeGridOrigin(ADDGIMasterActor* InActor);
 	void RefreshDirectionalLighting(ADDGIMasterActor* InActor);
 
