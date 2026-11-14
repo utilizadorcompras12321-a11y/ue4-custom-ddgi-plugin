@@ -6,7 +6,6 @@ Texture2D<float4> RadianceTexture;
 Texture2D<float> HitDistanceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
 Texture2D<float4> DirectionsTexture;
-Texture2D<float4> RayOriginsTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> BVHTriangles;
 StructuredBuffer<float4> ProbeSpatialHash;
@@ -136,8 +135,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         float3 NeighborPosition;
         if (CenterHit)
         {
-            // RayOriginsUAV is initialized from the exact same ProbeOrigin
-            // texel, so the probe position is also the ray origin.
+            // Every ray belonging to this probe shares its probe position as origin.
             NeighborPosition = ProbePositionsTexture.Load(int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
             float3 NeighborHitPosition = NeighborPosition + CenterDirection * NeighborHitDistance;
             if (distance(CenterHitPosition, NeighborHitPosition) > SafeSpacing * 1.25f) continue;

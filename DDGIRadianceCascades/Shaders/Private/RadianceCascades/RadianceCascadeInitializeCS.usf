@@ -8,12 +8,10 @@ uint TextureWidth;
 uint TotalTexels;
 uint DispatchGroupsX;
 uint ProbeCount;
-Texture2D<float4> ProbePositionsTexture;
 
 RWTexture2D<float4> DirectionsUAV;
 RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
-RWTexture2D<float4> RayOriginsUAV;
 
 
 [numthreads(64, 1, 1)]
@@ -25,9 +23,6 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
-    uint2 ProbePixel = uint2(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth);
-    float4 ProbeOrigin = ProbePositionsTexture.Load(int3(ProbePixel, 0));
     uint PackedRayIndex = LinearIndex % TotalRaysPerProbe;
     uint CascadeIndex = 0u;
     uint CascadeOffset = 0u;
@@ -95,5 +90,4 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     DirectionsUAV[Pixel] = float4(Direction, (float)CascadeIndex);
     RadianceUAV[Pixel] = 0.0f;
     HitDistanceUAV[Pixel] = -1.0f;
-    RayOriginsUAV[Pixel] = ProbeOrigin;
 }

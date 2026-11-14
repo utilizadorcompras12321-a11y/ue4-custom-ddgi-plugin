@@ -25,7 +25,7 @@ float DirectionalLightIntensity;
 uint bHasDirectionalLight;
 
 Texture2D<float4> DirectionsTexture;
-Texture2D<float4> RayOriginsTexture;
+Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> BVHNodes;
 StructuredBuffer<float4> BVHTriangles;
 RWTexture2D<float4> RadianceUAV;
@@ -675,7 +675,9 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 
     uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
-    float3 Origin = RayOriginsTexture.Load(int3(Pixel, 0)).xyz;
+    uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
+    uint2 ProbePixel = uint2(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth);
+    float3 Origin = ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
     float4 PackedDirection = DirectionsTexture.Load(int3(Pixel, 0));
     float3 Direction = normalize(PackedDirection.xyz);
     uint CascadeIndex = min((uint)max(PackedDirection.w, 0.0f), max(CascadeCount, 1u) - 1u);
