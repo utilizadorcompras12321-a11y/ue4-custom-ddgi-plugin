@@ -447,6 +447,10 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 			BuildStats.MaxLeafTriangleCount, BuildStats.EstimatedSAHCost,
 			NewBVH->IncludedComponents, NewBVH->SkippedNoCPUAccess, NewBVH->SkippedMovable,
 			NewBVH->SkippedInstanced, NewBVH->SkippedInvalidTriangles, BuildStats.MaterialsUsingDefaultBaseColor);
+		if (BuildStats.bTriangleLimitReached)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI: Software BVH reached its %d-triangle limit. Components encountered later in world iteration may be omitted; increase MaxSoftwareTriangles or reduce static-mesh geometry if coverage is incomplete."), Config.MaxSoftwareTriangles);
+		}
 		if (BuildStats.MaterialsUsingDefaultBaseColor > 0)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("DDGI: %d material slots do not expose the DDGI_BaseColor vector parameter; their GI albedo is approximated as neutral 0.18 gray. Material textures and arbitrary material graphs are not evaluated."), BuildStats.MaterialsUsingDefaultBaseColor);
