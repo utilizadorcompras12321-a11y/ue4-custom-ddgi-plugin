@@ -12,6 +12,11 @@ class DDGIRADIANCECASCADES_API ADDGIMasterActor : public AActor
 public:
 	ADDGIMasterActor();
 
+	// Rebuild the static-scene acceleration structure after loading or changing static geometry.
+	// This is an explicit, potentially expensive operation; it is not performed every frame.
+	UFUNCTION(BlueprintCallable, Category = "DDGI|Radiance Cascades")
+	void RebuildStaticGeometryBVH();
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Global")
 	bool bEnableDynamicGI = true;
 
