@@ -374,10 +374,16 @@ bool TraceClosestHit(
     float MaxDistance,
     uint IgnoreTriangleIndex,
     out float ClosestDistance,
-    out uint ClosestTriangleIndex)
+    out uint ClosestTriangleIndex,
+    out float3 ClosestA,
+    out float3 ClosestB,
+    out float3 ClosestC)
 {
     ClosestDistance = MaxDistance;
     ClosestTriangleIndex = 0u;
+    ClosestA = 0.0f;
+    ClosestB = 0.0f;
+    ClosestC = 0.0f;
     if (NodeCount == 0u || TriangleCount == 0u)
     {
         return false;
@@ -429,15 +435,19 @@ bool TraceClosestHit(
                 }
 
                 uint TriangleBase = TriangleIndex * 4u;
+                float3 CandidateA = BVHTriangles[TriangleBase + 0u].xyz;
+                float3 CandidateB = BVHTriangles[TriangleBase + 1u].xyz;
+                float3 CandidateC = BVHTriangles[TriangleBase + 2u].xyz;
                 float CandidateDistance;
                 if (IntersectTriangle(Origin, Direction,
-                    BVHTriangles[TriangleBase + 0u].xyz,
-                    BVHTriangles[TriangleBase + 1u].xyz,
-                    BVHTriangles[TriangleBase + 2u].xyz,
+                    CandidateA, CandidateB, CandidateC,
                     CandidateDistance) && CandidateDistance < ClosestDistance)
                 {
                     ClosestDistance = CandidateDistance;
                     ClosestTriangleIndex = TriangleIndex;
+                    ClosestA = CandidateA;
+                    ClosestB = CandidateB;
+                    ClosestC = CandidateC;
                     bFoundHit = true;
                 }
             }
@@ -503,22 +513,21 @@ bool TraceClosestHit(
 
 float3 EvaluateHitSurfaceRadiance(
     uint TriangleIndex,
+    float3 TriangleA,
+    float3 TriangleB,
+    float3 TriangleC,
     float3 HitPosition,
     float3 IncomingDirection,
     float3 ToLight)
 {
     uint TriangleBase = TriangleIndex * 4u;
-    // Load the four packed triangle records once. The emissive channels,
-    // vertex positions and base color all come from these same records.
-    float4 TriangleA = BVHTriangles[TriangleBase + 0u];
-    float4 TriangleB = BVHTriangles[TriangleBase + 1u];
-    float4 TriangleC = BVHTriangles[TriangleBase + 2u];
-    float4 TriangleMaterial = BVHTriangles[TriangleBase + 3u];
+    // Reuse vertex positions fetched by TraceClosestHit for intersection.
+    // Only material and emissive channels need separate buffer reads.
     float3 Emissive = float3(
-        TriangleA.w,
-        TriangleB.w,
-        TriangleC.w) * GIIntensity;
-    float3 BaseColor = max(TriangleMaterial.xyz, 0.0f);
+        BVHTriangles[TriangleBase + 0u].w,
+        BVHTriangles[TriangleBase + 1u].w,
+        BVHTriangles[TriangleBase + 2u].w) * GIIntensity;
+    float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
 
     // The geometric normal is only needed for direct diffuse lighting.
     // Emissive-only surfaces and scenes without a directional light can
@@ -531,8 +540,7 @@ float3 EvaluateHitSurfaceRadiance(
         return Emissive;
     }
 
-    float3 Normal = ComputeTriangleGeometricNormal(
-        TriangleA.xyz, TriangleB.xyz, TriangleC.xyz);
+    float3 Normal = ComputeTriangleGeometricNormal(TriangleA, TriangleB, TriangleC);
     if (dot(Normal, IncomingDirection) > 0.0f)
     {
         Normal = -Normal;
@@ -619,18 +627,27 @@ float3 TraceDeterministicDiffuseBounce(
 
         float SecondaryDistance;
         uint SecondaryTriangleIndex;
+        float3 SecondaryTriangleA;
+        float3 SecondaryTriangleB;
+        float3 SecondaryTriangleC;
         if (TraceClosestHit(
             SecondaryOrigin,
             SecondaryDirection,
             MaxTraceDistance,
             IgnoreTriangleIndex,
             SecondaryDistance,
-            SecondaryTriangleIndex))
+            SecondaryTriangleIndex,
+            SecondaryTriangleA,
+            SecondaryTriangleB,
+            SecondaryTriangleC))
         {
             float3 SecondaryHitPosition =
                 SecondaryOrigin + SecondaryDirection * SecondaryDistance;
             float3 SecondaryDirectAndEmissive = EvaluateHitSurfaceRadiance(
                 SecondaryTriangleIndex,
+                SecondaryTriangleA,
+                SecondaryTriangleB,
+                SecondaryTriangleC,
                 SecondaryHitPosition,
                 SecondaryDirection,
                 ToLight);
