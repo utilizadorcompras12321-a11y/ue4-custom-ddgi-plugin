@@ -85,6 +85,7 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     FRDGTextureRef& OutDirections,
     FRDGTextureRef& OutRadiance,
     FRDGTextureRef& OutHitDistance,
+    FRDGTextureRef& OutHitTriangleIndex,
     FRDGTextureRef& OutProbePositions,
     uint32& OutProbeCount,
     uint32& OutTotalRaysPerProbe);
