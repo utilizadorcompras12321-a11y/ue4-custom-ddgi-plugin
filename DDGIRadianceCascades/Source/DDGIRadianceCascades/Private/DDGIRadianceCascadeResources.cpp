@@ -654,6 +654,44 @@ bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
     return true;
 }
 
+bool DDGIGetRadianceCascadeLightingGeometry_RenderThread(
+    const FSceneInterface* Scene,
+    FShaderResourceViewRHIRef& OutSpatialHashSRV,
+    FShaderResourceViewRHIRef& OutBVHTrianglesSRV,
+    uint32& OutHashCapacity,
+    uint32& OutTriangleCount,
+    float& OutProbeSpacing)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+
+    OutSpatialHashSRV.SafeRelease();
+    OutBVHTrianglesSRV.SafeRelease();
+    OutHashCapacity = 0;
+    OutTriangleCount = 0;
+    OutProbeSpacing = 0.0f;
+
+    FShaderResourceViewRHIRef NodesSRV;
+    uint32 NodeCount = 0;
+    if (!DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
+            Scene, OutSpatialHashSRV, OutHashCapacity, OutProbeSpacing) ||
+        !DDGIGetSoftwareBVHResources_RenderThread(
+            Scene, NodesSRV, OutBVHTrianglesSRV, NodeCount, OutTriangleCount) ||
+        !OutSpatialHashSRV.IsValid() ||
+        !OutBVHTrianglesSRV.IsValid() ||
+        OutHashCapacity == 0 ||
+        OutTriangleCount == 0)
+    {
+        OutSpatialHashSRV.SafeRelease();
+        OutBVHTrianglesSRV.SafeRelease();
+        OutHashCapacity = 0;
+        OutTriangleCount = 0;
+        OutProbeSpacing = 0.0f;
+        return false;
+    }
+
+    return true;
+}
+
 bool DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(
     const FSceneInterface* Scene, FTexture2DRHIRef& OutProbePositions, uint32& OutProbeCount)
 {
