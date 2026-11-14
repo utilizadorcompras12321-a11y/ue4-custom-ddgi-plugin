@@ -147,10 +147,10 @@ struct FDDGIRadianceCascadeConfig
 	}
 
 	// Current GPU layout: direction (8) + radiance (8) + radiance scratch (8) +
-	// hit distance (4) + hit triangle index (4) + per-ray world-space origin (16)
-	// = 48 bytes per ray. Probe origins also occupy a separate float4 texture
-	// (16 bytes per probe). This estimate excludes BVH/hash buffers and allocation padding.
-	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 48) const
+	// hit distance (4) + hit triangle index (4) = 32 bytes per ray.
+	// Probe origins occupy a separate float4 texture (16 bytes per probe).
+	// This estimate excludes BVH/hash buffers and allocation padding.
+	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 32) const
 	{
 		const int64 SafeProbeCount = static_cast<int64>(FMath::Max(0, ProbeCount));
 		return SafeProbeCount *
