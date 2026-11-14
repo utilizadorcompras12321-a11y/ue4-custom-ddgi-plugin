@@ -135,7 +135,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         if (CenterHit)
         {
             float3 NeighborRayOrigin = RayOriginsTexture.Load(int3(NeighborPixel,0)).xyz;
-            float3 NeighborHitPosition = NeighborRayOrigin + NeighborDirection * NeighborHitDistance;
+            float3 NeighborHitPosition = NeighborRayOrigin + CenterDirection * NeighborHitDistance;
             if (distance(CenterHitPosition, NeighborHitPosition) > SafeSpacing * 1.25f) continue;
             uint NeighborTriangleIndex = NeighborTriangleTag - 1u;
             if (NeighborTriangleIndex >= TriangleCount) continue;
@@ -145,7 +145,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
                 NeighborPlanePoint,
                 BVHTriangles[NeighborTriangleBase + 1u].xyz,
                 BVHTriangles[NeighborTriangleBase + 2u].xyz);
-            if (dot(NeighborNormal, NeighborDirection) > 0.0f) NeighborNormal = -NeighborNormal;
+            if (dot(NeighborNormal, CenterDirection) > 0.0f) NeighborNormal = -NeighborNormal;
             if (dot(CenterNormal, NeighborNormal) < 0.85f) continue;
 
             // Require both hit points to lie close to the opposite triangle
