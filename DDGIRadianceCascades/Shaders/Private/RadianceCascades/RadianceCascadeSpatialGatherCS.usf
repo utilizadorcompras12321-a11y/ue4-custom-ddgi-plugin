@@ -76,11 +76,11 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
     float3 CenterPosition = ProbePositionsTexture.Load(int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0)).xyz;
     float3 CenterDirection = normalize(DirectionsTexture.Load(int3(Pixel, 0)).xyz);
-    float3 CenterRayOrigin = RayOriginsTexture.Load(int3(Pixel, 0)).xyz;
     float4 CenterRadianceSample = RadianceTexture.Load(int3(Pixel, 0));
     float CenterHitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
     float3 RadianceSum = CenterRadianceSample.rgb;
-    float3 CenterHitPosition = CenterRayOrigin + CenterDirection * max(CenterHitDistance, 0.0f);
+    // Initialization stores each ray origin as its owning probe position.
+    float3 CenterHitPosition = CenterPosition + CenterDirection * max(CenterHitDistance, 0.0f);
     uint CenterTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel,0));
     bool CenterHasSurfaceTag = CenterTriangleTag > 0u;
     // A positive distance without a triangle tag means an earlier cascade
@@ -133,10 +133,13 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         uint NeighborTriangleTag = HitTriangleIndexTexture.Load(int3(NeighborPixel,0));
         bool NeighborHasSurfaceTag = NeighborTriangleTag > 0u;
         if (CenterHasSurfaceTag != NeighborHasSurfaceTag) continue;
+        float3 NeighborPosition;
         if (CenterHit)
         {
-            float3 NeighborRayOrigin = RayOriginsTexture.Load(int3(NeighborPixel,0)).xyz;
-            float3 NeighborHitPosition = NeighborRayOrigin + CenterDirection * NeighborHitDistance;
+            // RayOriginsUAV is initialized from the exact same ProbeOrigin
+            // texel, so the probe position is also the ray origin.
+            NeighborPosition = ProbePositionsTexture.Load(int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
+            float3 NeighborHitPosition = NeighborPosition + CenterDirection * NeighborHitDistance;
             if (distance(CenterHitPosition, NeighborHitPosition) > SafeSpacing * 1.25f) continue;
             uint NeighborTriangleIndex = NeighborTriangleTag - 1u;
             if (NeighborTriangleIndex >= TriangleCount) continue;
@@ -160,7 +163,10 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             if (CenterToNeighborPlane > PlaneTolerance ||
                 NeighborToCenterPlane > PlaneTolerance) continue;
         }
-        float3 NeighborPosition = ProbePositionsTexture.Load(int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
+        if (!CenterHit)
+        {
+            NeighborPosition = ProbePositionsTexture.Load(int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
+        }
         float Weight = saturate(1.0f - distance(CenterPosition, NeighborPosition) / (SafeSpacing * 1.75f));
         if (Weight <= 0.0f) continue;
         // Fetch radiance only after the neighbor passes all hit, surface,
