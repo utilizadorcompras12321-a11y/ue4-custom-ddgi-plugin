@@ -230,19 +230,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     const int32 ProbeCount = ActiveProbeCount;
-    // Keep the CPU staging buffer tightly packed. Upload only active texels;
-    // in particular, do not transfer the unused tail of the final texture row.
-    TArray<FVector4> UploadData;
-    UploadData.SetNumUninitialized(ProbeCount);
-    for (int32 ProbeIndex = 0; ProbeIndex < ProbeCount; ++ProbeIndex)
-    {
-        UploadData[ProbeIndex] = Config.ProbePositions[ProbeIndex];
-    }
-
+    // Config.ProbePositions is already tightly packed and remains alive for
+    // this render-thread update. Upload directly from it instead of allocating
+    // and copying a second CPU array on every config publication.
     FTexture2DRHIRef ProbePositionRHI =
         Storage.ProbePositions->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D();
     if (ProbePositionRHI.IsValid())
     {
+        const FVector4* ProbePositionData = Config.ProbePositions.GetData();
         for (int32 Row = 0; Row < ProbePositionDimensions.Y; ++Row)
         {
             const int32 FirstProbe = Row * ProbePositionDimensions.X;
@@ -255,7 +250,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
             const FUpdateTextureRegion2D UpdateRegion(
                 0, Row, 0, 0, RowProbeCount, 1);
-            const FVector4* RowData = UploadData.GetData() + FirstProbe;
+            const FVector4* RowData = ProbePositionData + FirstProbe;
             RHICmdList.UpdateTexture2D(
                 ProbePositionRHI,
                 0,
