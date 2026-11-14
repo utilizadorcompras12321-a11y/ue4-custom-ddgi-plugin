@@ -114,6 +114,10 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     }
     float WeightSum = 1.0f;
     float SafeSpacing = max(ProbeSpacing, 1.0f);
+    float MaxHitPositionDelta = SafeSpacing * 1.25f;
+    float MaxHitPositionDeltaSquared = MaxHitPositionDelta * MaxHitPositionDelta;
+    float PlaneTolerance = clamp(SafeSpacing * 0.01f, 0.05f, 1.0f);
+    float WeightDistanceRange = SafeSpacing * 1.75f;
     int3 CenterCell = int3(round((CenterPosition - ProbeGridOrigin.xyz) / SafeSpacing));
     [unroll] for (int Z=-1; Z<=1; ++Z)
     [unroll] for (int Y=-1; Y<=1; ++Y)
@@ -146,11 +150,10 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             // Every ray belonging to this probe shares its probe position as origin.
             float3 NeighborHitPosition = NeighborPosition + CenterDirection * NeighborHitDistance;
             float3 HitPositionDelta = CenterHitPosition - NeighborHitPosition;
-            float MaxHitPositionDelta = SafeSpacing * 1.25f;
             // Compare squared distances: the square root from distance() is
             // unnecessary because this branch only tests against a threshold.
             if (dot(HitPositionDelta, HitPositionDelta) >
-                MaxHitPositionDelta * MaxHitPositionDelta) continue;
+                MaxHitPositionDeltaSquared) continue;
             uint NeighborTriangleIndex = NeighborTriangleTag - 1u;
             if (NeighborTriangleIndex >= TriangleCount) continue;
             uint NeighborTriangleBase = NeighborTriangleIndex * 4u;
@@ -167,13 +170,12 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             // different coplanar triangles to contribute to the same gather.
             // Keep the tolerance bounded in world units so large probe spacing
             // cannot make distinct walls appear coplanar.
-            float PlaneTolerance = clamp(SafeSpacing * 0.01f, 0.05f, 1.0f);
             float CenterToNeighborPlane = abs(dot(CenterHitPosition - NeighborPlanePoint, NeighborNormal));
             float NeighborToCenterPlane = abs(dot(NeighborHitPosition - CenterPlanePoint, CenterNormal));
             if (CenterToNeighborPlane > PlaneTolerance ||
                 NeighborToCenterPlane > PlaneTolerance) continue;
         }
-        float Weight = saturate(1.0f - distance(CenterPosition, NeighborPosition) / (SafeSpacing * 1.75f));
+        float Weight = saturate(1.0f - distance(CenterPosition, NeighborPosition) / WeightDistanceRange);
         if (Weight <= 0.0f) continue;
         // Fetch radiance only after the neighbor passes all hit, surface,
         // normal, plane, and distance filters.
