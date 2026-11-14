@@ -58,7 +58,7 @@ bool DDGIFindProbeInCell(int3 Cell, out uint OutProbeIndex)
         if (Entry.w < 0.0f) return false;
         if (all(Entry.xyz == float3(Cell)))
         {
-            OutProbeIndex = (uint)max(Entry.w, 0.0f);
+            OutProbeIndex = (uint)Entry.w;
             return OutProbeIndex < ProbeCount;
         }
         Slot = (Slot + 1u) & (HashCapacity - 1u);
