@@ -75,6 +75,7 @@ public:
 	void RegisterMasterActor(ADDGIMasterActor* InActor);
 	void UnregisterMasterActor(ADDGIMasterActor* InActor);
 	void RefreshConfig(ADDGIMasterActor* InActor);
+	void RefreshProbeGridOrigin(ADDGIMasterActor* InActor);
 	void RefreshDirectionalLighting(ADDGIMasterActor* InActor);
 
 	const FDDGIMasterConfig& GetConfig() const { return Config; }
