@@ -62,9 +62,8 @@ struct FDDGIMasterConfig
 	UPROPERTY() float BackgroundTransitionEnd = 10000.0f;
 };
 
-DDGIRADIANCECASCADES_API bool DDGIGetMasterConfig_RenderThread(
-	const FSceneInterface* Scene,
-	FDDGIMasterConfig& OutConfig);
+DDGIRADIANCECASCADES_API const FDDGIMasterConfig* DDGIGetMasterConfig_RenderThread(
+	const FSceneInterface* Scene);
 
 UCLASS()
 class DDGIRADIANCECASCADES_API UDDGIMasterSubsystem : public UWorldSubsystem
