@@ -432,8 +432,8 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 	float RCProbeSpacing = 0.0f;
 	const bool bHasRadianceCascadeLighting =
 		bHasMasterConfig &&
-		MasterConfig.bEnableDynamicGI &&
-		MasterConfig.SoftwareBVH.IsValid() &&
+		MasterConfig->bEnableDynamicGI &&
+		MasterConfig->SoftwareBVH.IsValid() &&
 		DDGIGetRadianceCascadeLightingTextures_RenderThread(
 			GraphBuilder, &Scene, RCDirectionsTexture, RCRadianceTexture,
 			RCHitDistanceTexture, RCHitTriangleIndexTexture, RCProbePositionsTexture,
@@ -444,8 +444,8 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 		RCRadianceTexture != nullptr && RCHashCapacity > 0 &&
 		(RCHashCapacity & (RCHashCapacity - 1u)) == 0u &&
 		RCProbeCount > 0 && RCTotalRaysPerProbe > 0 &&
-		MasterConfig.RadianceCascades.BaseRayCount > 0 &&
-		MasterConfig.ProbeSpacing > 0.0f;
+		MasterConfig->RadianceCascades.BaseRayCount > 0 &&
+		MasterConfig->ProbeSpacing > 0.0f;
 
 	if (!View.bUsesLightingChannels) Resources.LightingChannelsTexture = nullptr;
 
@@ -508,7 +508,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 		}
 
 		// Static background can run without any DDGI volumes.
-		const bool bMasterStaticBackgroundEnabled = bHasMasterConfig && MasterConfig.bEnableStaticBackground && !bHasRadianceCascadeLighting;
+		const bool bMasterStaticBackgroundEnabled = bHasMasterConfig && MasterConfig->bEnableStaticBackground && !bHasRadianceCascadeLighting;
 		if (volumes.Num() == 0 && !bMasterStaticBackgroundEnabled && !bHasRadianceCascadeLighting) return;
 
 		// TODO: manage in-frustum volumes in a more sophisticated way
@@ -589,11 +589,11 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 			PassParameters->EnableStaticBackground = bUseStaticBackgroundThisPass ? 1 : 0;
 			PassParameters->AddStaticBackground = bAddStaticBackgroundThisPass ? 1 : 0;
 			PassParameters->StaticBackgroundColor = bUseStaticBackgroundThisPass
-				? FVector4(MasterConfig.StaticBackgroundColor.R, MasterConfig.StaticBackgroundColor.G, MasterConfig.StaticBackgroundColor.B, 1.0f)
+				? FVector4(MasterConfig->StaticBackgroundColor.R, MasterConfig->StaticBackgroundColor.G, MasterConfig->StaticBackgroundColor.B, 1.0f)
 				: FVector4(0.0f, 0.0f, 0.0f, 1.0f);
-			PassParameters->StaticBackgroundIntensity = bUseStaticBackgroundThisPass ? MasterConfig.StaticBackgroundIntensity : 0.0f;
-			PassParameters->BackgroundTransitionStart = bUseStaticBackgroundThisPass ? MasterConfig.BackgroundTransitionStart : 0.0f;
-			PassParameters->BackgroundTransitionEnd = bUseStaticBackgroundThisPass ? MasterConfig.BackgroundTransitionEnd : 0.0f;
+			PassParameters->StaticBackgroundIntensity = bUseStaticBackgroundThisPass ? MasterConfig->StaticBackgroundIntensity : 0.0f;
+			PassParameters->BackgroundTransitionStart = bUseStaticBackgroundThisPass ? MasterConfig->BackgroundTransitionStart : 0.0f;
+			PassParameters->BackgroundTransitionEnd = bUseStaticBackgroundThisPass ? MasterConfig->BackgroundTransitionEnd : 0.0f;
 			if (bAddStaticBackgroundThisPass) bStaticBackgroundApplied = true;
 
 			// Set the shader parameters for the relevant volumes
@@ -708,16 +708,16 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 		PassParameters->ProbeCount = RCProbeCount;
 		PassParameters->TotalRaysPerProbe = RCTotalRaysPerProbe;
 		PassParameters->BaseRayCount = FMath::Clamp(
-			MasterConfig.RadianceCascades.BaseRayCount, 1, 64);
+			static_cast<int32>(MasterConfig->RadianceCascades.BaseRayCount), 1, 64);
 		PassParameters->HashCapacity = RCHashCapacity;
 		PassParameters->ProbeSpacing = RCProbeSpacing;
 		PassParameters->ProbeGridOrigin = FVector4(
-			MasterConfig.ProbeGridOrigin.X, MasterConfig.ProbeGridOrigin.Y,
-			MasterConfig.ProbeGridOrigin.Z, 0.0f);
+			MasterConfig->ProbeGridOrigin.X, MasterConfig->ProbeGridOrigin.Y,
+			MasterConfig->ProbeGridOrigin.Z, 0.0f);
 		PassParameters->BVHWorldOrigin = FVector4(
-			MasterConfig.SoftwareBVH->WorldOrigin.X,
-			MasterConfig.SoftwareBVH->WorldOrigin.Y,
-			MasterConfig.SoftwareBVH->WorldOrigin.Z, 0.0f);
+			MasterConfig->SoftwareBVH->WorldOrigin.X,
+			MasterConfig->SoftwareBVH->WorldOrigin.Y,
+			MasterConfig->SoftwareBVH->WorldOrigin.Z, 0.0f);
 		PassParameters->ShouldUsePreExposure = View.Family->EngineShowFlags.Tonemapper ? 1u : 0u;
 		PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 
