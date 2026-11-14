@@ -654,29 +654,38 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     uint ClosestTriangleIndex = 0u;
 
     uint Stack[64];
+    float NearStack[64];
     uint StackSize = 0u;
     uint IterationCount = 0u;
 
-    // Empty geometry has no root node to read.
+    // Empty geometry has no root node to read. The root is the only node
+    // whose bounds have not already been tested by its parent.
     if (NodeCount > 0u && TriangleCount > 0u)
     {
-        Stack[StackSize++] = 0u;
+        Stack[StackSize] = 0u;
+        NearStack[StackSize++] = -1.0f;
     }
 
     [loop]
     while (StackSize > 0u && IterationCount < NodeCount)
     {
         ++IterationCount;
-        uint NodeIndex = Stack[--StackSize];
-        if (NodeIndex >= NodeCount)
+        --StackSize;
+        uint NodeIndex = Stack[StackSize];
+        float NodeNear = NearStack[StackSize];
+        if (NodeIndex >= NodeCount || (NodeNear >= 0.0f && NodeNear > ClosestHit))
         {
             continue;
         }
 
         uint NodeBase = NodeIndex * 3u;
-        float3 BoundsMin = BVHNodes[NodeBase + 0u].xyz;
-        float3 BoundsMax = BVHNodes[NodeBase + 1u].xyz;
-        if (!IntersectBounds(Origin, Direction, BoundsMin, BoundsMax, ClosestHit))
+        // Child bounds were tested before insertion. Reuse their saved
+        // near distance and only test the root bounds on first visit.
+        if (NodeNear < 0.0f && !IntersectBounds(
+            Origin, Direction,
+            BVHNodes[NodeBase + 0u].xyz,
+            BVHNodes[NodeBase + 1u].xyz,
+            ClosestHit))
         {
             continue;
         }
@@ -746,22 +755,28 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             {
                 if (LeftNear <= RightNear)
                 {
-                    Stack[StackSize++] = RightChild;
-                    Stack[StackSize++] = LeftChild;
+                    Stack[StackSize] = RightChild;
+                    NearStack[StackSize++] = RightNear;
+                    Stack[StackSize] = LeftChild;
+                    NearStack[StackSize++] = LeftNear;
                 }
                 else
                 {
-                    Stack[StackSize++] = LeftChild;
-                    Stack[StackSize++] = RightChild;
+                    Stack[StackSize] = LeftChild;
+                    NearStack[StackSize++] = LeftNear;
+                    Stack[StackSize] = RightChild;
+                    NearStack[StackSize++] = RightNear;
                 }
             }
             else if (bHitLeft)
             {
-                Stack[StackSize++] = LeftChild;
+                Stack[StackSize] = LeftChild;
+                NearStack[StackSize++] = LeftNear;
             }
             else if (bHitRight)
             {
-                Stack[StackSize++] = RightChild;
+                Stack[StackSize] = RightChild;
+                NearStack[StackSize++] = RightNear;
             }
         }
     }
