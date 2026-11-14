@@ -676,7 +676,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 	// Apply the integrated software Radiance Cascades once, after legacy volumes.
 	if (bHasRadianceCascadeLighting)
 	{
-		FRadianceCascadeApplyLightingParameters* PassParameters =
+		FApplyRadianceCascadeLightingParameters* PassParameters =
 			GraphBuilder.AllocParameters<FRadianceCascadeApplyLightingParameters>();
 		PassParameters->NormalTexture = GBufferATexture;
 		PassParameters->DepthTexture = SceneDepthTexture;
