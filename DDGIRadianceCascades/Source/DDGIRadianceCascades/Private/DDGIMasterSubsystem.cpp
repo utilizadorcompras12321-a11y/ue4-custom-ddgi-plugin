@@ -285,11 +285,24 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 		return;
 	}
 
-	const FDDGIMasterConfig ConfigCopy = Config;
-	ENQUEUE_RENDER_COMMAND(DDGIUpdateMasterConfigValues)(
-		[Scene, ConfigCopy](FRHICommandListImmediate& RHICmdList)
+	// Lighting changes do not alter probe layout or BVH data. Capture only
+	// the four lighting values instead of copying the full master config
+	// (which can contain tens of thousands of probe positions).
+	const bool bHasDirectionalLight = Config.bHasDirectionalLight;
+	const FVector DirectionalLightDirection = Config.DirectionalLightDirection;
+	const FLinearColor DirectionalLightColor = Config.DirectionalLightColor;
+	const float DirectionalLightIntensity = Config.DirectionalLightIntensity;
+
+	ENQUEUE_RENDER_COMMAND(DDGIUpdateMasterConfigLighting)(
+		[Scene, bHasDirectionalLight, DirectionalLightDirection, DirectionalLightColor, DirectionalLightIntensity](FRHICommandListImmediate& RHICmdList)
 		{
-			GDDGIMasterConfigs_RenderThread.Add(Scene, ConfigCopy);
+			if (FDDGIMasterConfig* ExistingConfig = GDDGIMasterConfigs_RenderThread.Find(Scene))
+			{
+				ExistingConfig->bHasDirectionalLight = bHasDirectionalLight;
+				ExistingConfig->DirectionalLightDirection = DirectionalLightDirection;
+				ExistingConfig->DirectionalLightColor = DirectionalLightColor;
+				ExistingConfig->DirectionalLightIntensity = DirectionalLightIntensity;
+			}
 		});
 }
 
