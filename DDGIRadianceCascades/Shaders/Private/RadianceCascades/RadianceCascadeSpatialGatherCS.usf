@@ -115,8 +115,12 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     [unroll] for (int X=-1; X<=1; ++X)
     {
         if (X==0 && Y==0 && Z==0) continue;
+        int3 NeighborCell = CenterCell + int3(X,Y,Z);
         uint NeighborIndex;
-        if (!DDGIFindProbeInCell(CenterCell + int3(X,Y,Z), NeighborIndex)) continue;
+        if (!DDGIFindProbeInCell(NeighborCell, NeighborIndex)) continue;
+        // Probe positions are generated as ProbeGridOrigin + integer cell * spacing.
+        // Reconstruct the neighbor origin instead of fetching another position texel.
+        float3 NeighborPosition = ProbeGridOrigin.xyz + float3(NeighborCell) * SafeSpacing;
         uint NeighborLinear = NeighborIndex * TotalRaysPerProbe + RayIndex;
         uint2 NeighborPixel = uint2(NeighborLinear % TextureWidth, NeighborLinear / TextureWidth);
         // Ray directions are initialized solely from RayIndex and cascade
@@ -132,11 +136,9 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         uint NeighborTriangleTag = HitTriangleIndexTexture.Load(int3(NeighborPixel,0));
         bool NeighborHasSurfaceTag = NeighborTriangleTag > 0u;
         if (CenterHasSurfaceTag != NeighborHasSurfaceTag) continue;
-        float3 NeighborPosition;
         if (CenterHit)
         {
             // Every ray belonging to this probe shares its probe position as origin.
-            NeighborPosition = ProbePositionsTexture.Load(int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
             float3 NeighborHitPosition = NeighborPosition + CenterDirection * NeighborHitDistance;
             if (distance(CenterHitPosition, NeighborHitPosition) > SafeSpacing * 1.25f) continue;
             uint NeighborTriangleIndex = NeighborTriangleTag - 1u;
@@ -160,10 +162,6 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             float NeighborToCenterPlane = abs(dot(NeighborHitPosition - CenterPlanePoint, CenterNormal));
             if (CenterToNeighborPlane > PlaneTolerance ||
                 NeighborToCenterPlane > PlaneTolerance) continue;
-        }
-        if (!CenterHit)
-        {
-            NeighborPosition = ProbePositionsTexture.Load(int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
         }
         float Weight = saturate(1.0f - distance(CenterPosition, NeighborPosition) / (SafeSpacing * 1.75f));
         if (Weight <= 0.0f) continue;
