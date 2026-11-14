@@ -153,7 +153,8 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         uint2 ProbePixel = uint2(
             ProbeIndex % DDGI_RC_TEXTURE_WIDTH,
             ProbeIndex / DDGI_RC_TEXTURE_WIDTH);
-        float3 ProbePosition = ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
+        // ProbePositionsTexture stores offsets relative to the movable grid origin.
+        float3 ProbePosition = ProbeGridOrigin.xyz + ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
         float3 SurfaceToProbe = ProbePosition - LocalPosition;
         float SurfaceSide = dot(Normal, SurfaceToProbe);
         if (SurfaceSide <= max(ProbeSpacing * 0.01f, 0.5f)) continue;
