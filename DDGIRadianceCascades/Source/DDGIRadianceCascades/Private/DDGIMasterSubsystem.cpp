@@ -199,6 +199,35 @@ void UDDGIMasterSubsystem::RefreshConfig(ADDGIMasterActor* InActor)
 	}
 }
 
+void UDDGIMasterSubsystem::RefreshProbeGridOrigin(ADDGIMasterActor* InActor)
+{
+	if (!IsValid(InActor) || ActiveMasterActor.Get() != InActor ||
+		!Config.SoftwareBVH.IsValid() || Config.ProbePositions.Num() == 0)
+	{
+		return;
+	}
+
+	// The static BVH remains in its original coordinate frame. Moving the
+	// Master Actor translates the existing probe lattice in that frame; it
+	// does not change its spacing, radius, topology, or ray layout.
+	const FVector NewOrigin = InActor->GetActorLocation() - Config.SoftwareBVH->WorldOrigin;
+	const FVector Delta = NewOrigin - Config.ProbeGridOrigin;
+	if (Delta.IsNearlyZero(0.001f))
+	{
+		return;
+	}
+
+	Config.ProbeGridOrigin = NewOrigin;
+	for (FVector4& ProbePosition : Config.ProbePositions)
+	{
+		ProbePosition.X += Delta.X;
+		ProbePosition.Y += Delta.Y;
+		ProbePosition.Z += Delta.Z;
+	}
+
+	PublishConfig(true);
+}
+
 void UDDGIMasterSubsystem::RefreshDirectionalLighting(ADDGIMasterActor* InActor)
 {
 	if (IsValid(InActor) && ActiveMasterActor.Get() == InActor && UpdateDirectionalLighting(InActor))
