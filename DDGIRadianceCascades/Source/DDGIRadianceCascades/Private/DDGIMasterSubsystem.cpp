@@ -59,7 +59,6 @@ namespace
 	 * uniformly until the whole spherical domain fits. No partial shell is kept.
 	 */
 	float DDGIBuildSparseProbePositions(
-		const FVector& Origin,
 		float RequestedSpacing,
 		float Radius,
 		int32 MaxProbeCount,
@@ -130,7 +129,6 @@ namespace
 	}
 	uint32 DDGIComputeProbeLayoutHash(
 		const TArray<FVector4>& ProbePositions,
-		const FVector& ProbeGridOrigin,
 		float ProbeSpacing)
 	{
 		const float SafeProbeSpacing = FMath::Max(1.0f, ProbeSpacing);
@@ -418,14 +416,13 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	// may move independently; only its probe lattice moves within this frame.
 	Config.ProbeGridOrigin = InActor->GetActorLocation() - Config.SoftwareBVH->WorldOrigin;
 	Config.ProbeSpacing = DDGIBuildSparseProbePositions(
-		Config.ProbeGridOrigin,
 		Config.ProbeSpacing,
 		Config.DynamicGIDistance,
 		Config.MaxActiveProbes,
 		Config.ProbePositions);
 	Config.ProbeCount = Config.ProbePositions.Num();
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
-		Config.ProbePositions, Config.ProbeGridOrigin, Config.ProbeSpacing);
+		Config.ProbePositions, Config.ProbeSpacing);
 
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;
