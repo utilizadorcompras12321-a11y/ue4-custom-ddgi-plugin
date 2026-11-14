@@ -695,8 +695,21 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const uint32 bUseNeighborList = (bHasNeighborList && CVarDDGIUsePrecomputedProbeNeighbors.GetValueOnRenderThread()!=0) ? 1u : 0u;
 	if (!DDGIGetRadianceCascadeScratchTexture_RenderThread(Scene,RadianceScratchTexture) ||
 		!DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(Scene,ProbePositionsTexture,SpatialProbeCount) ||
-		!DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(Scene,SpatialHashSRV,HashCapacity,ProbeSpacing) ||
-		SpatialProbeCount!=ProbeCount || !SpatialHashSRV.IsValid() || HashCapacity==0) return;
+		SpatialProbeCount!=ProbeCount) return;
+
+	// The precomputed list is a complete neighbor lookup on its own. Do not
+	// make that path depend on allocating the spatial-hash buffer as well.
+	const bool bHasSpatialHash = DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
+		Scene,SpatialHashSRV,HashCapacity,ProbeSpacing);
+	if (bUseNeighborList)
+	{
+		if (!NeighborListSRV.IsValid()) return;
+		ProbeSpacing = FMath::Max(1.0f,Config->ProbeSpacing);
+	}
+	else if (!bHasSpatialHash || !SpatialHashSRV.IsValid() || HashCapacity==0)
+	{
+		return;
+	}
 
 	FShaderResourceViewRHIRef GatherRadianceSRV=RHICreateShaderResourceView(RadianceTexture,0);
 	FShaderResourceViewRHIRef GatherHitSRV=RHICreateShaderResourceView(HitDistanceTexture,0);
