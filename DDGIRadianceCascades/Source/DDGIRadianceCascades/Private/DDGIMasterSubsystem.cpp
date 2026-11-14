@@ -221,6 +221,20 @@ void UDDGIMasterSubsystem::RefreshConfig(ADDGIMasterActor* InActor)
 	}
 }
 
+void UDDGIMasterSubsystem::RebuildSoftwareBVH(ADDGIMasterActor* InActor)
+{
+	if (!IsValid(InActor) || ActiveMasterActor.Get() != InActor)
+	{
+		return;
+	}
+
+	// Force CopyConfigFromActor to build a fresh immutable snapshot. The old
+	// snapshot remains alive until the render thread releases its GPU resources.
+	Config.SoftwareBVH.Reset();
+	CachedSoftwareBVHTriangleLimit = INDEX_NONE;
+	CopyConfigFromActor(InActor);
+}
+
 void UDDGIMasterSubsystem::RefreshProbeGridOrigin(ADDGIMasterActor* InActor)
 {
 	if (!IsValid(InActor) || ActiveMasterActor.Get() != InActor ||
