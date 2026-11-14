@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/ResourceArray.h"
 
 class UWorld;
 
@@ -27,8 +28,8 @@ namespace DDGISoftwareBVH
 	void BuildStaticWorld(
 		UWorld* World,
 		int32 MaxTriangleCount,
-		TArray<FVector4>& OutPackedNodes,
-		TArray<FVector4>& OutPackedTriangles,
+		TResourceArray<FVector4>& OutPackedNodes,
+		TResourceArray<FVector4>& OutPackedTriangles,
 		FVector& OutWorldOrigin,
 		FDDGISoftwareBVHBuildStats& OutStats);
 }

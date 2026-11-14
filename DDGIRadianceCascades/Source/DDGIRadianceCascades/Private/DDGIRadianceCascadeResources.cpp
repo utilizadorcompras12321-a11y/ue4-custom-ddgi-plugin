@@ -368,7 +368,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
     // Upload the immutable CPU BVH once per snapshot. Master Actor movement
     // republishes probe origins but keeps the same shared BVH pointer.
-    const FDDGISoftwareBVHData* CurrentBVH = Config.SoftwareBVH.Get();
+    FDDGISoftwareBVHData* CurrentBVH = Config.SoftwareBVH.Get();
     if (Storage.BVHDataIdentity != CurrentBVH || !Storage.BVHNodesSRV.IsValid() || !Storage.BVHTrianglesSRV.IsValid())
     {
         Storage.BVHNodes.SafeRelease();
@@ -383,23 +383,19 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             static_cast<int64>(CurrentBVH->PackedNodes.Num()) >= static_cast<int64>(CurrentBVH->NodeCount) * 3ll &&
             static_cast<int64>(CurrentBVH->PackedTriangles.Num()) >= static_cast<int64>(CurrentBVH->TriangleCount) * 4ll)
         {
-            TResourceArray<FVector4> NodeData;
-            NodeData.Append(CurrentBVH->PackedNodes);
             FRHIResourceCreateInfo NodeCreateInfo(TEXT("DDGIRadianceCascade_SoftwareBVHNodes"));
-            NodeCreateInfo.ResourceArray = &NodeData;
+            NodeCreateInfo.ResourceArray = &CurrentBVH->PackedNodes;
             Storage.BVHNodes = RHICreateStructuredBuffer(
                 sizeof(FVector4),
-                static_cast<uint32>(NodeData.GetResourceDataSize()),
+                static_cast<uint32>(CurrentBVH->PackedNodes.GetResourceDataSize()),
                 BUF_ShaderResource,
                 NodeCreateInfo);
 
-            TResourceArray<FVector4> TriangleData;
-            TriangleData.Append(CurrentBVH->PackedTriangles);
             FRHIResourceCreateInfo TriangleCreateInfo(TEXT("DDGIRadianceCascade_SoftwareBVHTriangles"));
-            TriangleCreateInfo.ResourceArray = &TriangleData;
+            TriangleCreateInfo.ResourceArray = &CurrentBVH->PackedTriangles;
             Storage.BVHTriangles = RHICreateStructuredBuffer(
                 sizeof(FVector4),
-                static_cast<uint32>(TriangleData.GetResourceDataSize()),
+                static_cast<uint32>(CurrentBVH->PackedTriangles.GetResourceDataSize()),
                 BUF_ShaderResource,
                 TriangleCreateInfo);
 

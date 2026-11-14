@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "DDGIRadianceCascadeConfig.h"
+#include "Containers/ResourceArray.h"
 #include "DDGIMasterSubsystem.generated.h"
 
 class ADDGIMasterActor;
@@ -11,9 +12,15 @@ class FSceneInterface;
 
 struct FDDGISoftwareBVHData
 {
+	FDDGISoftwareBVHData()
+		: PackedNodes(true)
+		, PackedTriangles(true)
+	{
+	}
+
 	FVector WorldOrigin = FVector::ZeroVector;
-	TArray<FVector4> PackedNodes;
-	TArray<FVector4> PackedTriangles;
+	TResourceArray<FVector4> PackedNodes;
+	TResourceArray<FVector4> PackedTriangles;
 	int32 IncludedComponents = 0;
 	int32 SkippedNoCPUAccess = 0;
 	int32 SkippedMovable = 0;
