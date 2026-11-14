@@ -41,6 +41,34 @@ bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
     uint32& OutTotalRaysPerProbe);
 
 /** Returns the ping-pong radiance texture used by the cascade integration pass. */
+bool DDGIGetRadianceCascadeScratchTexture_RenderThread(
+    const FSceneInterface* Scene,
+    FTexture2DRHIRef& OutRadianceScratch);
+
+/** Swaps persistent radiance and scratch textures after an odd number of integration passes. */
+void DDGISwapRadianceCascadeRadianceBuffers_RenderThread(const FSceneInterface* Scene);
+
+/** Returns the uploaded static-scene BVH buffers for GPU traversal. */
+bool DDGIGetSoftwareBVHResources_RenderThread(
+    const FSceneInterface* Scene,
+    FShaderResourceViewRHIRef& OutNodesSRV,
+    FShaderResourceViewRHIRef& OutTrianglesSRV,
+    uint32& OutNodeCount,
+    uint32& OutTriangleCount);
+
+/** Returns the deterministic GPU spatial hash for sparse probe cell lookup. */
+bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
+    const FSceneInterface* Scene,
+    FShaderResourceViewRHIRef& OutSpatialHashSRV,
+    uint32& OutHashCapacity,
+    float& OutProbeSpacing);
+
+/** Returns the persistent sparse probe-origin texture for RHI compute passes. */
+bool DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(
+    const FSceneInterface* Scene,
+    FTexture2DRHIRef& OutProbePositions,
+    uint32& OutProbeCount);
+
 /** Returns the uploaded sparse probe-origin texture for later tracing passes. */
 bool DDGIGetRadianceCascadeProbePositions_RenderThread(
 	FRDGBuilder& GraphBuilder,
