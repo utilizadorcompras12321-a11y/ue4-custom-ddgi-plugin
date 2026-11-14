@@ -24,16 +24,18 @@ namespace
 		const int32 MaxShell = FMath::CeilToInt(SafeRadius / SafeSpacing);
 		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
 		int32 Count = 1; // Origin.
-		for (int32 Z = -MaxShell; Z <= MaxShell; ++Z)
+		for (int32 Shell = 1; Shell <= MaxShell; ++Shell)
 		{
-			for (int32 Y = -MaxShell; Y <= MaxShell; ++Y)
+			for (int32 Z = -Shell; Z <= Shell; ++Z)
 			{
-				for (int32 X = -MaxShell; X <= MaxShell; ++X)
+				for (int32 Y = -Shell; Y <= Shell; ++Y)
 				{
-					if (X == 0 && Y == 0 && Z == 0)
+					for (int32 X = -Shell; X <= Shell; ++X)
 					{
-						continue;
-					}
+						if (FMath::Max3(FMath::Abs(X), FMath::Abs(Y), FMath::Abs(Z)) != Shell)
+						{
+							continue;
+						}
 					const double DX = static_cast<double>(X) * SafeSpacing;
 					const double DY = static_cast<double>(Y) * SafeSpacing;
 					const double DZ = static_cast<double>(Z) * SafeSpacing;
@@ -46,11 +48,11 @@ namespace
 						return Count;
 					}
 				}
+				}
 			}
 		}
 		return Count;
 	}
-
 	/**
 	 * Builds a complete, deterministic 3D lattice inside the configured sphere.
 	 * If the requested spacing exceeds the probe budget, spacing is increased
