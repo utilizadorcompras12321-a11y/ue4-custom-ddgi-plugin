@@ -10,13 +10,55 @@
 namespace
 {
 	/**
-	 * Builds a deterministic, center-out 3D lattice. Each shell is emitted before
-	 * the next one, so a finite probe budget always prioritizes the Master Actor
-	 * origin and its nearest neighbors.
+	 * Counts lattice points inside the spherical probe domain. Stops as soon as
+	 * the budget is exceeded; this is used only to select a spacing, not to
+	 * construct the final (complete) lattice.
 	 */
-	void DDGIBuildSparseProbePositions(
-		const FVector& Origin,
+	int32 DDGICountSparseProbePositions(
 		float Spacing,
+		float Radius,
+		int32 StopAfter)
+	{
+		const float SafeSpacing = FMath::Max(1.0f, Spacing);
+		const float SafeRadius = FMath::Max(0.0f, Radius);
+		const int32 MaxShell = FMath::CeilToInt(SafeRadius / SafeSpacing);
+		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
+		int32 Count = 1; // Origin.
+		for (int32 Z = -MaxShell; Z <= MaxShell; ++Z)
+		{
+			for (int32 Y = -MaxShell; Y <= MaxShell; ++Y)
+			{
+				for (int32 X = -MaxShell; X <= MaxShell; ++X)
+				{
+					if (X == 0 && Y == 0 && Z == 0)
+					{
+						continue;
+					}
+					const double DX = static_cast<double>(X) * SafeSpacing;
+					const double DY = static_cast<double>(Y) * SafeSpacing;
+					const double DZ = static_cast<double>(Z) * SafeSpacing;
+					if (DX * DX + DY * DY + DZ * DZ > RadiusSquared)
+					{
+						continue;
+					}
+					if (++Count > StopAfter)
+					{
+						return Count;
+					}
+				}
+			}
+		}
+		return Count;
+	}
+
+	/**
+	 * Builds a complete, deterministic 3D lattice inside the configured sphere.
+	 * If the requested spacing exceeds the probe budget, spacing is increased
+	 * uniformly until the whole spherical domain fits. No partial shell is kept.
+	 */
+	float DDGIBuildSparseProbePositions(
+		const FVector& Origin,
+		float RequestedSpacing,
 		float Radius,
 		int32 MaxProbeCount,
 		TArray<FVector4>& OutPositions)
@@ -25,44 +67,61 @@ namespace
 		const int32 SafeMaxProbeCount = FMath::Max(0, MaxProbeCount);
 		if (SafeMaxProbeCount == 0)
 		{
-			return;
+			return FMath::Max(1.0f, RequestedSpacing);
 		}
 
-		const float SafeSpacing = FMath::Max(1.0f, Spacing);
 		const float SafeRadius = FMath::Max(0.0f, Radius);
-		const int32 MaxShell = FMath::CeilToInt(SafeRadius / SafeSpacing);
-		const float RadiusSquared = SafeRadius * SafeRadius;
+		float EffectiveSpacing = FMath::Max(1.0f, RequestedSpacing);
+		if (DDGICountSparseProbePositions(EffectiveSpacing, SafeRadius, SafeMaxProbeCount) > SafeMaxProbeCount)
+		{
+			float LowerSpacing = EffectiveSpacing;
+			float UpperSpacing = FMath::Max(EffectiveSpacing, SafeRadius * 2.0f + EffectiveSpacing);
+			for (int32 Iteration = 0; Iteration < 24; ++Iteration)
+			{
+				const float CandidateSpacing = LowerSpacing + (UpperSpacing - LowerSpacing) * 0.5f;
+				if (DDGICountSparseProbePositions(CandidateSpacing, SafeRadius, SafeMaxProbeCount) > SafeMaxProbeCount)
+				{
+					LowerSpacing = CandidateSpacing;
+				}
+				else
+				{
+					UpperSpacing = CandidateSpacing;
+				}
+			}
+			EffectiveSpacing = UpperSpacing;
+		}
+
+		const int32 MaxShell = FMath::CeilToInt(SafeRadius / EffectiveSpacing);
+		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
 		OutPositions.Reserve(SafeMaxProbeCount);
 		OutPositions.Add(FVector4(Origin.X, Origin.Y, Origin.Z, 1.0f));
 
-		for (int32 Shell = 1; Shell <= MaxShell && OutPositions.Num() < SafeMaxProbeCount; ++Shell)
+		for (int32 Z = -MaxShell; Z <= MaxShell; ++Z)
 		{
-			for (int32 Z = -Shell; Z <= Shell && OutPositions.Num() < SafeMaxProbeCount; ++Z)
+			for (int32 Y = -MaxShell; Y <= MaxShell; ++Y)
 			{
-				for (int32 Y = -Shell; Y <= Shell && OutPositions.Num() < SafeMaxProbeCount; ++Y)
+				for (int32 X = -MaxShell; X <= MaxShell; ++X)
 				{
-					for (int32 X = -Shell; X <= Shell && OutPositions.Num() < SafeMaxProbeCount; ++X)
+					if (X == 0 && Y == 0 && Z == 0)
 					{
-						if (FMath::Max3(FMath::Abs(X), FMath::Abs(Y), FMath::Abs(Z)) != Shell)
-						{
-							continue;
-						}
-
-						const FVector Offset(
-							static_cast<float>(X) * SafeSpacing,
-							static_cast<float>(Y) * SafeSpacing,
-							static_cast<float>(Z) * SafeSpacing);
-						if (Offset.SizeSquared() > RadiusSquared)
-						{
-							continue;
-						}
-
-						const FVector Position = Origin + Offset;
-						OutPositions.Add(FVector4(Position.X, Position.Y, Position.Z, 1.0f));
+						continue;
 					}
+					const double DX = static_cast<double>(X) * EffectiveSpacing;
+					const double DY = static_cast<double>(Y) * EffectiveSpacing;
+					const double DZ = static_cast<double>(Z) * EffectiveSpacing;
+					if (DX * DX + DY * DY + DZ * DZ > RadiusSquared)
+					{
+						continue;
+					}
+					const FVector Position = Origin + FVector(
+						static_cast<float>(DX),
+						static_cast<float>(DY),
+						static_cast<float>(DZ));
+					OutPositions.Add(FVector4(Position.X, Position.Y, Position.Z, 1.0f));
 				}
 			}
 		}
+		return EffectiveSpacing;
 	}
 	/** Accessed only on the render thread. */
 	TMap<const FSceneInterface*, FDDGIMasterConfig> GDDGIMasterConfigs_RenderThread;
@@ -277,7 +336,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	// The BVH origin remains fixed until the BVH is rebuilt. The Master Actor
 	// may move independently; only its probe lattice moves within this frame.
 	Config.ProbeGridOrigin = InActor->GetActorLocation() - Config.SoftwareBVH->WorldOrigin;
-	DDGIBuildSparseProbePositions(
+	Config.ProbeSpacing = DDGIBuildSparseProbePositions(
 		Config.ProbeGridOrigin,
 		Config.ProbeSpacing,
 		Config.DynamicGIDistance,
