@@ -239,6 +239,11 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
     const int32 ProbeCount = ActiveProbeCount;
     const uint32 ProbeCountForHash = static_cast<uint32>(ActiveProbeCount);
+    // Keep the open-addressed table at <= 50% load and make its capacity a
+    // power of two because both CPU insertion and the shader use a bit mask.
+    // ActiveProbeCount is capped at 32768 above, so doubling cannot overflow.
+    const uint32 RequiredHashCapacity = FMath::RoundUpToPowerOfTwo(
+        FMath::Max(2u, ProbeCountForHash * 2u));
     const float SafeProbeSpacing = FMath::Max(1.0f, Config.ProbeSpacing);
     // The subsystem computes this fingerprint only when rebuilding the lattice.
     // Probe offsets are invariant under actor translation, so their texture
