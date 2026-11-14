@@ -277,22 +277,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     {
         RequiredHashCapacity <<= 1u;
     }
-    // Include the actual relative cell layout in the cache key. Probe count
-    // and spacing alone are insufficient: changing DynamicGIDistance can
-    // replace cells while leaving the count unchanged.
-    uint32 ProbeLayoutHash = 2166136261u;
-    for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
-    {
-        const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
-        const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - Config.ProbeGridOrigin;
-        const FIntVector Cell(
-            FMath::RoundToInt(Relative.X / SafeProbeSpacing),
-            FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
-            FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
-        ProbeLayoutHash = (ProbeLayoutHash ^ static_cast<uint32>(Cell.X)) * 16777619u;
-        ProbeLayoutHash = (ProbeLayoutHash ^ static_cast<uint32>(Cell.Y)) * 16777619u;
-        ProbeLayoutHash = (ProbeLayoutHash ^ static_cast<uint32>(Cell.Z)) * 16777619u;
-    }
+    // The subsystem computes this fingerprint only when rebuilding the
+    // lattice. Actor translation preserves it, avoiding an O(N) CPU pass here.
+    const uint32 ProbeLayoutHash = Config.ProbeLayoutHash;
 
     // Translation changes the uploaded probe positions but preserves the
     // relative lattice. Only a changed lattice requires clearing/reinitializing
