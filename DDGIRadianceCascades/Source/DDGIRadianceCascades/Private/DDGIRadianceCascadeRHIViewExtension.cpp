@@ -9,6 +9,13 @@
 #include "RHIResources.h"
 #include "SceneInterface.h"
 #include "SceneView.h"
+#include "HAL/IConsoleManager.h"
+
+static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
+    TEXT("r.DDGI.UsePrecomputedProbeNeighbors"),
+    0,
+    TEXT("Use precomputed probe neighbors in DDGI spatial gather (0=spatial hash, 1=precomputed list)."),
+    ECVF_RenderThreadSafe);
 
 class FDDGIRadianceCascadeInitializeRHI : public FGlobalShader
 {
@@ -350,24 +357,29 @@ public:
   RadianceTexture.Bind(I.ParameterMap,TEXT("RadianceTexture")); HitDistanceTexture.Bind(I.ParameterMap,TEXT("HitDistanceTexture")); HitTriangleIndexTexture.Bind(I.ParameterMap,TEXT("HitTriangleIndexTexture"));
   DirectionsTexture.Bind(I.ParameterMap,TEXT("DirectionsTexture"));
   ProbePositionsTexture.Bind(I.ParameterMap,TEXT("ProbePositionsTexture")); BVHTriangles.Bind(I.ParameterMap,TEXT("BVHTriangles"));
-  ProbeSpatialHash.Bind(I.ParameterMap,TEXT("ProbeSpatialHash")); OutputRadianceUAV.Bind(I.ParameterMap,TEXT("OutputRadianceUAV"));
+  ProbeSpatialHash.Bind(I.ParameterMap,TEXT("ProbeSpatialHash"));
+  ProbeNeighborIndices.Bind(I.ParameterMap,TEXT("ProbeNeighborIndices"));
+  UsePrecomputedProbeNeighbors.Bind(I.ParameterMap,TEXT("UsePrecomputedProbeNeighbors"));
+  OutputRadianceUAV.Bind(I.ParameterMap,TEXT("OutputRadianceUAV"));
  }
  static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P){return IsFeatureLevelSupported(P.Platform,ERHIFeatureLevel::SM5);}
  virtual bool Serialize(FArchive& A) override
  {
   bool O=FGlobalShader::Serialize(A); A<<TextureWidth<<TotalTexels<<DispatchGroupsX<<ProbeCount<<TotalRaysPerProbe;
   A<<HashCapacity<<TriangleCount<<ProbeSpacing<<ProbeGridOrigin<<RadianceTexture<<HitDistanceTexture<<HitTriangleIndexTexture<<DirectionsTexture;
-  A<<ProbePositionsTexture<<BVHTriangles<<ProbeSpatialHash<<OutputRadianceUAV; return O;
+  A<<ProbePositionsTexture<<BVHTriangles<<ProbeSpatialHash<<ProbeNeighborIndices<<UsePrecomputedProbeNeighbors<<OutputRadianceUAV; return O;
  }
  void SetParameters(FRHICommandList& C,FShaderResourceViewRHIRef R,FShaderResourceViewRHIRef H,FShaderResourceViewRHIRef HitIndices,
-  FShaderResourceViewRHIRef D,FShaderResourceViewRHIRef P,FShaderResourceViewRHIRef Triangles,FShaderResourceViewRHIRef S,FUnorderedAccessViewRHIRef O,
-  uint32 T,uint32 G,uint32 PC,uint32 RPP,uint32 HC,uint32 TC,float PS,const FVector4& Origin)
+  FShaderResourceViewRHIRef D,FShaderResourceViewRHIRef P,FShaderResourceViewRHIRef Triangles,FShaderResourceViewRHIRef S,
+  FShaderResourceViewRHIRef NeighborList,FUnorderedAccessViewRHIRef O,
+  uint32 T,uint32 G,uint32 PC,uint32 RPP,uint32 HC,uint32 TC,float PS,const FVector4& Origin,uint32 bUseNeighborList)
  {
   auto Sh=GetComputeShader(); uint32 W=4096u;
   SetShaderValue(C,Sh,TextureWidth,W); SetShaderValue(C,Sh,TotalTexels,T); SetShaderValue(C,Sh,DispatchGroupsX,G);
   SetShaderValue(C,Sh,ProbeCount,PC); SetShaderValue(C,Sh,TotalRaysPerProbe,RPP); SetShaderValue(C,Sh,HashCapacity,HC);
   SetShaderValue(C,Sh,TriangleCount,TC);
   SetShaderValue(C,Sh,ProbeSpacing,PS); SetShaderValue(C,Sh,ProbeGridOrigin,Origin);
+  SetShaderValue(C,Sh,UsePrecomputedProbeNeighbors,bUseNeighborList);
   if(RadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,RadianceTexture.GetBaseIndex(),R);
   if(HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,HitDistanceTexture.GetBaseIndex(),H);
   if(HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,HitTriangleIndexTexture.GetBaseIndex(),HitIndices);
@@ -376,6 +388,7 @@ public:
   if(ProbePositionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbePositionsTexture.GetBaseIndex(),P);
   if(BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh,BVHTriangles.GetBaseIndex(),Triangles);
   if(ProbeSpatialHash.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbeSpatialHash.GetBaseIndex(),S);
+  if(ProbeNeighborIndices.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbeNeighborIndices.GetBaseIndex(),NeighborList);
   if(OutputRadianceUAV.IsBound()) C.SetUAVParameter(Sh,OutputRadianceUAV.GetBaseIndex(),O);
  }
  void UnbindResources(FRHICommandList& C)
@@ -389,11 +402,13 @@ public:
   if(ProbePositionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbePositionsTexture.GetBaseIndex(),FShaderResourceViewRHIParamRef());
   if(BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh,BVHTriangles.GetBaseIndex(),FShaderResourceViewRHIParamRef());
   if(ProbeSpatialHash.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbeSpatialHash.GetBaseIndex(),FShaderResourceViewRHIParamRef());
+  if(ProbeNeighborIndices.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbeNeighborIndices.GetBaseIndex(),FShaderResourceViewRHIParamRef());
   if(OutputRadianceUAV.IsBound()) C.SetUAVParameter(Sh,OutputRadianceUAV.GetBaseIndex(),FUnorderedAccessViewRHIRef());
  }
 private:
  FShaderParameter TextureWidth,TotalTexels,DispatchGroupsX,ProbeCount,TotalRaysPerProbe,HashCapacity,TriangleCount,ProbeSpacing,ProbeGridOrigin;
- FShaderResourceParameter RadianceTexture,HitDistanceTexture,HitTriangleIndexTexture,DirectionsTexture,ProbePositionsTexture,BVHTriangles,ProbeSpatialHash,OutputRadianceUAV;
+ FShaderResourceParameter RadianceTexture,HitDistanceTexture,HitTriangleIndexTexture,DirectionsTexture,ProbePositionsTexture,BVHTriangles,ProbeSpatialHash,ProbeNeighborIndices,OutputRadianceUAV;
+ FShaderParameter UsePrecomputedProbeNeighbors;
 };
 IMPLEMENT_SHADER_TYPE(,FDDGIRadianceCascadeSpatialGatherRHI,
  TEXT("/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeSpatialGatherCS.usf"),
@@ -672,9 +687,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitTriangleIndexTexture);
 
 	FTexture2DRHIRef RadianceScratchTexture;
-	FShaderResourceViewRHIRef SpatialHashSRV;
-	uint32 HashCapacity=0, SpatialProbeCount=0;
+	FShaderResourceViewRHIRef SpatialHashSRV, NeighborListSRV;
+	uint32 HashCapacity=0, SpatialProbeCount=0, NeighborListProbeCount=0;
 	float ProbeSpacing=0.0f;
+	const bool bHasNeighborList = DDGIGetRadianceCascadeProbeNeighborList_RenderThread(Scene,NeighborListSRV,NeighborListProbeCount) &&
+		NeighborListSRV.IsValid() && NeighborListProbeCount==ProbeCount;
+	const uint32 bUseNeighborList = (bHasNeighborList && CVarDDGIUsePrecomputedProbeNeighbors.GetValueOnRenderThread()!=0) ? 1u : 0u;
 	if (!DDGIGetRadianceCascadeScratchTexture_RenderThread(Scene,RadianceScratchTexture) ||
 		!DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(Scene,ProbePositionsTexture,SpatialProbeCount) ||
 		!DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(Scene,SpatialHashSRV,HashCapacity,ProbeSpacing) ||
@@ -696,9 +714,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	TShaderMapRef<FDDGIRadianceCascadeSpatialGatherRHI> GatherShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(GatherShader->GetComputeShader());
 	GatherShader->SetParameters(RHICmdList,GatherRadianceSRV,GatherHitSRV,GatherHitIndicesSRV,GatherDirectionsSRV,
-		GatherPositionsSRV,TrianglesSRV,SpatialHashSRV,GatherOutputUAV,TotalTexels,GroupsX,ProbeCount,
+		GatherPositionsSRV,TrianglesSRV,SpatialHashSRV,NeighborListSRV,GatherOutputUAV,TotalTexels,GroupsX,ProbeCount,
 		TotalRaysPerProbe,HashCapacity,TriangleCount,ProbeSpacing,
-		FVector4(Config.ProbeGridOrigin.X,Config.ProbeGridOrigin.Y,Config.ProbeGridOrigin.Z,0.0f));
+		FVector4(Config.ProbeGridOrigin.X,Config.ProbeGridOrigin.Y,Config.ProbeGridOrigin.Z,0.0f),bUseNeighborList);
 	DispatchComputeShader(RHICmdList,*GatherShader,GroupsX,GroupsY,1);
 	GatherShader->UnbindResources(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,RadianceScratchTexture);
