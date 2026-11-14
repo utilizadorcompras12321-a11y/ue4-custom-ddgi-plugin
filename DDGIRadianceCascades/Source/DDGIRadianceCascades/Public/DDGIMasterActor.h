@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+
+class USceneComponent;
 #include "DDGIMasterActor.generated.h"
 
 UCLASS(Blueprintable, ClassGroup = (Rendering), meta = (DisplayName = "Radiance Cascades Master Actor"))
@@ -11,6 +13,10 @@ class DDGIRADIANCECASCADES_API ADDGIMasterActor : public AActor
 
 public:
 	ADDGIMasterActor();
+
+	// Invisible root used to expose a reliable, editable world transform in the editor.
+	UPROPERTY(VisibleDefaultsOnly, Category = "DDGI|Global")
+	USceneComponent* SceneRootComponent;
 
 	// Rebuild the static-scene acceleration structure after loading or changing static geometry.
 	// This is an explicit, potentially expensive operation; it is not performed every frame.
