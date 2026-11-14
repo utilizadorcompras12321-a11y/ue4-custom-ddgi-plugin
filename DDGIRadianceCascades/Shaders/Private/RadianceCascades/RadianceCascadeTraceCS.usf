@@ -580,6 +580,10 @@ float3 TraceDeterministicDiffuseBounce(
         BasisSign + Normal.y * Normal.y * BasisA,
         -Normal.y);
 
+    // The origin offset is identical for all four deterministic samples.
+    // Compute it once per primary hit instead of repeating the bias calculation.
+    float3 SecondaryOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
+
     float3 IncomingRadianceSum = 0.0f;
     const uint SampleCount = 4u;
     const float CosTheta = 0.6666666666666667f;
@@ -600,7 +604,6 @@ float3 TraceDeterministicDiffuseBounce(
 
         float SecondaryDistance;
         uint SecondaryTriangleIndex;
-        float3 SecondaryOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
         if (TraceClosestHit(
             SecondaryOrigin,
             SecondaryDirection,
