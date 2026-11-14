@@ -1,0 +1,412 @@
+// #define ALLOW_STATIC_LIGHTING 1
+// #define CLEAR_COAT_BOTTOM_NORMAL 0
+// #define COMPILE_SHADERS_FOR_DEVELOPMENT 1
+// #define COMPILER_DEFINE #define
+// #define COMPILER_DXC 0
+// #define COMPUTESHADER 1
+// #define DOMAINSHADER 0
+// #define DXT5_NORMALMAPS 0
+// #define EARLY_Z_PASS_ONLY_MATERIAL_MASKING 0
+// #define EIGHT_BIT_MESH_DISTANCE_FIELDS 0
+// #define FORWARD_SHADING 0
+// #define GBUFFER_HAS_VELOCITY 1
+// #define GEOMETRYSHADER 0
+// #define HAS_INVERTED_Z_BUFFER 1
+// #define HULLSHADER 0
+// #define INSTANCED_STEREO 0
+// #define IRIS_NORMAL 0
+// #define MOBILE_MULTI_VIEW 0
+// #define MULTI_VIEW 0
+// #define ODS_CAPTURE 0
+// #define PIXELSHADER 0
+// #define PLATFORM_SUPPORTS_DISTANCE_FIELDS 1
+// #define PLATFORM_SUPPORTS_PER_PIXEL_DBUFFER_MASK 0
+// #define PLATFORM_SUPPORTS_RENDERTARGET_WRITE_MASK 0
+// #define PLATFORM_SUPPORTS_SRV_UB 1
+// #define POST_PROCESS_ALPHA 0
+// #define PROJECT_ALLOW_GLOBAL_CLIP_PLANE 1
+// #define PROJECT_MOBILE_DISABLE_VERTEX_FOG 1
+// #define PROJECT_SUPPORT_SKY_ATMOSPHERE 1
+// #define PROJECT_SUPPORT_SKY_ATMOSPHERE_AFFECTS_HEIGHFOG 1
+// #define PROJECT_VERTEX_FOGGING_FOR_OPAQUE 0
+// #define RAYCALLABLESHADER 0
+// #define RAYGENSHADER 0
+// #define RAYHITGROUPSHADER 0
+// #define RAYMISSSHADER 0
+// #define SELECTIVE_BASEPASS_OUTPUTS 0
+// #define SHADING_PATH_DEFERRED 1
+// #define USE_DBUFFER 1
+// #define USE_PREEXPOSURE 1
+// #define VELOCITY_ENCODE_DEPTH 1
+// #define VERTEXSHADER 0
+// #define VIRTUAL_TEXTURE_FEEDBACK_FACTOR 16
+#line 1 "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeIntegrateCS.usf"
+#line 1 "/Engine/Public/Platform.ush"
+#line 9 "/Engine/Public/Platform.ush"
+#line 1 "FP16Math.ush"
+#line 10 "/Engine/Public/Platform.ush"
+#line 32 "/Engine/Public/Platform.ush"
+#line 1 "Platform/D3D/D3DCommon.ush"
+#line 7 "/Engine/Public/Platform/D3D/D3DCommon.ush"
+precise float MakePrecise(precise float v) { return v; }
+precise float2 MakePrecise(precise float2 v) { return v; }
+precise float3 MakePrecise(precise float3 v) { return v; }
+precise float4 MakePrecise(precise float4 v) { return v; }
+#line 33 "/Engine/Public/Platform.ush"
+#line 38 "/Engine/Public/Platform.ush"
+#line 1 "ShaderVersion.ush"
+#line 39 "/Engine/Public/Platform.ush"
+#line 588 "/Engine/Public/Platform.ush"
+float min3( float a, float b, float c )
+{
+	return min( a, min( b, c ) );
+}
+
+float max3( float a, float b, float c )
+{
+	return max( a, max( b, c ) );
+}
+
+float2 min3( float2 a, float2 b, float2 c )
+{
+	return float2(
+		min3( a.x, b.x, c.x ),
+		min3( a.y, b.y, c.y )
+	);
+}
+
+float2 max3( float2 a, float2 b, float2 c )
+{
+	return float2(
+		max3( a.x, b.x, c.x ),
+		max3( a.y, b.y, c.y )
+	);
+}
+
+float3 max3( float3 a, float3 b, float3 c )
+{
+	return float3(
+		max3( a.x, b.x, c.x ),
+		max3( a.y, b.y, c.y ),
+		max3( a.z, b.z, c.z )
+	);
+}
+
+float3 min3( float3 a, float3 b, float3 c )
+{
+	return float3(
+		min3( a.x, b.x, c.x ),
+		min3( a.y, b.y, c.y ),
+		min3( a.z, b.z, c.z )
+	);
+}
+
+float4 min3( float4 a, float4 b, float4 c )
+{
+	return float4(
+		min3( a.x, b.x, c.x ),
+		min3( a.y, b.y, c.y ),
+		min3( a.z, b.z, c.z ),
+		min3( a.w, b.w, c.w )
+	);
+}
+
+float4 max3( float4 a, float4 b, float4 c )
+{
+	return float4(
+		max3( a.x, b.x, c.x ),
+		max3( a.y, b.y, c.y ),
+		max3( a.z, b.z, c.z ),
+		max3( a.w, b.w, c.w )
+	);
+}
+
+
+
+
+float UnpackByte0(uint v) { return float(v & 0xff); }
+float UnpackByte1(uint v) { return float((v >> 8) & 0xff); }
+float UnpackByte2(uint v) { return float((v >> 16) & 0xff); }
+float UnpackByte3(uint v) { return float(v >> 24); }
+#line 2 "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeIntegrateCS.usf"
+#line 1 "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
+
+
+
+
+
+
+float DDGIRadianceCascadeSegmentLength(
+	int CascadeIndex,
+	float BaseSegmentLength,
+	float CascadeScale)
+{
+	return max(BaseSegmentLength, 1.0) *
+		pow(max(CascadeScale, 1.01), (float)max(CascadeIndex, 0));
+}
+
+float DDGIRadianceCascadeStartDistance(
+	int CascadeIndex,
+	float BaseSegmentLength,
+	float CascadeScale)
+{
+	float StartDistance = 0.0;
+	[loop]
+	for (int Index = 0; Index < CascadeIndex; ++Index)
+	{
+		StartDistance += DDGIRadianceCascadeSegmentLength(
+			Index, BaseSegmentLength, CascadeScale);
+	}
+	return StartDistance;
+}
+
+float2 DDGIRadianceCascadeDistanceInterval(
+	int CascadeIndex,
+	float BaseSegmentLength,
+	float CascadeScale,
+	float MaxTraceDistance)
+{
+	float StartDistance = DDGIRadianceCascadeStartDistance(
+		CascadeIndex, BaseSegmentLength, CascadeScale);
+	float EndDistance = StartDistance +
+		DDGIRadianceCascadeSegmentLength(
+			CascadeIndex, BaseSegmentLength, CascadeScale);
+	return float2(min(StartDistance, MaxTraceDistance),
+		min(EndDistance, MaxTraceDistance));
+}
+
+uint DDGIRadianceCascadeRayCount(
+	uint CascadeIndex,
+	uint BaseRayCount,
+	uint RaySplitFactor)
+{
+	uint Count = clamp(BaseRayCount, 1u, 64u);
+	uint Split = clamp(RaySplitFactor, 1u, 4u);
+	[loop]
+	for (uint Index = 0u; Index < CascadeIndex; ++Index)
+	{
+
+		if (Count <= 65536u / Split)
+		{
+			Count *= Split;
+		}
+	}
+	return Count;
+}
+
+
+uint DDGIRadianceCascadeRayStorageOffset(
+	uint CascadeIndex,
+	uint BaseRayCount,
+	uint RaySplitFactor)
+{
+	uint Offset = 0u;
+	[loop]
+	for (uint Index = 0u; Index < CascadeIndex; ++Index)
+	{
+		Offset += DDGIRadianceCascadeRayCount(
+			Index, BaseRayCount, RaySplitFactor);
+	}
+	return Offset;
+}
+
+uint DDGIRadianceCascadeRayStorageIndex(
+	uint CascadeIndex,
+	uint RayIndex,
+	uint BaseRayCount,
+	uint RaySplitFactor)
+{
+	uint Count = DDGIRadianceCascadeRayCount(
+		CascadeIndex, BaseRayCount, RaySplitFactor);
+	return DDGIRadianceCascadeRayStorageOffset(
+		CascadeIndex, BaseRayCount, RaySplitFactor) +
+		min(RayIndex, Count - 1u);
+}
+
+
+
+uint DDGIRadianceCascadeParentRayIndex(
+	uint ChildRayIndex,
+	uint RaySplitFactor)
+{
+	return ChildRayIndex / max(RaySplitFactor, 1u);
+}
+
+
+
+
+
+float4 DDGIRadianceCascadeBaseRegion(uint RayIndex, uint RayCount)
+{
+    uint SafeRayCount = clamp(RayCount, 1u, 64u);
+    uint BandCount = 1u;
+    [loop]
+    while ((BandCount + 1u) * (BandCount + 1u) <= SafeRayCount)
+    {
+        ++BandCount;
+    }
+
+    uint BasePerBand = SafeRayCount / BandCount;
+    uint ExtraBands = SafeRayCount % BandCount;
+    uint ExtraBandStart = (BandCount - ExtraBands) / 2u;
+    uint BandStart = 0u;
+    uint CellsInBand = BasePerBand;
+    uint SelectedBand = 0u;
+
+    [loop]
+    for (uint Band = 0u; Band < BandCount; ++Band)
+    {
+        uint CandidateCount = BasePerBand +
+            ((Band >= ExtraBandStart && Band < ExtraBandStart + ExtraBands) ? 1u : 0u);
+        if (RayIndex < BandStart + CandidateCount)
+        {
+            CellsInBand = CandidateCount;
+            SelectedBand = Band;
+            break;
+        }
+        BandStart += CandidateCount;
+    }
+
+    uint CellInBand = RayIndex - BandStart;
+    float InvRayCount = 1.0f / (float)SafeRayCount;
+    float ZMin = -1.0f + 2.0f * (float)BandStart * InvRayCount;
+    float ZMax = -1.0f + 2.0f * (float)(BandStart + CellsInBand) * InvRayCount;
+
+
+    float BandPhase = (SelectedBand & 1u) != 0u ? 0.5f : 0.0f;
+    float PhiMin = 6.283185307179586f *
+        ((float)CellInBand + BandPhase) / (float)CellsInBand;
+    float PhiMax = PhiMin + 6.283185307179586f / (float)CellsInBand;
+    return float4(PhiMin, PhiMax, ZMin, ZMax);
+}
+
+
+
+
+void DDGIRadianceCascadeSplitRegion(
+    inout float4 Region,
+    uint ChildInGroup,
+    uint SplitFactor)
+{
+    uint SafeSplit = clamp(SplitFactor, 1u, 4u);
+    if (SafeSplit <= 1u)
+    {
+        return;
+    }
+
+    float PhiSpan = Region.y - Region.x;
+    float ZSpan = Region.w - Region.z;
+    float ZCenter = 0.5f * (Region.z + Region.w);
+    float SinTheta = sqrt(saturate(1.0f - ZCenter * ZCenter));
+    float HorizontalExtent = SinTheta * PhiSpan;
+    float VerticalExtent = ZSpan / max(SinTheta, 0.05f);
+
+    if (SafeSplit == 4u)
+    {
+        uint PhiChild = ChildInGroup & 1u;
+        uint ZChild = (ChildInGroup >> 1u) & 1u;
+        float PhiMid = 0.5f * (Region.x + Region.y);
+        float ZMid = 0.5f * (Region.z + Region.w);
+        Region.x = (PhiChild == 0u) ? Region.x : PhiMid;
+        Region.y = (PhiChild == 0u) ? PhiMid : Region.y;
+        Region.z = (ZChild == 0u) ? Region.z : ZMid;
+        Region.w = (ZChild == 0u) ? ZMid : Region.w;
+    }
+    else if (HorizontalExtent >= VerticalExtent)
+    {
+        float PhiStep = PhiSpan / (float)SafeSplit;
+        Region.x += PhiStep * (float)ChildInGroup;
+        Region.y = Region.x + PhiStep;
+    }
+    else
+    {
+        float ZStep = ZSpan / (float)SafeSplit;
+        Region.z += ZStep * (float)ChildInGroup;
+        Region.w = Region.z + ZStep;
+    }
+}
+
+float3 DDGIRadianceCascadeRegionDirection(float4 Region)
+{
+    float Phi = 0.5f * (Region.x + Region.y);
+    float Z = clamp(0.5f * (Region.z + Region.w), -1.0f, 1.0f);
+    float Radius = sqrt(saturate(1.0f - Z * Z));
+    return normalize(float3(cos(Phi) * Radius, Z, sin(Phi) * Radius));
+}
+#line 3 "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeIntegrateCS.usf"
+
+uint TextureWidth;
+uint TotalTexels;
+uint DispatchGroupsX;
+uint TotalRaysPerProbe;
+uint CascadeStorageOffset;
+uint CascadeRayCount;
+uint NextCascadeStorageOffset;
+uint EffectiveSplitFactor;
+
+Texture2D<float4> InputRadianceTexture;
+Texture2D<float> HitDistanceTexture;
+RWTexture2D<float4> OutputRadianceUAV;
+
+[numthreads(64, 1, 1)]
+void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
+    if (LinearIndex >= TotalTexels || TotalRaysPerProbe == 0u)
+    {
+        return;
+    }
+
+    uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
+    uint PackedRayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
+    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
+
+    const uint SafeSplitFactor = max(EffectiveSplitFactor, 1u);
+    const bool bIsTargetCascadeRay =
+        PackedRayIndex >= CascadeStorageOffset &&
+        PackedRayIndex < CascadeStorageOffset + CascadeRayCount;
+
+    float4 Result;
+
+
+    if (bIsTargetCascadeRay && HitDistanceTexture.Load(int3(Pixel, 0)) < 0.0f)
+    {
+        uint LocalRayIndex = PackedRayIndex - CascadeStorageOffset;
+        float3 IntegratedRadiance = 0.0f;
+
+
+
+
+        const uint ChildLinearIndexBase =
+            ProbeIndex * TotalRaysPerProbe +
+            NextCascadeStorageOffset +
+            LocalRayIndex * SafeSplitFactor;
+
+        [loop]
+        for (uint ChildIndex = 0u; ChildIndex < SafeSplitFactor; ++ChildIndex)
+        {
+            uint ChildLinearIndex = ChildLinearIndexBase + ChildIndex;
+            uint2 ChildPixel = uint2(ChildLinearIndex % TextureWidth, ChildLinearIndex / TextureWidth);
+            IntegratedRadiance += InputRadianceTexture.Load(int3(ChildPixel, 0)).rgb;
+        }
+
+        Result = float4(IntegratedRadiance / (float)SafeSplitFactor, 1.0f);
+    }
+    else
+    {
+
+
+        Result = InputRadianceTexture.Load(int3(Pixel, 0));
+    }
+
+    OutputRadianceUAV[Pixel] = Result;
+}
+
+#if 0 /*BEGIN_RESOURCE_TABLES*/
+NULL, 0
+NULL, NULL, 0, 0
+#endif /*END_RESOURCE_TABLES*/
+#if 0 /*DIRECT COMPILE*/
+-directcompile -format=PCD3D_SM5 -entry=RadianceCascadeIntegrateCS -cs C:/Users/Utilizador~/Documents/Unreal Projects/ProjectMidnight 4.27/Saved/ShaderDebugInfo/PCD3D_SM5/Global/FDDGIRadianceCascadeIntegrateRHI/0/RadianceCascadeIntegrateCS.usf -cflags=2048 -nocrashreports
+#endif /*DIRECT COMPILE*/
+//

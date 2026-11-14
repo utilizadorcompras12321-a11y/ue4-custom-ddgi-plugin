@@ -1,0 +1,1 @@
+-directcompile -format=PCD3D_SM5 -entry=RadianceCascadeIntegrateCS -cs C:/Users/Utilizador~/Documents/Unreal Projects/ProjectMidnight 4.27/Saved/ShaderDebugInfo/PCD3D_SM5/Global/FDDGIRadianceCascadeIntegrateRHI/0/RadianceCascadeIntegrateCS.usf -cflags=2048 -nocrashreports

@@ -1,0 +1,1 @@
+-directcompile -format=PCD3D_SM5 -entry=MainCS -cs C:/Users/Utilizador~/Documents/Unreal Projects/ProjectMidnight 4.27/Saved/ShaderDebugInfo/PCD3D_SM5/Global/FApplyRadianceCascadeLightingShaderCS/0/ApplyRadianceCascadesLighting.usf -cflags=8390656 -nocrashreports

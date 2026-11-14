@@ -1,0 +1,1 @@
+-directcompile -format=PCD3D_SM5 -entry=RadianceCascadeSpatialGatherCS -cs C:/Users/Utilizador~/Documents/Unreal Projects/ProjectMidnight 4.27/Saved/ShaderDebugInfo/PCD3D_SM5/Global/FDDGIRadianceCascadeSpatialGatherRHI/0/RadianceCascadeSpatialGatherCS.usf -cflags=2048 -nocrashreports

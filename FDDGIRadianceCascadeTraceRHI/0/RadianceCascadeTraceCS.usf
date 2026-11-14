@@ -1,0 +1,1139 @@
+// #define ALLOW_STATIC_LIGHTING 1
+// #define CLEAR_COAT_BOTTOM_NORMAL 0
+// #define COMPILE_SHADERS_FOR_DEVELOPMENT 1
+// #define COMPILER_DEFINE #define
+// #define COMPILER_DXC 0
+// #define COMPUTESHADER 1
+// #define DOMAINSHADER 0
+// #define DXT5_NORMALMAPS 0
+// #define EARLY_Z_PASS_ONLY_MATERIAL_MASKING 0
+// #define EIGHT_BIT_MESH_DISTANCE_FIELDS 0
+// #define FORWARD_SHADING 0
+// #define GBUFFER_HAS_VELOCITY 1
+// #define GEOMETRYSHADER 0
+// #define HAS_INVERTED_Z_BUFFER 1
+// #define HULLSHADER 0
+// #define INSTANCED_STEREO 0
+// #define IRIS_NORMAL 0
+// #define MOBILE_MULTI_VIEW 0
+// #define MULTI_VIEW 0
+// #define ODS_CAPTURE 0
+// #define PIXELSHADER 0
+// #define PLATFORM_SUPPORTS_DISTANCE_FIELDS 1
+// #define PLATFORM_SUPPORTS_PER_PIXEL_DBUFFER_MASK 0
+// #define PLATFORM_SUPPORTS_RENDERTARGET_WRITE_MASK 0
+// #define PLATFORM_SUPPORTS_SRV_UB 1
+// #define POST_PROCESS_ALPHA 0
+// #define PROJECT_ALLOW_GLOBAL_CLIP_PLANE 1
+// #define PROJECT_MOBILE_DISABLE_VERTEX_FOG 1
+// #define PROJECT_SUPPORT_SKY_ATMOSPHERE 1
+// #define PROJECT_SUPPORT_SKY_ATMOSPHERE_AFFECTS_HEIGHFOG 1
+// #define PROJECT_VERTEX_FOGGING_FOR_OPAQUE 0
+// #define RAYCALLABLESHADER 0
+// #define RAYGENSHADER 0
+// #define RAYHITGROUPSHADER 0
+// #define RAYMISSSHADER 0
+// #define SELECTIVE_BASEPASS_OUTPUTS 0
+// #define SHADING_PATH_DEFERRED 1
+// #define USE_DBUFFER 1
+// #define USE_PREEXPOSURE 1
+// #define VELOCITY_ENCODE_DEPTH 1
+// #define VERTEXSHADER 0
+// #define VIRTUAL_TEXTURE_FEEDBACK_FACTOR 16
+#line 1 "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeTraceCS.usf"
+#line 1 "/Engine/Public/Platform.ush"
+#line 9 "/Engine/Public/Platform.ush"
+#line 1 "FP16Math.ush"
+#line 10 "/Engine/Public/Platform.ush"
+#line 32 "/Engine/Public/Platform.ush"
+#line 1 "Platform/D3D/D3DCommon.ush"
+#line 7 "/Engine/Public/Platform/D3D/D3DCommon.ush"
+precise float MakePrecise(precise float v) { return v; }
+precise float2 MakePrecise(precise float2 v) { return v; }
+precise float3 MakePrecise(precise float3 v) { return v; }
+precise float4 MakePrecise(precise float4 v) { return v; }
+#line 33 "/Engine/Public/Platform.ush"
+#line 38 "/Engine/Public/Platform.ush"
+#line 1 "ShaderVersion.ush"
+#line 39 "/Engine/Public/Platform.ush"
+#line 588 "/Engine/Public/Platform.ush"
+float min3( float a, float b, float c )
+{
+	return min( a, min( b, c ) );
+}
+
+float max3( float a, float b, float c )
+{
+	return max( a, max( b, c ) );
+}
+
+float2 min3( float2 a, float2 b, float2 c )
+{
+	return float2(
+		min3( a.x, b.x, c.x ),
+		min3( a.y, b.y, c.y )
+	);
+}
+
+float2 max3( float2 a, float2 b, float2 c )
+{
+	return float2(
+		max3( a.x, b.x, c.x ),
+		max3( a.y, b.y, c.y )
+	);
+}
+
+float3 max3( float3 a, float3 b, float3 c )
+{
+	return float3(
+		max3( a.x, b.x, c.x ),
+		max3( a.y, b.y, c.y ),
+		max3( a.z, b.z, c.z )
+	);
+}
+
+float3 min3( float3 a, float3 b, float3 c )
+{
+	return float3(
+		min3( a.x, b.x, c.x ),
+		min3( a.y, b.y, c.y ),
+		min3( a.z, b.z, c.z )
+	);
+}
+
+float4 min3( float4 a, float4 b, float4 c )
+{
+	return float4(
+		min3( a.x, b.x, c.x ),
+		min3( a.y, b.y, c.y ),
+		min3( a.z, b.z, c.z ),
+		min3( a.w, b.w, c.w )
+	);
+}
+
+float4 max3( float4 a, float4 b, float4 c )
+{
+	return float4(
+		max3( a.x, b.x, c.x ),
+		max3( a.y, b.y, c.y ),
+		max3( a.z, b.z, c.z ),
+		max3( a.w, b.w, c.w )
+	);
+}
+
+
+
+
+float UnpackByte0(uint v) { return float(v & 0xff); }
+float UnpackByte1(uint v) { return float((v >> 8) & 0xff); }
+float UnpackByte2(uint v) { return float((v >> 16) & 0xff); }
+float UnpackByte3(uint v) { return float(v >> 24); }
+#line 2 "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeTraceCS.usf"
+#line 1 "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
+
+
+
+
+
+
+float DDGIRadianceCascadeSegmentLength(
+	int CascadeIndex,
+	float BaseSegmentLength,
+	float CascadeScale)
+{
+	return max(BaseSegmentLength, 1.0) *
+		pow(max(CascadeScale, 1.01), (float)max(CascadeIndex, 0));
+}
+
+float DDGIRadianceCascadeStartDistance(
+	int CascadeIndex,
+	float BaseSegmentLength,
+	float CascadeScale)
+{
+	float StartDistance = 0.0;
+	[loop]
+	for (int Index = 0; Index < CascadeIndex; ++Index)
+	{
+		StartDistance += DDGIRadianceCascadeSegmentLength(
+			Index, BaseSegmentLength, CascadeScale);
+	}
+	return StartDistance;
+}
+
+float2 DDGIRadianceCascadeDistanceInterval(
+	int CascadeIndex,
+	float BaseSegmentLength,
+	float CascadeScale,
+	float MaxTraceDistance)
+{
+	float StartDistance = DDGIRadianceCascadeStartDistance(
+		CascadeIndex, BaseSegmentLength, CascadeScale);
+	float EndDistance = StartDistance +
+		DDGIRadianceCascadeSegmentLength(
+			CascadeIndex, BaseSegmentLength, CascadeScale);
+	return float2(min(StartDistance, MaxTraceDistance),
+		min(EndDistance, MaxTraceDistance));
+}
+
+uint DDGIRadianceCascadeRayCount(
+	uint CascadeIndex,
+	uint BaseRayCount,
+	uint RaySplitFactor)
+{
+	uint Count = clamp(BaseRayCount, 1u, 64u);
+	uint Split = clamp(RaySplitFactor, 1u, 4u);
+	[loop]
+	for (uint Index = 0u; Index < CascadeIndex; ++Index)
+	{
+
+		if (Count <= 65536u / Split)
+		{
+			Count *= Split;
+		}
+	}
+	return Count;
+}
+
+
+uint DDGIRadianceCascadeRayStorageOffset(
+	uint CascadeIndex,
+	uint BaseRayCount,
+	uint RaySplitFactor)
+{
+	uint Offset = 0u;
+	[loop]
+	for (uint Index = 0u; Index < CascadeIndex; ++Index)
+	{
+		Offset += DDGIRadianceCascadeRayCount(
+			Index, BaseRayCount, RaySplitFactor);
+	}
+	return Offset;
+}
+
+uint DDGIRadianceCascadeRayStorageIndex(
+	uint CascadeIndex,
+	uint RayIndex,
+	uint BaseRayCount,
+	uint RaySplitFactor)
+{
+	uint Count = DDGIRadianceCascadeRayCount(
+		CascadeIndex, BaseRayCount, RaySplitFactor);
+	return DDGIRadianceCascadeRayStorageOffset(
+		CascadeIndex, BaseRayCount, RaySplitFactor) +
+		min(RayIndex, Count - 1u);
+}
+
+
+
+uint DDGIRadianceCascadeParentRayIndex(
+	uint ChildRayIndex,
+	uint RaySplitFactor)
+{
+	return ChildRayIndex / max(RaySplitFactor, 1u);
+}
+
+
+
+
+
+float4 DDGIRadianceCascadeBaseRegion(uint RayIndex, uint RayCount)
+{
+    uint SafeRayCount = clamp(RayCount, 1u, 64u);
+    uint BandCount = 1u;
+    [loop]
+    while ((BandCount + 1u) * (BandCount + 1u) <= SafeRayCount)
+    {
+        ++BandCount;
+    }
+
+    uint BasePerBand = SafeRayCount / BandCount;
+    uint ExtraBands = SafeRayCount % BandCount;
+    uint ExtraBandStart = (BandCount - ExtraBands) / 2u;
+    uint BandStart = 0u;
+    uint CellsInBand = BasePerBand;
+    uint SelectedBand = 0u;
+
+    [loop]
+    for (uint Band = 0u; Band < BandCount; ++Band)
+    {
+        uint CandidateCount = BasePerBand +
+            ((Band >= ExtraBandStart && Band < ExtraBandStart + ExtraBands) ? 1u : 0u);
+        if (RayIndex < BandStart + CandidateCount)
+        {
+            CellsInBand = CandidateCount;
+            SelectedBand = Band;
+            break;
+        }
+        BandStart += CandidateCount;
+    }
+
+    uint CellInBand = RayIndex - BandStart;
+    float InvRayCount = 1.0f / (float)SafeRayCount;
+    float ZMin = -1.0f + 2.0f * (float)BandStart * InvRayCount;
+    float ZMax = -1.0f + 2.0f * (float)(BandStart + CellsInBand) * InvRayCount;
+
+
+    float BandPhase = (SelectedBand & 1u) != 0u ? 0.5f : 0.0f;
+    float PhiMin = 6.283185307179586f *
+        ((float)CellInBand + BandPhase) / (float)CellsInBand;
+    float PhiMax = PhiMin + 6.283185307179586f / (float)CellsInBand;
+    return float4(PhiMin, PhiMax, ZMin, ZMax);
+}
+
+
+
+
+void DDGIRadianceCascadeSplitRegion(
+    inout float4 Region,
+    uint ChildInGroup,
+    uint SplitFactor)
+{
+    uint SafeSplit = clamp(SplitFactor, 1u, 4u);
+    if (SafeSplit <= 1u)
+    {
+        return;
+    }
+
+    float PhiSpan = Region.y - Region.x;
+    float ZSpan = Region.w - Region.z;
+    float ZCenter = 0.5f * (Region.z + Region.w);
+    float SinTheta = sqrt(saturate(1.0f - ZCenter * ZCenter));
+    float HorizontalExtent = SinTheta * PhiSpan;
+    float VerticalExtent = ZSpan / max(SinTheta, 0.05f);
+
+    if (SafeSplit == 4u)
+    {
+        uint PhiChild = ChildInGroup & 1u;
+        uint ZChild = (ChildInGroup >> 1u) & 1u;
+        float PhiMid = 0.5f * (Region.x + Region.y);
+        float ZMid = 0.5f * (Region.z + Region.w);
+        Region.x = (PhiChild == 0u) ? Region.x : PhiMid;
+        Region.y = (PhiChild == 0u) ? PhiMid : Region.y;
+        Region.z = (ZChild == 0u) ? Region.z : ZMid;
+        Region.w = (ZChild == 0u) ? ZMid : Region.w;
+    }
+    else if (HorizontalExtent >= VerticalExtent)
+    {
+        float PhiStep = PhiSpan / (float)SafeSplit;
+        Region.x += PhiStep * (float)ChildInGroup;
+        Region.y = Region.x + PhiStep;
+    }
+    else
+    {
+        float ZStep = ZSpan / (float)SafeSplit;
+        Region.z += ZStep * (float)ChildInGroup;
+        Region.w = Region.z + ZStep;
+    }
+}
+
+float3 DDGIRadianceCascadeRegionDirection(float4 Region)
+{
+    float Phi = 0.5f * (Region.x + Region.y);
+    float Z = clamp(0.5f * (Region.z + Region.w), -1.0f, 1.0f);
+    float Radius = sqrt(saturate(1.0f - Z * Z));
+    return normalize(float3(cos(Phi) * Radius, Z, sin(Phi) * Radius));
+}
+#line 3 "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeTraceCS.usf"
+
+uint TextureWidth;
+uint TotalTexels;
+uint DispatchGroupsX;
+uint ProbeCount;
+uint TotalRaysPerProbe;
+uint NodeCount;
+uint TriangleCount;
+uint CascadeCount;
+float BaseSegmentLength;
+float CascadeScale;
+float MaxTraceDistance;
+float4 StaticBackgroundColor;
+float StaticBackgroundIntensity;
+float GIIntensity;
+float4 ProbeGridOrigin;
+float BackgroundTransitionStart;
+float BackgroundTransitionEnd;
+uint bEnableStaticBackground;
+
+float4 DirectionalLightDirection;
+float4 DirectionalLightColor;
+float DirectionalLightIntensity;
+uint bHasDirectionalLight;
+
+Texture2D<float4> DirectionsTexture;
+Texture2D<float4> ProbePositionsTexture;
+StructuredBuffer<float4> BVHNodes;
+StructuredBuffer<float4> BVHTriangles;
+RWTexture2D<float4> RadianceUAV;
+RWTexture2D<float> HitDistanceUAV;
+RWTexture2D<uint> HitTriangleIndexUAV;
+
+
+
+float ComputeRayOriginBias(float3 Position)
+{
+    const float FloatEpsilon = 1.192092896e-7f;
+    const float MinimumBias = 0.001f;
+    float CoordinateMagnitude = max(
+        max(abs(Position.x), abs(Position.y)),
+        abs(Position.z));
+    return max(MinimumBias, CoordinateMagnitude * FloatEpsilon * 4.0f);
+}
+
+
+
+
+
+float3 ComputeTriangleGeometricNormal(float3 A, float3 B, float3 C)
+{
+    float3 EdgeAB = B - A;
+    float3 EdgeAC = C - A;
+    float EdgeScale = max(
+        max(max(abs(EdgeAB.x), abs(EdgeAB.y)), abs(EdgeAB.z)),
+        max(max(abs(EdgeAC.x), abs(EdgeAC.y)), abs(EdgeAC.z)));
+    if (!(EdgeScale > 0.0f) || !isfinite(EdgeScale))
+    {
+        return 0.0f;
+    }
+
+    float3 ScaledCross = cross(EdgeAB / EdgeScale, EdgeAC / EdgeScale);
+    float NormalLengthSquared = dot(ScaledCross, ScaledCross);
+    if (!(NormalLengthSquared > 1.0e-12f) || !isfinite(NormalLengthSquared))
+    {
+        return 0.0f;
+    }
+
+    return ScaledCross * rsqrt(NormalLengthSquared);
+}
+
+
+
+
+bool UpdateSlabInterval(
+    float RayOrigin,
+    float RayDirection,
+    float SlabMin,
+    float SlabMax,
+    inout float NearDistance,
+    inout float FarDistance)
+{
+    if (RayDirection == 0.0f)
+    {
+        return RayOrigin >= SlabMin && RayOrigin <= SlabMax;
+    }
+
+    float T0 = (SlabMin - RayOrigin) / RayDirection;
+    float T1 = (SlabMax - RayOrigin) / RayDirection;
+    if (!isfinite(T0) || !isfinite(T1))
+    {
+        return false;
+    }
+
+    NearDistance = max(NearDistance, min(T0, T1));
+    FarDistance = min(FarDistance, max(T0, T1));
+    return FarDistance >= NearDistance;
+}
+
+bool IntersectBoundsInterval(
+    float3 Origin,
+    float3 Direction,
+    float3 BoundsMin,
+    float3 BoundsMax,
+    float MaxDistance,
+    out float NearDistance)
+{
+    NearDistance = 0.0f;
+    if (!all(isfinite(Origin)) || !all(isfinite(Direction)) ||
+        !all(isfinite(BoundsMin)) || !all(isfinite(BoundsMax)) ||
+        any(BoundsMin > BoundsMax) ||
+        !isfinite(MaxDistance) || MaxDistance <= 0.0f)
+    {
+        return false;
+    }
+
+    float FarDistance = MaxDistance;
+    if (!UpdateSlabInterval(Origin.x, Direction.x, BoundsMin.x, BoundsMax.x, NearDistance, FarDistance) ||
+        !UpdateSlabInterval(Origin.y, Direction.y, BoundsMin.y, BoundsMax.y, NearDistance, FarDistance) ||
+        !UpdateSlabInterval(Origin.z, Direction.z, BoundsMin.z, BoundsMax.z, NearDistance, FarDistance))
+    {
+        return false;
+    }
+
+    return FarDistance >= NearDistance;
+}
+
+bool IntersectBounds(float3 Origin, float3 Direction, float3 BoundsMin, float3 BoundsMax, float MaxDistance)
+{
+    float NearDistance;
+    return IntersectBoundsInterval(
+        Origin, Direction, BoundsMin, BoundsMax, MaxDistance, NearDistance);
+}
+
+bool IntersectBoundsWithNear(
+    float3 Origin,
+    float3 Direction,
+    float3 BoundsMin,
+    float3 BoundsMax,
+    float MaxDistance,
+    out float NearDistance)
+{
+    return IntersectBoundsInterval(
+        Origin, Direction, BoundsMin, BoundsMax, MaxDistance, NearDistance);
+}
+
+
+bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, float3 C, out float HitDistance)
+{
+
+
+
+
+
+    float3 ATranslated = A - Origin;
+    float3 BTranslated = B - Origin;
+    float3 CTranslated = C - Origin;
+
+
+    if (!all(isfinite(ATranslated)) ||
+        !all(isfinite(BTranslated)) ||
+        !all(isfinite(CTranslated)) ||
+        !all(isfinite(Direction)))
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+    float3 AbsDirection = abs(Direction);
+    uint DominantAxis = AbsDirection.x > AbsDirection.y
+        ? (AbsDirection.x > AbsDirection.z ? 0u : 2u)
+        : (AbsDirection.y > AbsDirection.z ? 1u : 2u);
+    if (AbsDirection[DominantAxis] <= 1.0e-20f)
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+    uint AxisX = (DominantAxis + 1u) % 3u;
+    uint AxisY = (AxisX + 1u) % 3u;
+    if (Direction[DominantAxis] < 0.0f)
+    {
+        uint TempAxis = AxisX;
+        AxisX = AxisY;
+        AxisY = TempAxis;
+    }
+
+    float ShearX = Direction[AxisX] / Direction[DominantAxis];
+    float ShearY = Direction[AxisY] / Direction[DominantAxis];
+    float ScaleZ = rcp(Direction[DominantAxis]);
+
+    float Ax = ATranslated[AxisX] - ShearX * ATranslated[DominantAxis];
+    float Ay = ATranslated[AxisY] - ShearY * ATranslated[DominantAxis];
+    float Bx = BTranslated[AxisX] - ShearX * BTranslated[DominantAxis];
+    float By = BTranslated[AxisY] - ShearY * BTranslated[DominantAxis];
+    float Cx = CTranslated[AxisX] - ShearX * CTranslated[DominantAxis];
+    float Cy = CTranslated[AxisY] - ShearY * CTranslated[DominantAxis];
+
+    if (!isfinite(ShearX) || !isfinite(ShearY) || !isfinite(ScaleZ) ||
+        !isfinite(Ax) || !isfinite(Ay) ||
+        !isfinite(Bx) || !isfinite(By) ||
+        !isfinite(Cx) || !isfinite(Cy))
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+    float U = Cx * By - Cy * Bx;
+    float V = Ax * Cy - Ay * Cx;
+    float W = Bx * Ay - By * Ax;
+
+
+
+    bool bHasNegative = U < 0.0f || V < 0.0f || W < 0.0f;
+    bool bHasPositive = U > 0.0f || V > 0.0f || W > 0.0f;
+    if (bHasNegative && bHasPositive)
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+    float Determinant = U + V + W;
+    if (!isfinite(U) || !isfinite(V) || !isfinite(W) ||
+        !isfinite(Determinant) || Determinant == 0.0f)
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+    float Az = ATranslated[DominantAxis] * ScaleZ;
+    float Bz = BTranslated[DominantAxis] * ScaleZ;
+    float Cz = CTranslated[DominantAxis] * ScaleZ;
+    float ScaledDistance = U * Az + V * Bz + W * Cz;
+    if (!isfinite(Az) || !isfinite(Bz) || !isfinite(Cz) || !isfinite(ScaledDistance))
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+
+
+    if ((Determinant > 0.0f && ScaledDistance <= 0.0f) ||
+        (Determinant < 0.0f && ScaledDistance >= 0.0f))
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+
+    HitDistance = ScaledDistance / Determinant;
+    if (!isfinite(HitDistance) || HitDistance <= 0.0f)
+    {
+        HitDistance = -1.0f;
+        return false;
+    }
+    return true;
+}
+
+
+bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint IgnoreTriangleIndex)
+{
+    if (NodeCount == 0u || TriangleCount == 0u || MaxDistance <= 0.0f)
+    {
+        return false;
+    }
+
+
+
+    if (!IntersectBounds(
+        Origin, Direction,
+        BVHNodes[0u].xyz,
+        BVHNodes[1u].xyz,
+        MaxDistance))
+    {
+        return false;
+    }
+
+    uint Stack[64];
+    uint StackSize = 0u;
+    uint IterationCount = 0u;
+    Stack[StackSize++] = 0u;
+
+    [loop]
+    while (StackSize > 0u && IterationCount < NodeCount)
+    {
+        ++IterationCount;
+        uint NodeIndex = Stack[--StackSize];
+        if (NodeIndex >= NodeCount)
+        {
+            continue;
+        }
+
+        uint NodeBase = NodeIndex * 3u;
+        float4 Metadata = BVHNodes[NodeBase + 2u];
+        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
+        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
+        if (LeafTriangleCount > 0u)
+        {
+            [loop]
+            for (uint LocalTriangle = 0u; LocalTriangle < LeafTriangleCount; ++LocalTriangle)
+            {
+                uint TriangleIndex = FirstTriangle + LocalTriangle;
+                if (TriangleIndex >= TriangleCount || TriangleIndex == IgnoreTriangleIndex)
+                {
+                    continue;
+                }
+
+                uint TriangleBase = TriangleIndex * 4u;
+                float ShadowHitDistance;
+                if (IntersectTriangle(Origin, Direction,
+                    BVHTriangles[TriangleBase + 0u].xyz,
+                    BVHTriangles[TriangleBase + 1u].xyz,
+                    BVHTriangles[TriangleBase + 2u].xyz,
+                    ShadowHitDistance) && ShadowHitDistance < MaxDistance)
+                {
+                    return true;
+                }
+            }
+        }
+        else
+        {
+            uint LeftChild = (uint)max(Metadata.x, 0.0f);
+            uint RightChild = (uint)max(Metadata.y, 0.0f);
+            float LeftNear = 0.0f;
+            float RightNear = 0.0f;
+            bool bHitLeft = false;
+            bool bHitRight = false;
+            if (LeftChild < NodeCount)
+            {
+                uint LeftBase = LeftChild * 3u;
+                bHitLeft = IntersectBoundsWithNear(Origin, Direction,
+                    BVHNodes[LeftBase + 0u].xyz, BVHNodes[LeftBase + 1u].xyz,
+                    MaxDistance, LeftNear);
+            }
+            if (RightChild < NodeCount)
+            {
+                uint RightBase = RightChild * 3u;
+                bHitRight = IntersectBoundsWithNear(Origin, Direction,
+                    BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
+                    MaxDistance, RightNear);
+            }
+
+
+
+            if (bHitLeft && bHitRight)
+            {
+                if (LeftNear <= RightNear)
+                {
+                    Stack[StackSize++] = RightChild;
+                    Stack[StackSize++] = LeftChild;
+                }
+                else
+                {
+                    Stack[StackSize++] = LeftChild;
+                    Stack[StackSize++] = RightChild;
+                }
+            }
+            else if (bHitLeft)
+            {
+                Stack[StackSize++] = LeftChild;
+            }
+            else if (bHitRight)
+            {
+                Stack[StackSize++] = RightChild;
+            }
+        }
+    }
+    return false;
+}
+
+bool TraceClosestHit(
+    float3 Origin,
+    float3 Direction,
+    float MaxDistance,
+    uint IgnoreTriangleIndex,
+    out float ClosestDistance,
+    out uint ClosestTriangleIndex,
+    out float3 ClosestA,
+    out float3 ClosestB,
+    out float3 ClosestC)
+{
+    ClosestDistance = MaxDistance;
+    ClosestTriangleIndex = 0u;
+    ClosestA = 0.0f;
+    ClosestB = 0.0f;
+    ClosestC = 0.0f;
+    if (NodeCount == 0u || TriangleCount == 0u)
+    {
+        return false;
+    }
+
+    uint Stack[64];
+    float NearStack[64];
+    uint StackSize = 0u;
+    uint IterationCount = 0u;
+    Stack[StackSize] = 0u;
+    NearStack[StackSize++] = -1.0f;
+    bool bFoundHit = false;
+
+    [loop]
+    while (StackSize > 0u && IterationCount < NodeCount)
+    {
+        ++IterationCount;
+        --StackSize;
+        uint NodeIndex = Stack[StackSize];
+        float NodeNear = NearStack[StackSize];
+        if (NodeIndex >= NodeCount || (NodeNear >= 0.0f && NodeNear > ClosestDistance))
+        {
+            continue;
+        }
+
+        uint NodeBase = NodeIndex * 3u;
+
+
+        if (NodeNear < 0.0f && !IntersectBounds(Origin, Direction,
+            BVHNodes[NodeBase + 0u].xyz,
+            BVHNodes[NodeBase + 1u].xyz,
+            ClosestDistance))
+        {
+            continue;
+        }
+
+        float4 Metadata = BVHNodes[NodeBase + 2u];
+        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
+        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
+        if (LeafTriangleCount > 0u)
+        {
+            [loop]
+            for (uint LocalTriangle = 0u; LocalTriangle < LeafTriangleCount; ++LocalTriangle)
+            {
+                uint TriangleIndex = FirstTriangle + LocalTriangle;
+                if (TriangleIndex >= TriangleCount || TriangleIndex == IgnoreTriangleIndex)
+                {
+                    continue;
+                }
+
+                uint TriangleBase = TriangleIndex * 4u;
+                float3 CandidateA = BVHTriangles[TriangleBase + 0u].xyz;
+                float3 CandidateB = BVHTriangles[TriangleBase + 1u].xyz;
+                float3 CandidateC = BVHTriangles[TriangleBase + 2u].xyz;
+                float CandidateDistance;
+                if (IntersectTriangle(Origin, Direction,
+                    CandidateA, CandidateB, CandidateC,
+                    CandidateDistance) && CandidateDistance < ClosestDistance)
+                {
+                    ClosestDistance = CandidateDistance;
+                    ClosestTriangleIndex = TriangleIndex;
+                    ClosestA = CandidateA;
+                    ClosestB = CandidateB;
+                    ClosestC = CandidateC;
+                    bFoundHit = true;
+                }
+            }
+        }
+        else
+        {
+            uint LeftChild = (uint)max(Metadata.x, 0.0f);
+            uint RightChild = (uint)max(Metadata.y, 0.0f);
+            float LeftNear = 0.0f;
+            float RightNear = 0.0f;
+            bool bHitLeft = false;
+            bool bHitRight = false;
+            if (LeftChild < NodeCount)
+            {
+                uint LeftBase = LeftChild * 3u;
+                bHitLeft = IntersectBoundsWithNear(Origin, Direction,
+                    BVHNodes[LeftBase + 0u].xyz, BVHNodes[LeftBase + 1u].xyz,
+                    ClosestDistance, LeftNear);
+            }
+            if (RightChild < NodeCount)
+            {
+                uint RightBase = RightChild * 3u;
+                bHitRight = IntersectBoundsWithNear(Origin, Direction,
+                    BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
+                    ClosestDistance, RightNear);
+            }
+
+
+
+
+            if (bHitLeft && bHitRight)
+            {
+                if (LeftNear <= RightNear)
+                {
+                    Stack[StackSize] = RightChild;
+                    NearStack[StackSize++] = RightNear;
+                    Stack[StackSize] = LeftChild;
+                    NearStack[StackSize++] = LeftNear;
+                }
+                else
+                {
+                    Stack[StackSize] = LeftChild;
+                    NearStack[StackSize++] = LeftNear;
+                    Stack[StackSize] = RightChild;
+                    NearStack[StackSize++] = RightNear;
+                }
+            }
+            else if (bHitLeft)
+            {
+                Stack[StackSize] = LeftChild;
+                NearStack[StackSize++] = LeftNear;
+            }
+            else if (bHitRight)
+            {
+                Stack[StackSize] = RightChild;
+                NearStack[StackSize++] = RightNear;
+            }
+        }
+    }
+
+    return bFoundHit;
+}
+
+float3 EvaluateHitSurfaceRadiance(
+    uint TriangleIndex,
+    float3 TriangleA,
+    float3 TriangleB,
+    float3 TriangleC,
+    float3 HitPosition,
+    float3 IncomingDirection,
+    float3 ToLight)
+{
+    uint TriangleBase = TriangleIndex * 4u;
+
+
+    float3 Emissive = float3(
+        BVHTriangles[TriangleBase + 0u].w,
+        BVHTriangles[TriangleBase + 1u].w,
+        BVHTriangles[TriangleBase + 2u].w) * GIIntensity;
+    float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
+
+
+
+
+    if (bHasDirectionalLight == 0u ||
+        DirectionalLightIntensity == 0.0f ||
+        !any(DirectionalLightColor.rgb != 0.0f) ||
+        !any(BaseColor > 1.0e-6f))
+    {
+        return Emissive;
+    }
+
+    float3 Normal = ComputeTriangleGeometricNormal(TriangleA, TriangleB, TriangleC);
+    if (dot(Normal, IncomingDirection) > 0.0f)
+    {
+        Normal = -Normal;
+    }
+
+    float3 Direct = 0.0f;
+    if (dot(Normal, Normal) > 0.0f)
+    {
+        float NdotL = saturate(dot(Normal, ToLight));
+        if (NdotL > 0.0f)
+        {
+            float3 ShadowOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
+            const float DirectionalShadowDistance = 1000000.0f;
+            if (!TraceAnyHit(ShadowOrigin, ToLight, DirectionalShadowDistance, TriangleIndex))
+            {
+                Direct = BaseColor * DirectionalLightColor.rgb *
+                    DirectionalLightIntensity * NdotL *
+                    (1.0f / 3.14159265f) * GIIntensity;
+            }
+        }
+    }
+
+    return Emissive + Direct;
+}
+
+
+
+float3 TraceDeterministicDiffuseBounce(
+    float3 HitPosition,
+    float3 SurfaceNormal,
+    uint IgnoreTriangleIndex)
+{
+
+
+    float3 Normal = SurfaceNormal;
+
+
+
+
+    float BasisSign = Normal.z >= 0.0f ? 1.0f : -1.0f;
+    float BasisA = -1.0f / (BasisSign + Normal.z);
+    float BasisB = Normal.x * Normal.y * BasisA;
+    float3 Tangent = float3(
+        1.0f + BasisSign * Normal.x * Normal.x * BasisA,
+        BasisSign * BasisB,
+        -BasisSign * Normal.x);
+    float3 Bitangent = float3(
+        BasisB,
+        BasisSign + Normal.y * Normal.y * BasisA,
+        -Normal.y);
+
+
+
+    float3 SecondaryOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
+
+    float3 IncomingRadianceSum = 0.0f;
+
+
+    float3 ToLight = bHasDirectionalLight != 0u
+        ? normalize(DirectionalLightDirection.xyz)
+        : 0.0f;
+    const uint SampleCount = 4u;
+    const float CosTheta = 0.6666666666666667f;
+    const float SinTheta = 0.7453559924999299f;
+    const float AzimuthComponent = 0.7071067811865475f;
+
+
+
+
+
+    [loop]
+    for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
+    {
+        float TangentSign = ((SampleIndex + 1u) & 2u) != 0u ? -1.0f : 1.0f;
+        float BitangentSign = (SampleIndex & 2u) != 0u ? -1.0f : 1.0f;
+
+
+
+        float AzimuthScale = SinTheta * AzimuthComponent;
+        float3 SecondaryDirection =
+            Tangent * (TangentSign * AzimuthScale) +
+            Bitangent * (BitangentSign * AzimuthScale) +
+            Normal * CosTheta;
+
+        float SecondaryDistance;
+        uint SecondaryTriangleIndex;
+        float3 SecondaryTriangleA;
+        float3 SecondaryTriangleB;
+        float3 SecondaryTriangleC;
+        if (TraceClosestHit(
+            SecondaryOrigin,
+            SecondaryDirection,
+            MaxTraceDistance,
+            IgnoreTriangleIndex,
+            SecondaryDistance,
+            SecondaryTriangleIndex,
+            SecondaryTriangleA,
+            SecondaryTriangleB,
+            SecondaryTriangleC))
+        {
+            float3 SecondaryHitPosition =
+                SecondaryOrigin + SecondaryDirection * SecondaryDistance;
+            float3 SecondaryDirectAndEmissive = EvaluateHitSurfaceRadiance(
+                SecondaryTriangleIndex,
+                SecondaryTriangleA,
+                SecondaryTriangleB,
+                SecondaryTriangleC,
+                SecondaryHitPosition,
+                SecondaryDirection,
+                ToLight);
+
+
+            IncomingRadianceSum += SecondaryDirectAndEmissive;
+        }
+        else if (bEnableStaticBackground != 0u)
+        {
+            IncomingRadianceSum +=
+                StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity;
+        }
+    }
+
+    return IncomingRadianceSum / (float)SampleCount;
+}
+
+[numthreads(64, 1, 1)]
+void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
+    if (LinearIndex >= TotalTexels || ProbeCount == 0u || TotalRaysPerProbe == 0u)
+    {
+        return;
+    }
+
+    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
+    uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
+    uint2 ProbePixel = uint2(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth);
+
+    float3 Origin = ProbeGridOrigin.xyz + ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
+    float4 PackedDirection = DirectionsTexture.Load(int3(Pixel, 0));
+    float3 Direction = normalize(PackedDirection.xyz);
+    uint CascadeIndex = min((uint)max(PackedDirection.w, 0.0f), max(CascadeCount, 1u) - 1u);
+    float2 CascadeInterval = DDGIRadianceCascadeDistanceInterval(
+        (int)CascadeIndex, BaseSegmentLength, CascadeScale, MaxTraceDistance);
+    float CascadeStartDistance = CascadeInterval.x;
+    float CascadeEndDistance = CascadeInterval.y;
+
+
+
+    float ClosestHit = CascadeEndDistance;
+    uint ClosestTriangleIndex = 0u;
+    float3 ClosestTriangleA = 0.0f;
+    float3 ClosestTriangleB = 0.0f;
+    float3 ClosestTriangleC = 0.0f;
+    bool bHit = TraceClosestHit(
+        Origin,
+        Direction,
+        CascadeEndDistance,
+        0xFFFFFFFFu,
+        ClosestHit,
+        ClosestTriangleIndex,
+        ClosestTriangleA,
+        ClosestTriangleB,
+        ClosestTriangleC);
+
+
+
+
+    bool bBlockedByEarlierSurface = bHit && ClosestHit < CascadeStartDistance;
+    bool bHitInThisInterval = bHit &&
+        ClosestHit >= CascadeStartDistance &&
+        ClosestHit <= CascadeEndDistance;
+    HitDistanceUAV[Pixel] = bHitInThisInterval || bBlockedByEarlierSurface ? ClosestHit : -1.0f;
+    HitTriangleIndexUAV[Pixel] = bHitInThisInterval ? (ClosestTriangleIndex + 1u) : 0u;
+
+
+
+    float BackgroundFade = 0.0f;
+    if (bEnableStaticBackground != 0u && CascadeIndex + 1u == CascadeCount &&
+        !bHitInThisInterval && !bBlockedByEarlierSurface)
+    {
+        float ProbeDistance = distance(Origin, ProbeGridOrigin.xyz);
+        float TransitionWidth = max(BackgroundTransitionEnd - BackgroundTransitionStart, 1.0e-3f);
+        BackgroundFade = smoothstep(BackgroundTransitionStart, BackgroundTransitionStart + TransitionWidth, ProbeDistance);
+    }
+
+    float3 BackgroundRadiance = StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity * BackgroundFade;
+    float3 HitEmissiveRadiance = 0.0f;
+    float3 HitDirectRadiance = 0.0f;
+    float3 HitIndirectRadiance = 0.0f;
+    if (bHitInThisInterval)
+    {
+        uint HitTriangleBase = ClosestTriangleIndex * 4u;
+
+        float3 HitA = ClosestTriangleA;
+        float3 HitB = ClosestTriangleB;
+        float3 HitC = ClosestTriangleC;
+        float3 GeometricNormal = ComputeTriangleGeometricNormal(HitA, HitB, HitC);
+        if (dot(GeometricNormal, Direction) > 0.0f)
+        {
+            GeometricNormal = -GeometricNormal;
+        }
+
+        float3 HitPosition = Origin + Direction * ClosestHit;
+        float3 HitBaseColor = max(BVHTriangles[HitTriangleBase + 3u].xyz, 0.0f);
+        HitEmissiveRadiance = float3(
+            BVHTriangles[HitTriangleBase + 0u].w,
+            BVHTriangles[HitTriangleBase + 1u].w,
+            BVHTriangles[HitTriangleBase + 2u].w) * GIIntensity;
+
+
+
+        if (dot(GeometricNormal, GeometricNormal) > 0.0f &&
+            bHasDirectionalLight != 0u &&
+            any(HitBaseColor > 1.0e-6f))
+        {
+            float3 ToLight = normalize(DirectionalLightDirection.xyz);
+            float NdotL = saturate(dot(GeometricNormal, ToLight));
+            if (NdotL > 0.0f)
+            {
+                float3 ShadowOrigin = HitPosition + GeometricNormal * ComputeRayOriginBias(HitPosition);
+                const float DirectionalShadowDistance = 1000000.0f;
+                const bool bOccluded = TraceAnyHit(
+                    ShadowOrigin, ToLight, DirectionalShadowDistance, ClosestTriangleIndex);
+                if (!bOccluded)
+                {
+                    HitDirectRadiance = HitBaseColor * DirectionalLightColor.rgb *
+                        DirectionalLightIntensity * NdotL * (1.0f / 3.14159265f) * GIIntensity;
+                }
+            }
+        }
+
+
+
+
+
+
+
+        if (dot(GeometricNormal, GeometricNormal) > 0.0f &&
+            any(HitBaseColor > 1.0e-6f))
+        {
+            float3 IncomingBounceRadiance = TraceDeterministicDiffuseBounce(
+                HitPosition, GeometricNormal, ClosestTriangleIndex);
+            HitIndirectRadiance = HitBaseColor * IncomingBounceRadiance;
+        }
+    }
+
+    RadianceUAV[Pixel] = float4(
+        bHitInThisInterval
+            ? (HitEmissiveRadiance + HitDirectRadiance + HitIndirectRadiance)
+            : BackgroundRadiance,
+        1.0f);
+}
+
+#if 0 /*BEGIN_RESOURCE_TABLES*/
+NULL, 0
+NULL, NULL, 0, 0
+#endif /*END_RESOURCE_TABLES*/
+#if 0 /*DIRECT COMPILE*/
+-directcompile -format=PCD3D_SM5 -entry=RadianceCascadeTraceCS -cs C:/Users/Utilizador~/Documents/Unreal Projects/ProjectMidnight 4.27/Saved/ShaderDebugInfo/PCD3D_SM5/Global/FDDGIRadianceCascadeTraceRHI/0/RadianceCascadeTraceCS.usf -cflags=2048 -nocrashreports
+#endif /*DIRECT COMPILE*/
+//
