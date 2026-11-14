@@ -340,21 +340,15 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
                     BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
                     MaxDistance, RightNear);
             }
-            // Visit the nearer child first to find an occluder sooner.
+            // Fixed order avoids the FXC dynamic float-comparison optimizer crash.
+            // LIFO traversal visits LeftChild first. Both intersecting children
+            // are still visited; only near-first ordering is sacrificed.
             // The CPU builder caps validated tree depth at 48, below this
             // 64-entry stack capacity.
             if (bHitLeft && bHitRight)
             {
-                if (LeftNear <= RightNear)
-                {
-                    Stack[StackSize++] = RightChild;
-                    Stack[StackSize++] = LeftChild;
-                }
-                else
-                {
-                    Stack[StackSize++] = LeftChild;
-                    Stack[StackSize++] = RightChild;
-                }
+                Stack[StackSize++] = RightChild;
+                Stack[StackSize++] = LeftChild;
             }
             else if (bHitLeft)
             {
