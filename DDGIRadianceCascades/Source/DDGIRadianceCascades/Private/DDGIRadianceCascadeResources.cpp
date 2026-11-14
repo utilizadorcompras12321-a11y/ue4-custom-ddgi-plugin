@@ -679,6 +679,7 @@ bool DDGIGetRadianceCascadeLightingGeometry_RenderThread(
         !OutSpatialHashSRV.IsValid() ||
         !OutBVHTrianglesSRV.IsValid() ||
         OutHashCapacity == 0 ||
+        NodeCount == 0 ||
         OutTriangleCount == 0)
     {
         OutSpatialHashSRV.SafeRelease();
