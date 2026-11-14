@@ -715,6 +715,7 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
         !Storage->Radiance.IsValid() ||
         !Storage->HitDistance.IsValid() ||
         !Storage->ProbePositions.IsValid() ||
+        Storage->bNeedsInitialization ||
         Storage->UploadedProbeCount <= 0 ||
         Storage->TotalRaysPerProbe <= 0)
     {
