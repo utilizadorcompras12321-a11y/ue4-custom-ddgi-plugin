@@ -49,6 +49,8 @@ struct FDDGIMasterConfig
 	UPROPERTY() int64 EstimatedRadianceStorageBytes = 0;
 	UPROPERTY() float ProbeSpacing = 200.0f;
 	UPROPERTY() FVector ProbeGridOrigin = FVector::ZeroVector;
+	// Fingerprint of the integer lattice; unchanged by translating the grid.
+	uint32 ProbeLayoutHash = 0;
 	UPROPERTY() TArray<FVector4> ProbePositions;
 	UPROPERTY() int32 ProbeCount = 0;
 	UPROPERTY() int32 MaxActiveProbes = 32768;
