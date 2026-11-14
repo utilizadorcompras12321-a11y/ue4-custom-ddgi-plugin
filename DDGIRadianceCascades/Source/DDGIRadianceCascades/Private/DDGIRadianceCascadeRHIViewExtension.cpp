@@ -547,6 +547,13 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
+	// This callback is invoked once per view. Radiance Cascades are scene/probe
+	// data, not camera-view data, so compute them only once per scene per frame.
+	if (!DDGIBeginRadianceCascadeUpdate_RenderThread(Scene, InView.Family->FrameNumber))
+	{
+		return;
+	}
+
 	FTexture2DRHIRef DirectionsTexture;
 	FTexture2DRHIRef RadianceTexture;
 	FTexture2DRHIRef HitDistanceTexture;
