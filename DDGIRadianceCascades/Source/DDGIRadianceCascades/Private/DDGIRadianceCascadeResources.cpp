@@ -42,9 +42,9 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> HitTriangleIndex;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
-		FBufferRHIRef ProbeSpatialHash;
+		FStructuredBufferRHIRef ProbeSpatialHash;
 		FShaderResourceViewRHIRef ProbeSpatialHashSRV;
-		FBufferRHIRef ProbeNeighborIndices;
+		FStructuredBufferRHIRef ProbeNeighborIndices;
 		FShaderResourceViewRHIRef ProbeNeighborIndicesSRV;
 		uint32 ProbeNeighborProbeCount = 0;
 		uint32 ProbeNeighborLayoutHash = 0;
@@ -57,9 +57,9 @@ namespace
 		uint32 ProbeNeighborRetryCountdown = 0;
 		uint32 ProbeSpatialHashLayoutHash = 0;
 		float ProbeSpatialHashSpacing = 0.0f;
-		FBufferRHIRef BVHNodes;
+		FStructuredBufferRHIRef BVHNodes;
 		FShaderResourceViewRHIRef BVHNodesSRV;
-		FBufferRHIRef BVHTriangles;
+		FStructuredBufferRHIRef BVHTriangles;
 		FShaderResourceViewRHIRef BVHTrianglesSRV;
 		// Retain the immutable CPU snapshot while its GPU buffers are cached.
 		// This also prevents allocator address reuse from making a new BVH look
