@@ -12,6 +12,7 @@ Texture2D<float4> BaseColorTexture;
 Texture2D<float4> MetallicTexture;
 Texture2D<float4> DirectionsTexture;
 Texture2D<float4> RadianceTexture;
+Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> ProbeSpatialHash;
 RWTexture2D<float4> LightingPassUAV;
 SamplerState PointClampSampler;
@@ -144,6 +145,19 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         uint ProbeIndex;
         if (!DDGIFindProbeInCell(Cell, ProbeIndex)) continue;
+
+        // Reject probes on the opposite side of the receiver surface. Probe
+        // positions and LocalPosition are both in BVH-local coordinates.
+        // This inexpensive hemisphere test suppresses the common wall-through
+        // interpolation leak without introducing another ray-tracing pass.
+        uint2 ProbePixel = uint2(
+            ProbeIndex % DDGI_RC_TEXTURE_WIDTH,
+            ProbeIndex / DDGI_RC_TEXTURE_WIDTH);
+        float3 ProbePosition = ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
+        float3 SurfaceToProbe = ProbePosition - LocalPosition;
+        float SurfaceSide = dot(Normal, SurfaceToProbe);
+        if (SurfaceSide <= max(ProbeSpacing * 0.01f, 0.5f)) continue;
+
         Irradiance += DDGIProbeDiffuseIrradiance(ProbeIndex, Normal) * Weight;
         ProbeWeightSum += Weight;
     }
