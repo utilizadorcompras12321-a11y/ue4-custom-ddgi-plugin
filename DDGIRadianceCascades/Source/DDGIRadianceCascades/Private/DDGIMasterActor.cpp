@@ -28,7 +28,13 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 	if (!CurrentLocation.Equals(LastPublishedLocation, 0.5f))
 	{
 		LastPublishedLocation = CurrentLocation;
-		RefreshWorldConfig();
+		if (UWorld* World = GetWorld())
+		{
+			if (UDDGIMasterSubsystem* Subsystem = World->GetSubsystem<UDDGIMasterSubsystem>())
+			{
+				Subsystem->RefreshProbeGridOrigin(this);
+			}
+		}
 	}
 }
 
