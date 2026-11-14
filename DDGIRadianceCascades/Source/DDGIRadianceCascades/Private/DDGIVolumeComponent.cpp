@@ -396,13 +396,13 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 	// Early out if DDGI is disabled
 	if (!CVarUseDDGI.GetValueOnRenderThread()) return;
 
-	FDDGIMasterConfig MasterConfig;
-	const bool bHasMasterConfig = DDGIGetMasterConfig_RenderThread(&Scene, MasterConfig);
-	if (bHasMasterConfig && !MasterConfig.bEnableDynamicGI)
+	const FDDGIMasterConfig* MasterConfig = DDGIGetMasterConfig_RenderThread(&Scene);
+	const bool bHasMasterConfig = (MasterConfig != nullptr);
+	if (MasterConfig && !MasterConfig->bEnableDynamicGI)
 	{
 		return;
 	}
-	const float MasterGIIntensity = bHasMasterConfig ? MasterConfig.GIIntensity : 1.0f;
+	const float MasterGIIntensity = MasterConfig ? MasterConfig->GIIntensity : 1.0f;
 
 	// Update DDGIVolumes when rendering a main view and when ray tracing is available.
 	// Other views can use DDGIVolumes for lighting, but don't need to update the volumes.
