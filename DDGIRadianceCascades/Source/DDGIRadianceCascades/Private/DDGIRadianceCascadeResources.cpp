@@ -43,6 +43,11 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
 		FBufferRHIRef ProbeSpatialHash;
 		FShaderResourceViewRHIRef ProbeSpatialHashSRV;
+		FBufferRHIRef ProbeNeighborIndices;
+		FShaderResourceViewRHIRef ProbeNeighborIndicesSRV;
+		uint32 ProbeNeighborProbeCount = 0;
+		uint32 ProbeNeighborLayoutHash = 0;
+		float ProbeNeighborSpacing = 0.0f;
 		uint32 ProbeSpatialHashCapacity = 0;
 		uint32 ProbeSpatialHashProbeCount = 0;
 		uint32 ProbeSpatialHashLayoutHash = 0;
@@ -72,6 +77,11 @@ namespace
 			ProbePositions.SafeRelease();
 			ProbeSpatialHash.SafeRelease();
 			ProbeSpatialHashSRV.SafeRelease();
+			ProbeNeighborIndices.SafeRelease();
+			ProbeNeighborIndicesSRV.SafeRelease();
+			ProbeNeighborProbeCount = 0;
+			ProbeNeighborLayoutHash = 0;
+			ProbeNeighborSpacing = 0.0f;
 			ProbeSpatialHashCapacity = 0;
 			ProbeSpatialHashProbeCount = 0;
 			ProbeSpatialHashLayoutHash = 0;
@@ -365,6 +375,103 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.ProbeSpatialHashProbeCount = ProbeCountForHash;
             Storage.ProbeSpatialHashLayoutHash = ProbeLayoutHash;
             Storage.ProbeSpatialHashSpacing = SafeProbeSpacing;
+        }
+    }
+
+    // Precompute each probe's 26 neighboring probe indices. Slot order exactly
+    // matches the shader's Z/Y/X traversal, excluding the center cell.
+    const bool bNeighborListMatches =
+        Storage.ProbeNeighborIndices.IsValid() &&
+        Storage.ProbeNeighborIndicesSRV.IsValid() &&
+        Storage.ProbeNeighborProbeCount == ProbeCountForHash &&
+        Storage.ProbeNeighborLayoutHash == ProbeLayoutHash &&
+        FMath::IsNearlyEqual(Storage.ProbeNeighborSpacing, SafeProbeSpacing, 1.0e-4f);
+    if (!bNeighborListMatches)
+    {
+        Storage.ProbeNeighborIndices.SafeRelease();
+        Storage.ProbeNeighborIndicesSRV.SafeRelease();
+        Storage.ProbeNeighborProbeCount = 0;
+        Storage.ProbeNeighborLayoutHash = 0;
+        Storage.ProbeNeighborSpacing = 0.0f;
+
+        TMap<FIntVector, uint32> ProbeCellToIndex;
+        ProbeCellToIndex.Reserve(static_cast<int32>(ProbeCountForHash));
+        bool bBuildSucceeded = true;
+        for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
+        {
+            const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
+            const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - Config.ProbeGridOrigin;
+            const FIntVector Cell(
+                FMath::RoundToInt(Relative.X / SafeProbeSpacing),
+                FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
+                FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
+            if (ProbeCellToIndex.Contains(Cell))
+            {
+                bBuildSucceeded = false;
+                break;
+            }
+            ProbeCellToIndex.Add(Cell, ProbeIndex);
+        }
+
+        TResourceArray<uint32> NeighborEntries;
+        const uint32 NeighborEntryCount = ProbeCountForHash * 26u;
+        if (bBuildSucceeded)
+        {
+            NeighborEntries.SetNumUninitialized(static_cast<int32>(NeighborEntryCount));
+            for (uint32 I = 0u; I < NeighborEntryCount; ++I)
+            {
+                NeighborEntries[static_cast<int32>(I)] = MAX_uint32;
+            }
+            for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash && bBuildSucceeded; ++ProbeIndex)
+            {
+                const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
+                const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - Config.ProbeGridOrigin;
+                const FIntVector CenterCell(
+                    FMath::RoundToInt(Relative.X / SafeProbeSpacing),
+                    FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
+                    FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
+                uint32 Slot = 0u;
+                for (int32 Z = -1; Z <= 1; ++Z)
+                for (int32 Y = -1; Y <= 1; ++Y)
+                for (int32 X = -1; X <= 1; ++X)
+                {
+                    if (X == 0 && Y == 0 && Z == 0) continue;
+                    const FIntVector NeighborCell = CenterCell + FIntVector(X, Y, Z);
+                    if (const uint32* NeighborIndex = ProbeCellToIndex.Find(NeighborCell))
+                    {
+                        NeighborEntries[static_cast<int32>(ProbeIndex * 26u + Slot)] = *NeighborIndex;
+                    }
+                    ++Slot;
+                }
+                if (Slot != 26u) bBuildSucceeded = false;
+            }
+        }
+
+        if (bBuildSucceeded && NeighborEntryCount > 0u)
+        {
+            FRHIResourceCreateInfo NeighborInfo(TEXT("DDGIRadianceCascade_ProbeNeighborIndices"));
+            NeighborInfo.ResourceArray = &NeighborEntries;
+            Storage.ProbeNeighborIndices = RHICreateStructuredBuffer(
+                sizeof(uint32),
+                static_cast<uint32>(NeighborEntries.GetResourceDataSize()),
+                BUF_ShaderResource,
+                NeighborInfo);
+            if (Storage.ProbeNeighborIndices.IsValid())
+            {
+                Storage.ProbeNeighborIndicesSRV = RHICreateShaderResourceView(Storage.ProbeNeighborIndices);
+            }
+        }
+        if (!Storage.ProbeNeighborIndices.IsValid() || !Storage.ProbeNeighborIndicesSRV.IsValid())
+        {
+            Storage.ProbeNeighborIndices.SafeRelease();
+            Storage.ProbeNeighborIndicesSRV.SafeRelease();
+            UE_LOG(LogTemp, Warning, TEXT("Radiance Cascades: precomputed neighbor buffer unavailable; using spatial-hash fallback."));
+        }
+        else
+        {
+            Storage.ProbeNeighborProbeCount = ProbeCountForHash;
+            Storage.ProbeNeighborLayoutHash = ProbeLayoutHash;
+            Storage.ProbeNeighborSpacing = SafeProbeSpacing;
         }
     }
 
@@ -675,6 +782,26 @@ bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
     OutSpatialHashSRV = Storage->ProbeSpatialHashSRV;
     OutHashCapacity = Storage->ProbeSpatialHashCapacity;
     OutProbeSpacing = Storage->ProbeSpatialHashSpacing;
+    return true;
+}
+
+bool DDGIGetRadianceCascadeProbeNeighborList_RenderThread(
+    const FSceneInterface* Scene,
+    FShaderResourceViewRHIRef& OutNeighborListSRV,
+    uint32& OutProbeCount)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutNeighborListSRV.SafeRelease();
+    OutProbeCount = 0;
+    const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || !Storage->ProbeNeighborIndicesSRV.IsValid() ||
+        Storage->ProbeNeighborProbeCount == 0 ||
+        Storage->ProbeNeighborProbeCount != static_cast<uint32>(Storage->UploadedProbeCount))
+    {
+        return false;
+    }
+    OutNeighborListSRV = Storage->ProbeNeighborIndicesSRV;
+    OutProbeCount = Storage->ProbeNeighborProbeCount;
     return true;
 }
 
