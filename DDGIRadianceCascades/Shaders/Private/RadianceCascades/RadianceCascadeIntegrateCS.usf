@@ -39,17 +39,20 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         uint LocalRayIndex = PackedRayIndex - CascadeStorageOffset;
         float3 IntegratedRadiance = 0.0f;
 
+        // Cascade layout guarantees complete child groups: the effective
+        // split factor is reduced before storage limits are reached. Compute
+        // the first child address once; every loop iteration is in range.
+        const uint ChildLinearIndexBase =
+            ProbeIndex * TotalRaysPerProbe +
+            NextCascadeStorageOffset +
+            LocalRayIndex * SafeSplitFactor;
+
         [loop]
         for (uint ChildIndex = 0u; ChildIndex < SafeSplitFactor; ++ChildIndex)
         {
-            uint ChildPackedRayIndex =
-                NextCascadeStorageOffset + LocalRayIndex * SafeSplitFactor + ChildIndex;
-            if (ChildPackedRayIndex < TotalRaysPerProbe)
-            {
-                uint ChildLinearIndex = ProbeIndex * TotalRaysPerProbe + ChildPackedRayIndex;
-                uint2 ChildPixel = uint2(ChildLinearIndex % TextureWidth, ChildLinearIndex / TextureWidth);
-                IntegratedRadiance += InputRadianceTexture.Load(int3(ChildPixel, 0)).rgb;
-            }
+            uint ChildLinearIndex = ChildLinearIndexBase + ChildIndex;
+            uint2 ChildPixel = uint2(ChildLinearIndex % TextureWidth, ChildLinearIndex / TextureWidth);
+            IntegratedRadiance += InputRadianceTexture.Load(int3(ChildPixel, 0)).rgb;
         }
 
         Result = float4(IntegratedRadiance / (float)SafeSplitFactor, 1.0f);
