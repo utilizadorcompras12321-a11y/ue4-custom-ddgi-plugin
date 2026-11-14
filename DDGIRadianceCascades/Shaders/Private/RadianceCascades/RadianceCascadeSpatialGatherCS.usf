@@ -100,11 +100,16 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             return;
         }
         uint CenterTriangleBase = CenterTriangleIndex * 4u;
-        CenterPlanePoint = BVHTriangles[CenterTriangleBase + 0u].xyz;
+        // Reuse the plane point for the normal calculation instead of issuing
+        // a second structured-buffer load for triangle vertex A.
+        float3 CenterTriangleA = BVHTriangles[CenterTriangleBase + 0u].xyz;
+        float3 CenterTriangleB = BVHTriangles[CenterTriangleBase + 1u].xyz;
+        float3 CenterTriangleC = BVHTriangles[CenterTriangleBase + 2u].xyz;
+        CenterPlanePoint = CenterTriangleA;
         CenterNormal = ComputeGatherTriangleNormal(
-            BVHTriangles[CenterTriangleBase + 0u].xyz,
-            BVHTriangles[CenterTriangleBase + 1u].xyz,
-            BVHTriangles[CenterTriangleBase + 2u].xyz);
+            CenterTriangleA,
+            CenterTriangleB,
+            CenterTriangleC);
         if (dot(CenterNormal, CenterDirection) > 0.0f) CenterNormal = -CenterNormal;
     }
     float WeightSum = 1.0f;
