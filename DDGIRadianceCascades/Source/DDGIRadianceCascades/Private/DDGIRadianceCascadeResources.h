@@ -16,6 +16,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
 void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Scene);
 
+/** Claims this scene's DDGI update slot for the supplied render frame. */
+bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber);
+
 bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     FRDGBuilder& GraphBuilder,
     const FSceneInterface* Scene,
