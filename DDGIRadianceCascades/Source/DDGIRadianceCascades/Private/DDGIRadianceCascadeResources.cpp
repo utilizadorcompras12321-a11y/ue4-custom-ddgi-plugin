@@ -54,6 +54,7 @@ namespace
 		const FDDGISoftwareBVHData* BVHDataIdentity = nullptr;
 		uint32 BVHNodeCount = 0;
 		uint32 BVHTriangleCount = 0;
+		uint32 LastRadianceUpdateFrameNumber = MAX_uint32;
 		bool bNeedsInitialization = true;
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
 		int32 TotalRaysPerProbe = 0;
@@ -88,6 +89,7 @@ namespace
 			TotalRaysPerProbe = 0;
 			ProbeCapacity = 0;
 			bNeedsInitialization = true;
+			LastRadianceUpdateFrameNumber = MAX_uint32;
 		}
 	};
 
@@ -465,6 +467,28 @@ void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Sce
 		Storage->Release();
 		GDDGIRadianceCascadeStorage_RenderThread.Remove(Scene);
 	}
+}
+
+bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber)
+{
+	check(IsInRenderingThread() || IsInParallelRenderingThread());
+
+	// FSceneViewFamily uses MAX_uint32 before its frame number is initialized.
+	if (!Scene || FrameNumber == MAX_uint32)
+	{
+		return false;
+	}
+
+	FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+	if (!Storage || Storage->LastRadianceUpdateFrameNumber == FrameNumber)
+	{
+		return false;
+	}
+
+	// The render thread serializes these callbacks, so claiming the frame here
+	// prevents stereo eyes and additional views from dispatching the same GI work.
+	Storage->LastRadianceUpdateFrameNumber = FrameNumber;
+	return true;
 }
 
 bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
