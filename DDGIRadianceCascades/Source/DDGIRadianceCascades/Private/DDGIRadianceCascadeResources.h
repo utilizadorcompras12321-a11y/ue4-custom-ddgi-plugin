@@ -76,5 +76,18 @@ bool DDGIGetRadianceCascadeProbePositions_RenderThread(
 	FRDGTextureRef& OutProbePositions,
 	uint32& OutProbeCount);
 
+/** Registers the completed per-probe cascade data with RDG for deferred lighting.
+ * Storage->Radiance is kept as the final integrated texture after ping-pong swaps.
+ */
+bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
+    FRDGBuilder& GraphBuilder,
+    const FSceneInterface* Scene,
+    FRDGTextureRef& OutDirections,
+    FRDGTextureRef& OutRadiance,
+    FRDGTextureRef& OutHitDistance,
+    FRDGTextureRef& OutProbePositions,
+    uint32& OutProbeCount,
+    uint32& OutTotalRaysPerProbe);
+
 /** Marks initialization as scheduled after all required GPU resources were bound and dispatch was issued. */
 void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInterface* Scene);
