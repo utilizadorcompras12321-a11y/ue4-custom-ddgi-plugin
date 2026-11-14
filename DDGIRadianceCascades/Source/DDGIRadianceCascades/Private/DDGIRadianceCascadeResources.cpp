@@ -2,6 +2,7 @@
 #include "DDGIMasterSubsystem.h"
 
 #include "RHICommandList.h"
+#include "RHIResources.h"
 #include "RenderTargetPool.h"
 #include "RenderGraph.h"
 #include "PostProcess/SceneRenderTargets.h"
