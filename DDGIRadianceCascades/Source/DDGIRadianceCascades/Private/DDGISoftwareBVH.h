@@ -11,6 +11,7 @@ struct FDDGISoftwareBVHBuildStats
 	int32 SkippedNoCPUAccess = 0;
 	int32 SkippedMovable = 0;
 	int32 SkippedInstanced = 0;
+	int32 SkippedInstancedInstances = 0;
 	int32 SkippedInvalidTriangles = 0;
 	int32 MaterialsUsingDefaultBaseColor = 0;
 	int32 TriangleCount = 0;
