@@ -45,23 +45,6 @@ public:
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		const bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << TotalRaysPerProbe;
-		Ar << CascadeCount;
-		Ar << BaseRayCount;
-		Ar << RaySplitFactor;
-		Ar << TextureWidth;
-		Ar << TotalTexels;
-		Ar << DispatchGroupsX;
-		Ar << ProbeCount;
-		Ar << DirectionsUAV;
-		Ar << RadianceUAV;
-		Ar << HitDistanceUAV;
-		return bShaderHasOutdatedParameters;
-	}
-
 	template<typename TShaderRHIParamRef>
 	void SetParameters(
 		FRHICommandList& RHICmdList,
@@ -120,17 +103,17 @@ public:
 	}
 
 private:
-	FShaderParameter TotalRaysPerProbe;
-	FShaderParameter CascadeCount;
-	FShaderParameter BaseRayCount;
-	FShaderParameter RaySplitFactor;
-	FShaderParameter TextureWidth;
-	FShaderParameter TotalTexels;
-	FShaderParameter DispatchGroupsX;
-	FShaderParameter ProbeCount;
-	FShaderResourceParameter DirectionsUAV;
-	FShaderResourceParameter RadianceUAV;
-	FShaderResourceParameter HitDistanceUAV;
+	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
+	LAYOUT_FIELD(FShaderParameter, CascadeCount);
+	LAYOUT_FIELD(FShaderParameter, BaseRayCount);
+	LAYOUT_FIELD(FShaderParameter, RaySplitFactor);
+	LAYOUT_FIELD(FShaderParameter, TextureWidth);
+	LAYOUT_FIELD(FShaderParameter, TotalTexels);
+	LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
+	LAYOUT_FIELD(FShaderParameter, ProbeCount);
+	LAYOUT_FIELD(FShaderResourceParameter, DirectionsUAV);
+	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
+	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceUAV);
 };
 
 IMPLEMENT_SHADER_TYPE(
@@ -186,42 +169,6 @@ public:
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		const bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << TextureWidth;
-		Ar << TotalTexels;
-		Ar << DispatchGroupsX;
-		Ar << ProbeCount;
-		Ar << TotalRaysPerProbe;
-		Ar << NodeCount;
-		Ar << TriangleCount;
-		Ar << CascadeCount;
-		Ar << BaseSegmentLength;
-		Ar << CascadeScale;
-		Ar << MaxTraceDistance;
-		Ar << StaticBackgroundColor;
-		Ar << StaticBackgroundIntensity;
-		Ar << GIIntensity;
-		Ar << ProbeGridOrigin;
-		Ar << BackgroundTransitionStart;
-		Ar << BackgroundTransitionEnd;
-		Ar << bEnableStaticBackground;
-
-		Ar << DirectionalLightDirection;
-		Ar << DirectionalLightColor;
-		Ar << DirectionalLightIntensity;
-		Ar << bHasDirectionalLight;
-		Ar << DirectionsTexture;
-		Ar << ProbePositionsTexture;
-		Ar << BVHNodes;
-		Ar << BVHTriangles;
-		Ar << RadianceUAV;
-		Ar << HitDistanceUAV;
-		Ar << HitTriangleIndexUAV;
-		return bShaderHasOutdatedParameters;
 	}
 
 	template<typename TShaderRHIParamRef>
@@ -304,36 +251,36 @@ public:
 	}
 
 private:
-	FShaderParameter TextureWidth;
-	FShaderParameter TotalTexels;
-	FShaderParameter DispatchGroupsX;
-	FShaderParameter ProbeCount;
-	FShaderParameter TotalRaysPerProbe;
-	FShaderParameter NodeCount;
-	FShaderParameter TriangleCount;
-	FShaderParameter CascadeCount;
-	FShaderParameter BaseSegmentLength;
-	FShaderParameter CascadeScale;
-	FShaderParameter MaxTraceDistance;
-	FShaderParameter StaticBackgroundColor;
-	FShaderParameter StaticBackgroundIntensity;
-	FShaderParameter GIIntensity;
-	FShaderParameter ProbeGridOrigin;
-	FShaderParameter BackgroundTransitionStart;
-	FShaderParameter BackgroundTransitionEnd;
-	FShaderParameter bEnableStaticBackground;
+	LAYOUT_FIELD(FShaderParameter, TextureWidth);
+	LAYOUT_FIELD(FShaderParameter, TotalTexels);
+	LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
+	LAYOUT_FIELD(FShaderParameter, ProbeCount);
+	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
+	LAYOUT_FIELD(FShaderParameter, NodeCount);
+	LAYOUT_FIELD(FShaderParameter, TriangleCount);
+	LAYOUT_FIELD(FShaderParameter, CascadeCount);
+	LAYOUT_FIELD(FShaderParameter, BaseSegmentLength);
+	LAYOUT_FIELD(FShaderParameter, CascadeScale);
+	LAYOUT_FIELD(FShaderParameter, MaxTraceDistance);
+	LAYOUT_FIELD(FShaderParameter, StaticBackgroundColor);
+	LAYOUT_FIELD(FShaderParameter, StaticBackgroundIntensity);
+	LAYOUT_FIELD(FShaderParameter, GIIntensity);
+	LAYOUT_FIELD(FShaderParameter, ProbeGridOrigin);
+	LAYOUT_FIELD(FShaderParameter, BackgroundTransitionStart);
+	LAYOUT_FIELD(FShaderParameter, BackgroundTransitionEnd);
+	LAYOUT_FIELD(FShaderParameter, bEnableStaticBackground);
 
-	FShaderParameter DirectionalLightDirection;
-	FShaderParameter DirectionalLightColor;
-	FShaderParameter DirectionalLightIntensity;
-	FShaderParameter bHasDirectionalLight;
-	FShaderResourceParameter DirectionsTexture;
-	FShaderResourceParameter ProbePositionsTexture;
-	FShaderResourceParameter BVHNodes;
-	FShaderResourceParameter BVHTriangles;
-	FShaderResourceParameter RadianceUAV;
-	FShaderResourceParameter HitDistanceUAV;
-	FShaderResourceParameter HitTriangleIndexUAV;
+	LAYOUT_FIELD(FShaderParameter, DirectionalLightDirection);
+	LAYOUT_FIELD(FShaderParameter, DirectionalLightColor);
+	LAYOUT_FIELD(FShaderParameter, DirectionalLightIntensity);
+	LAYOUT_FIELD(FShaderParameter, bHasDirectionalLight);
+	LAYOUT_FIELD(FShaderResourceParameter, DirectionsTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, ProbePositionsTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, BVHNodes);
+	LAYOUT_FIELD(FShaderResourceParameter, BVHTriangles);
+	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
+	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceUAV);
+	LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexUAV);
 };
 
 IMPLEMENT_SHADER_TYPE(
@@ -365,12 +312,6 @@ public:
   OutputRadianceUAV.Bind(I.ParameterMap,TEXT("OutputRadianceUAV"));
  }
  static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P){return IsFeatureLevelSupported(P.Platform,ERHIFeatureLevel::SM5);}
- virtual bool Serialize(FArchive& A) override
- {
-  bool O=FGlobalShader::Serialize(A); A<<TextureWidth<<TotalTexels<<DispatchGroupsX<<ProbeCount<<TotalRaysPerProbe;
-  A<<HashCapacity<<TriangleCount<<ProbeSpacing<<ProbeGridOrigin<<RadianceTexture<<HitDistanceTexture<<HitTriangleIndexTexture<<DirectionsTexture;
-  A<<ProbePositionsTexture<<BVHTriangles<<ProbeSpatialHash<<ProbeNeighborIndices<<UsePrecomputedProbeNeighbors<<OutputRadianceUAV; return O;
- }
  template<typename TShaderRHIParamRef>
  void SetParameters(FRHICommandList& C,const TShaderRHIParamRef Sh,FShaderResourceViewRHIRef R,FShaderResourceViewRHIRef H,FShaderResourceViewRHIRef HitIndices,
   FShaderResourceViewRHIRef D,FShaderResourceViewRHIRef P,FShaderResourceViewRHIRef Triangles,FShaderResourceViewRHIRef S,
@@ -409,9 +350,25 @@ public:
   if(OutputRadianceUAV.IsBound()) C.SetUAVParameter(Sh,OutputRadianceUAV.GetBaseIndex(),FUnorderedAccessViewRHIRef());
  }
 private:
- FShaderParameter TextureWidth,TotalTexels,DispatchGroupsX,ProbeCount,TotalRaysPerProbe,HashCapacity,TriangleCount,ProbeSpacing,ProbeGridOrigin;
- FShaderResourceParameter RadianceTexture,HitDistanceTexture,HitTriangleIndexTexture,DirectionsTexture,ProbePositionsTexture,BVHTriangles,ProbeSpatialHash,ProbeNeighborIndices,OutputRadianceUAV;
- FShaderParameter UsePrecomputedProbeNeighbors;
+ LAYOUT_FIELD(FShaderParameter, TextureWidth);
+ LAYOUT_FIELD(FShaderParameter, TotalTexels);
+ LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
+ LAYOUT_FIELD(FShaderParameter, ProbeCount);
+ LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
+ LAYOUT_FIELD(FShaderParameter, HashCapacity);
+ LAYOUT_FIELD(FShaderParameter, TriangleCount);
+ LAYOUT_FIELD(FShaderParameter, ProbeSpacing);
+ LAYOUT_FIELD(FShaderParameter, ProbeGridOrigin);
+ LAYOUT_FIELD(FShaderResourceParameter, RadianceTexture);
+ LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
+ LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexTexture);
+ LAYOUT_FIELD(FShaderResourceParameter, DirectionsTexture);
+ LAYOUT_FIELD(FShaderResourceParameter, ProbePositionsTexture);
+ LAYOUT_FIELD(FShaderResourceParameter, BVHTriangles);
+ LAYOUT_FIELD(FShaderResourceParameter, ProbeSpatialHash);
+ LAYOUT_FIELD(FShaderResourceParameter, ProbeNeighborIndices);
+ LAYOUT_FIELD(FShaderResourceParameter, OutputRadianceUAV);
+ LAYOUT_FIELD(FShaderParameter, UsePrecomputedProbeNeighbors);
 };
 IMPLEMENT_SHADER_TYPE(,FDDGIRadianceCascadeSpatialGatherRHI,
  TEXT("/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeSpatialGatherCS.usf"),
@@ -443,23 +400,6 @@ public:
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		const bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << TextureWidth;
-		Ar << TotalTexels;
-		Ar << DispatchGroupsX;
-		Ar << TotalRaysPerProbe;
-		Ar << CascadeStorageOffset;
-		Ar << CascadeRayCount;
-		Ar << NextCascadeStorageOffset;
-		Ar << EffectiveSplitFactor;
-		Ar << InputRadianceTexture;
-		Ar << HitDistanceTexture;
-		Ar << OutputRadianceUAV;
-		return bShaderHasOutdatedParameters;
 	}
 
 	template<typename TShaderRHIParamRef>
@@ -518,17 +458,17 @@ public:
 	}
 
 private:
-	FShaderParameter TextureWidth;
-	FShaderParameter TotalTexels;
-	FShaderParameter DispatchGroupsX;
-	FShaderParameter TotalRaysPerProbe;
-	FShaderParameter CascadeStorageOffset;
-	FShaderParameter CascadeRayCount;
-	FShaderParameter NextCascadeStorageOffset;
-	FShaderParameter EffectiveSplitFactor;
-	FShaderResourceParameter InputRadianceTexture;
-	FShaderResourceParameter HitDistanceTexture;
-	FShaderResourceParameter OutputRadianceUAV;
+	LAYOUT_FIELD(FShaderParameter, TextureWidth);
+	LAYOUT_FIELD(FShaderParameter, TotalTexels);
+	LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
+	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
+	LAYOUT_FIELD(FShaderParameter, CascadeStorageOffset);
+	LAYOUT_FIELD(FShaderParameter, CascadeRayCount);
+	LAYOUT_FIELD(FShaderParameter, NextCascadeStorageOffset);
+	LAYOUT_FIELD(FShaderParameter, EffectiveSplitFactor);
+	LAYOUT_FIELD(FShaderResourceParameter, InputRadianceTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, OutputRadianceUAV);
 };
 
 IMPLEMENT_SHADER_TYPE(
@@ -614,16 +554,16 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitDistanceTexture);
 
 			TShaderMapRef<FDDGIRadianceCascadeInitializeRHI> InitializeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-			RHICmdList.SetComputeShader(InitializeShader->GetComputeShader());
+			RHICmdList.SetComputeShader(InitializeShader.GetComputeShader());
 			InitializeShader->SetParameters(
-				RHICmdList, InitializeShader->GetComputeShader(), DirectionsUAV, RadianceUAV, HitDistanceUAV,
+				RHICmdList, InitializeShader.GetComputeShader(), DirectionsUAV, RadianceUAV, HitDistanceUAV,
 				TotalRaysPerProbe,
 				static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
 				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64)),
 				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.RaySplitFactor, 1, 4)),
 				InitProbeCount, TotalTexels, GroupsX);
 			DispatchComputeShader(RHICmdList, *InitializeShader, GroupsX, GroupsY, 1);
-			InitializeShader->UnbindResources(RHICmdList, InitializeShader->GetComputeShader());
+			InitializeShader->UnbindResources(RHICmdList, InitializeShader.GetComputeShader());
 
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DirectionsTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceTexture);
@@ -665,9 +605,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitTriangleIndexTexture);
 
 	TShaderMapRef<FDDGIRadianceCascadeTraceRHI> TraceShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-	RHICmdList.SetComputeShader(TraceShader->GetComputeShader());
+	RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
 	TraceShader->SetParameters(
-		RHICmdList, TraceShader->GetComputeShader(), DirectionsSRV, ProbePositionsSRV, NodesSRV, TrianglesSRV,
+		RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, NodesSRV, TrianglesSRV,
 		RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
 		TotalTexels, GroupsX, ProbeCount, TotalRaysPerProbe,
 		NodeCount, TriangleCount,
@@ -684,7 +624,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		Config->DirectionalLightIntensity,
 		Config->bHasDirectionalLight ? 1u : 0u);
 	DispatchComputeShader(RHICmdList, *TraceShader, GroupsX, GroupsY, 1);
-	TraceShader->UnbindResources(RHICmdList, TraceShader->GetComputeShader());
+	TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
 
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
@@ -729,13 +669,13 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,DirectionsTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable,RadianceScratchTexture);
 	TShaderMapRef<FDDGIRadianceCascadeSpatialGatherRHI> GatherShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-	RHICmdList.SetComputeShader(GatherShader->GetComputeShader());
-	GatherShader->SetParameters(RHICmdList,GatherShader->GetComputeShader(),GatherRadianceSRV,GatherHitSRV,GatherHitIndicesSRV,GatherDirectionsSRV,
+	RHICmdList.SetComputeShader(GatherShader.GetComputeShader());
+	GatherShader->SetParameters(RHICmdList,GatherShader.GetComputeShader(),GatherRadianceSRV,GatherHitSRV,GatherHitIndicesSRV,GatherDirectionsSRV,
 		GatherPositionsSRV,TrianglesSRV,SpatialHashSRV,NeighborListSRV,GatherOutputUAV,TotalTexels,GroupsX,ProbeCount,
 		TotalRaysPerProbe,HashCapacity,TriangleCount,ProbeSpacing,
 		FVector4(Config->ProbeGridOrigin.X,Config->ProbeGridOrigin.Y,Config->ProbeGridOrigin.Z,0.0f),bUseNeighborList);
 	DispatchComputeShader(RHICmdList,*GatherShader,GroupsX,GroupsY,1);
-	GatherShader->UnbindResources(RHICmdList,GatherShader->GetComputeShader());
+	GatherShader->UnbindResources(RHICmdList,GatherShader.GetComputeShader());
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,RadianceScratchTexture);
 
 	// Cascade integration consumes the gathered radiance and ping-pongs separately.
@@ -765,9 +705,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, CurrentOutputRadiance);
 
 			TShaderMapRef<FDDGIRadianceCascadeIntegrateRHI> IntegrateShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-			RHICmdList.SetComputeShader(IntegrateShader->GetComputeShader());
+			RHICmdList.SetComputeShader(IntegrateShader.GetComputeShader());
 			IntegrateShader->SetParameters(
-				RHICmdList, IntegrateShader->GetComputeShader(), InputRadianceSRV, HitDistanceSRV, OutputRadianceUAV,
+				RHICmdList, IntegrateShader.GetComputeShader(), InputRadianceSRV, HitDistanceSRV, OutputRadianceUAV,
 				TotalProbeTexels, IntegrationGroups, TotalRays,
 				static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
 				static_cast<uint32>(Config->RadianceCascades.GetRayCount(CascadeIndex)),
@@ -776,7 +716,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 					Config->RadianceCascades.GetRayCount(CascadeIndex + 1) /
 					FMath::Max(1, Config->RadianceCascades.GetRayCount(CascadeIndex)))));
 			DispatchComputeShader(RHICmdList, *IntegrateShader, IntegrationGroups, IntegrationGroupsY, 1);
-			IntegrateShader->UnbindResources(RHICmdList, IntegrateShader->GetComputeShader());
+			IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, CurrentOutputRadiance);
 
 			Swap(CurrentInputRadiance, CurrentOutputRadiance);
