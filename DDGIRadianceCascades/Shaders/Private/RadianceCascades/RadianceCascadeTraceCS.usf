@@ -734,9 +734,10 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     if (bHitInThisInterval)
     {
         uint HitTriangleBase = ClosestTriangleIndex * 4u;
-        float3 HitA = BVHTriangles[HitTriangleBase + 0u].xyz;
-        float3 HitB = BVHTriangles[HitTriangleBase + 1u].xyz;
-        float3 HitC = BVHTriangles[HitTriangleBase + 2u].xyz;
+        // The shared traversal already returned the hit vertices.
+        float3 HitA = ClosestTriangleA;
+        float3 HitB = ClosestTriangleB;
+        float3 HitC = ClosestTriangleC;
         float3 GeometricNormal = ComputeTriangleGeometricNormal(HitA, HitB, HitC);
         if (dot(GeometricNormal, Direction) > 0.0f)
         {
