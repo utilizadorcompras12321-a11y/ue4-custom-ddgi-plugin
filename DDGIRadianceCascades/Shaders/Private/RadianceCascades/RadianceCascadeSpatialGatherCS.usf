@@ -145,7 +145,12 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         {
             // Every ray belonging to this probe shares its probe position as origin.
             float3 NeighborHitPosition = NeighborPosition + CenterDirection * NeighborHitDistance;
-            if (distance(CenterHitPosition, NeighborHitPosition) > SafeSpacing * 1.25f) continue;
+            float3 HitPositionDelta = CenterHitPosition - NeighborHitPosition;
+            float MaxHitPositionDelta = SafeSpacing * 1.25f;
+            // Compare squared distances: the square root from distance() is
+            // unnecessary because this branch only tests against a threshold.
+            if (dot(HitPositionDelta, HitPositionDelta) >
+                MaxHitPositionDelta * MaxHitPositionDelta) continue;
             uint NeighborTriangleIndex = NeighborTriangleTag - 1u;
             if (NeighborTriangleIndex >= TriangleCount) continue;
             uint NeighborTriangleBase = NeighborTriangleIndex * 4u;
