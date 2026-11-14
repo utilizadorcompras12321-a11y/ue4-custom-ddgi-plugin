@@ -63,7 +63,6 @@ namespace
 		bool bNeedsInitialization = true;
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
 		int32 TotalRaysPerProbe = 0;
-		int32 ProbeCapacity = 0;
 		FIntPoint ProbePositionDimensions = FIntPoint::ZeroValue;
 		int32 UploadedProbeCount = 0;
 
@@ -97,7 +96,6 @@ namespace
 			ProbePositionDimensions = FIntPoint::ZeroValue;
 			UploadedProbeCount = 0;
 			TotalRaysPerProbe = 0;
-			ProbeCapacity = 0;
 			bNeedsInitialization = true;
 			LastRadianceUpdateFrameNumber = MAX_uint32;
 		}
@@ -130,7 +128,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         return;
     }
 
-    const int64 TotalTexels = static_cast<int64>(Config.MaxActiveProbes) *
+    const int32 ActiveProbeCount = Config.ProbePositions.Num();
+    if (ActiveProbeCount <= 0)
+    {
+        DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+        return;
+    }
+
+    const int64 TotalTexels = static_cast<int64>(ActiveProbeCount) *
         static_cast<int64>(Config.TotalRaysPerProbe);
     const int64 MaxTextureTexels = static_cast<int64>(GDDGIRadianceCascadeTextureWidth) *
         static_cast<int64>(GDDGIRadianceCascadeMaxTextureDimension);
@@ -158,7 +163,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const bool bRayStorageMatches =
         Storage.Dimensions == RequiredDimensions &&
         Storage.TotalRaysPerProbe == Config.TotalRaysPerProbe &&
-        Storage.ProbeCapacity == Config.MaxActiveProbes &&
         Storage.Directions.IsValid() &&
         Storage.Radiance.IsValid() &&
         Storage.RadianceScratch.IsValid() &&
@@ -202,13 +206,12 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
         Storage.Dimensions = RequiredDimensions;
         Storage.TotalRaysPerProbe = Config.TotalRaysPerProbe;
-        Storage.ProbeCapacity = Config.MaxActiveProbes;
     }
 
     // Keep probe origins in a separate float4 texture. Refresh its contents on
     // every Master Actor publication, including actor movement with unchanged capacity.
     const int32 ProbeTextureWidth = 4096;
-    const int32 ProbeTextureHeight = FMath::Max(1, FMath::DivideAndRoundUp(Config.MaxActiveProbes, ProbeTextureWidth));
+    const int32 ProbeTextureHeight = FMath::Max(1, FMath::DivideAndRoundUp(ActiveProbeCount, ProbeTextureWidth));
     const FIntPoint ProbePositionDimensions(ProbeTextureWidth, ProbeTextureHeight);
     if (Storage.ProbePositionDimensions != ProbePositionDimensions || !Storage.ProbePositions.IsValid())
     {
@@ -226,7 +229,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbePositionDimensions = ProbePositionDimensions;
     }
 
-    const int32 ProbeCount = FMath::Min(Config.ProbePositions.Num(), Config.MaxActiveProbes);
+    const int32 ProbeCount = ActiveProbeCount;
     // Only upload rows containing active probes. The backing texture remains
     // sized to MaxActiveProbes, but unused capacity is never sampled by tracing.
     const int32 ProbeUploadHeight = FMath::Max(
@@ -264,7 +267,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Build a deterministic open-addressed spatial hash for sparse probe cells.
     // Probe positions are generated on a regular lattice around ProbeGridOrigin,
     // so integer cell coordinates remain stable when the Master Actor translates.
-    const uint32 ProbeCountForHash = static_cast<uint32>(FMath::Min(Config.ProbePositions.Num(), Config.MaxActiveProbes));
+    const uint32 ProbeCountForHash = static_cast<uint32>(ActiveProbeCount);
     const float SafeProbeSpacing = FMath::Max(1.0f, Config.ProbeSpacing);
     uint32 RequiredHashCapacity = 2u;
     while (RequiredHashCapacity < FMath::Max(2u, ProbeCountForHash * 2u) && RequiredHashCapacity < (1u << 30))
