@@ -124,7 +124,6 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         // layout, so every probe stores the exact same direction for this ray.
         // No per-neighbor direction texture fetch or normalization is needed.
         float NeighborHitDistance = HitDistanceTexture.Load(int3(NeighborPixel,0));
-        float4 NeighborRadianceSample = RadianceTexture.Load(int3(NeighborPixel,0));
         bool CenterHit = CenterHitDistance >= 0.0f;
         bool NeighborHit = NeighborHitDistance >= 0.0f;
         if (CenterHit != NeighborHit) continue;
@@ -164,6 +163,9 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         float3 NeighborPosition = ProbePositionsTexture.Load(int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
         float Weight = saturate(1.0f - distance(CenterPosition, NeighborPosition) / (SafeSpacing * 1.75f));
         if (Weight <= 0.0f) continue;
+        // Fetch radiance only after the neighbor passes all hit, surface,
+        // normal, plane, and distance filters.
+        float4 NeighborRadianceSample = RadianceTexture.Load(int3(NeighborPixel,0));
         RadianceSum += NeighborRadianceSample.rgb * Weight;
         WeightSum += Weight;
     }
