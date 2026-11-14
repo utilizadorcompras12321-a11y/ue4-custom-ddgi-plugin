@@ -679,7 +679,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 	if (bHasRadianceCascadeLighting)
 	{
 		FApplyRadianceCascadeLightingParameters* PassParameters =
-			GraphBuilder.AllocParameters<FRadianceCascadeApplyLightingParameters>();
+			GraphBuilder.AllocParameters<FApplyRadianceCascadeLightingParameters>();
 		PassParameters->NormalTexture = GBufferATexture;
 		PassParameters->DepthTexture = SceneDepthTexture;
 		PassParameters->BaseColorTexture = GBufferCTexture;
