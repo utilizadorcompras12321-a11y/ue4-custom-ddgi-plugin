@@ -111,7 +111,11 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float2 BufferUV = ScreenUV * View.ViewSizeAndInvSize.xy *
         View.BufferSizeAndInvSize.zw;
     float DeviceZ = DepthTexture.SampleLevel(PointClampSampler, BufferUV, 0).r;
-    if (DeviceZ <= 0.000001f) return;
+    if (DeviceZ <= 0.000001f)
+    {
+        LightingPassUAV[PixelIndex] = 0.0f;
+        return;
+    }
 
     float SceneDepth = ConvertFromDeviceZ(DeviceZ);
     float3 WorldPosition = InScreenVector * SceneDepth + View.WorldCameraOrigin;
@@ -163,7 +167,11 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         ProbeWeightSum += Weight;
     }
 
-    if (ProbeWeightSum <= 0.00001f) return;
+    if (ProbeWeightSum <= 0.00001f)
+    {
+        LightingPassUAV[PixelIndex] = 0.0f;
+        return;
+    }
     Irradiance /= ProbeWeightSum;
 
     // The existing upscale pass applies albedo when rendering below full res.
@@ -171,5 +179,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         Albedo = 1.0f;
 
     float PreExposure = ShouldUsePreExposure != 0u ? View.PreExposure : 1.0f;
-    LightingPassUAV[PixelIndex] += float4(Irradiance * Albedo * PreExposure, 0.0f);
+    // Every in-bounds pixel is written exactly once. The UAV is not assumed
+    // to contain initialized data from a previous frame or allocation.
+    LightingPassUAV[PixelIndex] = float4(Irradiance * Albedo * PreExposure, 0.0f);
 }
