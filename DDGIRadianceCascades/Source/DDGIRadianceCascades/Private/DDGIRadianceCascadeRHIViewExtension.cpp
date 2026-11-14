@@ -31,7 +31,6 @@ public:
 		DirectionsUAV.Bind(Initializer.ParameterMap, TEXT("DirectionsUAV"));
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
-		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -53,7 +52,6 @@ public:
 		Ar << DirectionsUAV;
 		Ar << RadianceUAV;
 		Ar << HitDistanceUAV;
-		Ar << HitTriangleIndexUAV;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -174,6 +172,7 @@ public:
 		BVHTriangles.Bind(Initializer.ParameterMap, TEXT("BVHTriangles"));
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
+		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -213,6 +212,7 @@ public:
 		Ar << BVHTriangles;
 		Ar << RadianceUAV;
 		Ar << HitDistanceUAV;
+		Ar << HitTriangleIndexUAV;
 		return bShaderHasOutdatedParameters;
 	}
 
