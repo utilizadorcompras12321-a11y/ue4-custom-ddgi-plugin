@@ -206,6 +206,14 @@ public:
 	DECLARE_GLOBAL_SHADER(FApplyRadianceCascadeLightingShaderCS);
 	SHADER_USE_PARAMETER_STRUCT(FApplyRadianceCascadeLightingShaderCS, FGlobalShader);
 	using FParameters = FApplyRadianceCascadeLightingParameters;
+	static void ModifyCompilationEnvironment(
+		const FGlobalShaderPermutationParameters& Parameters,
+		FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		// LightingPassUAV is accumulated with +=, which requires typed UAV loads.
+		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
+	}
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
