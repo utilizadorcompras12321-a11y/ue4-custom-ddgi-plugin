@@ -515,7 +515,8 @@ bool TraceClosestHit(
 float3 EvaluateHitSurfaceRadiance(
     uint TriangleIndex,
     float3 HitPosition,
-    float3 IncomingDirection)
+    float3 IncomingDirection,
+    float3 ToLight)
 {
     uint TriangleBase = TriangleIndex * 4u;
     float3 A = BVHTriangles[TriangleBase + 0u].xyz;
@@ -538,7 +539,6 @@ float3 EvaluateHitSurfaceRadiance(
     // launching a shadow traversal for emissive-only / zero-albedo triangles.
     if (dot(Normal, Normal) > 0.0f && bHasDirectionalLight != 0u && any(BaseColor > 1.0e-6f))
     {
-        float3 ToLight = normalize(DirectionalLightDirection.xyz);
         float NdotL = saturate(dot(Normal, ToLight));
         if (NdotL > 0.0f)
         {
@@ -587,6 +587,11 @@ float3 TraceDeterministicDiffuseBounce(
     float3 SecondaryOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
 
     float3 IncomingRadianceSum = 0.0f;
+    // Directional light direction is invariant across all four secondary hits.
+    // Normalize it once per primary hit, not once per secondary surface.
+    float3 ToLight = bHasDirectionalLight != 0u
+        ? normalize(DirectionalLightDirection.xyz)
+        : 0.0f;
     const uint SampleCount = 4u;
     const float CosTheta = 0.6666666666666667f;
     const float SinTheta = 0.7453559924999299f;
@@ -619,7 +624,8 @@ float3 TraceDeterministicDiffuseBounce(
             float3 SecondaryDirectAndEmissive = EvaluateHitSurfaceRadiance(
                 SecondaryTriangleIndex,
                 SecondaryHitPosition,
-                SecondaryDirection);
+                SecondaryDirection,
+                ToLight);
             // Evaluate one additional diffuse bounce only. Do not recursively
             // launch another hemisphere at this secondary surface.
             IncomingRadianceSum += SecondaryDirectAndEmissive;
