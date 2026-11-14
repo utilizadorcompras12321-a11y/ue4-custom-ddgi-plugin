@@ -90,6 +90,7 @@ private:
 	bool bHasSearchedDirectionalLights = false;
 	bool UpdateDirectionalLighting(const ADDGIMasterActor* InActor);
 	void PublishConfigValuesOnly();
+	void PublishProbeGridOriginOnly();
 	void CopyConfigFromActor(const ADDGIMasterActor* InActor);
 	void PublishConfig(bool bHasConfig);
 
