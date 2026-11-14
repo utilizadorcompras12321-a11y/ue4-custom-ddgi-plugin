@@ -690,6 +690,50 @@ bool DDGIGetRadianceCascadeProbePositions_RenderThread(
     return OutProbePositions != nullptr;
 }
 
+bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
+    FRDGBuilder& GraphBuilder,
+    const FSceneInterface* Scene,
+    FRDGTextureRef& OutDirections,
+    FRDGTextureRef& OutRadiance,
+    FRDGTextureRef& OutHitDistance,
+    FRDGTextureRef& OutProbePositions,
+    uint32& OutProbeCount,
+    uint32& OutTotalRaysPerProbe)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+
+    OutDirections = nullptr;
+    OutRadiance = nullptr;
+    OutHitDistance = nullptr;
+    OutProbePositions = nullptr;
+    OutProbeCount = 0;
+    OutTotalRaysPerProbe = 0;
+
+    FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage ||
+        !Storage->Directions.IsValid() ||
+        !Storage->Radiance.IsValid() ||
+        !Storage->HitDistance.IsValid() ||
+        !Storage->ProbePositions.IsValid() ||
+        Storage->UploadedProbeCount <= 0 ||
+        Storage->TotalRaysPerProbe <= 0)
+    {
+        return false;
+    }
+
+    // The integration loop swaps the persistent Radiance/RadianceScratch
+    // references when necessary, so Radiance always identifies the completed result.
+    OutDirections = GraphBuilder.RegisterExternalTexture(Storage->Directions);
+    OutRadiance = GraphBuilder.RegisterExternalTexture(Storage->Radiance);
+    OutHitDistance = GraphBuilder.RegisterExternalTexture(Storage->HitDistance);
+    OutProbePositions = GraphBuilder.RegisterExternalTexture(Storage->ProbePositions);
+    OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
+    OutTotalRaysPerProbe = static_cast<uint32>(Storage->TotalRaysPerProbe);
+
+    return OutDirections != nullptr && OutRadiance != nullptr &&
+        OutHitDistance != nullptr && OutProbePositions != nullptr;
+}
+
 void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInterface* Scene)
 {
     check(IsInRenderingThread() || IsInParallelRenderingThread());
