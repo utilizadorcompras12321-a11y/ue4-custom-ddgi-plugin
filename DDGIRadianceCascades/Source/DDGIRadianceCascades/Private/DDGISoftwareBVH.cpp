@@ -656,6 +656,9 @@ void DDGISoftwareBVH::BuildStaticWorld(
 		}
 	}
 
+	// Reaching the configured cap means later components may have been omitted.
+	// Report this explicitly rather than silently presenting a partial world BVH.
+	OutStats.bTriangleLimitReached = Triangles.Num() >= MaxTriangleCount;
 	OutStats.TriangleCount = Triangles.Num();
 	if (Triangles.Num() == 0)
 	{
