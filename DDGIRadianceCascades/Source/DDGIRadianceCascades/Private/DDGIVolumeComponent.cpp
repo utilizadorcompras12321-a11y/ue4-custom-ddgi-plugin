@@ -431,7 +431,9 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 			RCProbeCount, RCTotalRaysPerProbe) &&
 		DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
 			&Scene, RCProbeSpatialHashSRV, RCHashCapacity, RCProbeSpacing) &&
-		RCProbeSpatialHashSRV.IsValid() && RCHashCapacity > 0 &&
+		RCProbeSpatialHashSRV.IsValid() && RCDirectionsTexture != nullptr &&
+		RCRadianceTexture != nullptr && RCHashCapacity > 0 &&
+		(RCHashCapacity & (RCHashCapacity - 1u)) == 0u &&
 		RCProbeCount > 0 && RCTotalRaysPerProbe > 0 &&
 		MasterConfig.RadianceCascades.BaseRayCount > 0 &&
 		MasterConfig.ProbeSpacing > 0.0f;
@@ -497,7 +499,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 		}
 
 		// Static background can run without any DDGI volumes.
-		const bool bMasterStaticBackgroundEnabled = bHasMasterConfig && MasterConfig.bEnableStaticBackground;
+		const bool bMasterStaticBackgroundEnabled = bHasMasterConfig && MasterConfig.bEnableStaticBackground && !bHasRadianceCascadeLighting;
 		if (volumes.Num() == 0 && !bMasterStaticBackgroundEnabled && !bHasRadianceCascadeLighting) return;
 
 		// TODO: manage in-frustum volumes in a more sophisticated way
