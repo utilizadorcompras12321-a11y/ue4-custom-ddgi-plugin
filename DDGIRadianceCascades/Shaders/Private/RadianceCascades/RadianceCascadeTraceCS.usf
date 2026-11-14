@@ -612,7 +612,7 @@ float3 TraceDeterministicDiffuseBounce(
     // the exact sign permutations of (1/sqrt(2), 1/sqrt(2)); encode those
     // signs directly instead of evaluating sin/cos for compile-time angles.
     // The sample order matches the original +,+ / -,+ / -,- / +,- sequence.
-    [unroll]
+    [loop]
     for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
     {
         float TangentSign = ((SampleIndex + 1u) & 2u) != 0u ? -1.0f : 1.0f;
