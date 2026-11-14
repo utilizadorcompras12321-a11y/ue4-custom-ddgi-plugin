@@ -259,42 +259,54 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const bool bProbeLayoutChanged = !bProbePositionsMatch;
     if (!bProbePositionsMatch)
     {
-        FTexture2DRHIRef ProbePositionRHI =
-            Storage.ProbePositions->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D();
-        if (ProbePositionRHI.IsValid())
-        {
-            const FVector4* ProbePositionData = Config.ProbePositions.GetData();
-            for (int32 Row = 0; Row < ProbePositionDimensions.Y; ++Row)
-            {
-                const int32 FirstProbe = Row * ProbePositionDimensions.X;
-                const int32 RowProbeCount = FMath::Min(
-                    ProbePositionDimensions.X, ProbeCount - FirstProbe);
-                if (RowProbeCount <= 0)
-                {
-                    break;
-                }
-
-                const FUpdateTextureRegion2D UpdateRegion(
-                    0, Row, 0, 0, RowProbeCount, 1);
-                const FVector4* RowData = ProbePositionData + FirstProbe;
-                RHICmdList.UpdateTexture2D(
-                    ProbePositionRHI,
-                    0,
-                    UpdateRegion,
-                    static_cast<uint32>(RowProbeCount * sizeof(FVector4)),
-                    reinterpret_cast<const uint8*>(RowData));
-            }
-            Storage.UploadedProbeCount = ProbeCount;
-            Storage.UploadedProbeLayoutHash = ProbeLayoutHash;
-            Storage.UploadedProbeSpacing = SafeProbeSpacing;
-        }
-        else
+        const FSceneRenderTargetItem& ProbePositionItem =
+            Storage.ProbePositions->GetRenderTargetItem();
+        if (!ProbePositionItem.ShaderResourceTexture.IsValid())
         {
             Storage.UploadedProbeCount = 0;
             Storage.UploadedProbeLayoutHash = 0;
             Storage.UploadedProbeSpacing = 0.0f;
-            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no 2D RHI resource."));
+            Storage.bNeedsInitialization = true;
+            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no shader-resource RHI texture."));
+            return;
         }
+
+        FTexture2DRHIRef ProbePositionRHI =
+            ProbePositionItem.ShaderResourceTexture->GetTexture2D();
+        if (!ProbePositionRHI.IsValid())
+        {
+            Storage.UploadedProbeCount = 0;
+            Storage.UploadedProbeLayoutHash = 0;
+            Storage.UploadedProbeSpacing = 0.0f;
+            Storage.bNeedsInitialization = true;
+            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no 2D RHI resource."));
+            return;
+        }
+
+        const FVector4* ProbePositionData = Config.ProbePositions.GetData();
+        for (int32 Row = 0; Row < ProbePositionDimensions.Y; ++Row)
+        {
+            const int32 FirstProbe = Row * ProbePositionDimensions.X;
+            const int32 RowProbeCount = FMath::Min(
+                ProbePositionDimensions.X, ProbeCount - FirstProbe);
+            if (RowProbeCount <= 0)
+            {
+                break;
+            }
+
+            const FUpdateTextureRegion2D UpdateRegion(
+                0, Row, 0, 0, RowProbeCount, 1);
+            const FVector4* RowData = ProbePositionData + FirstProbe;
+            RHICmdList.UpdateTexture2D(
+                ProbePositionRHI,
+                0,
+                UpdateRegion,
+                static_cast<uint32>(RowProbeCount * sizeof(FVector4)),
+                reinterpret_cast<const uint8*>(RowData));
+        }
+        Storage.UploadedProbeCount = ProbeCount;
+        Storage.UploadedProbeLayoutHash = ProbeLayoutHash;
+        Storage.UploadedProbeSpacing = SafeProbeSpacing;
     }
 
     // Build a deterministic open-addressed spatial hash for sparse probe cells.
