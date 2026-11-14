@@ -12,7 +12,7 @@
 #include "HAL/IConsoleManager.h"
 #include "PostProcess/PostProcessMaterial.h"
 #include "ScreenPass.h"
-#include "SceneTextures.h"
+#include "SceneTextureParameters.h"
 #include "RenderGraphUtils.h"
 #include "RHIStaticStates.h"
 
