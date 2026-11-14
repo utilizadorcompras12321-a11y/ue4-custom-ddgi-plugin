@@ -118,8 +118,9 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         if (!DDGIFindProbeInCell(CenterCell + int3(X,Y,Z), NeighborIndex)) continue;
         uint NeighborLinear = NeighborIndex * TotalRaysPerProbe + RayIndex;
         uint2 NeighborPixel = uint2(NeighborLinear % TextureWidth, NeighborLinear / TextureWidth);
-        float3 NeighborDirection = normalize(DirectionsTexture.Load(int3(NeighborPixel,0)).xyz);
-        if (dot(CenterDirection, NeighborDirection) < 0.9995f) continue;
+        // Ray directions are initialized solely from RayIndex and cascade
+        // layout, so every probe stores the exact same direction for this ray.
+        // No per-neighbor direction texture fetch or normalization is needed.
         float NeighborHitDistance = HitDistanceTexture.Load(int3(NeighborPixel,0));
         float4 NeighborRadianceSample = RadianceTexture.Load(int3(NeighborPixel,0));
         bool CenterHit = CenterHitDistance >= 0.0f;
