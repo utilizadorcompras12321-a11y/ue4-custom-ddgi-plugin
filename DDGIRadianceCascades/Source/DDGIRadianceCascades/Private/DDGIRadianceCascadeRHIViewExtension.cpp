@@ -539,24 +539,38 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	// Initialize ray directions and origins only when the Master Actor publishes
 	// new probe positions or the GPU storage is recreated.
+	// Keep initialization outputs separate from the tracing resources.
+	// The initialization getter SafeReleases its output references when no
+	// initialization is pending; sharing the tracing references would null them.
+	FTexture2DRHIRef InitDirectionsTexture;
+	FTexture2DRHIRef InitRadianceTexture;
+	FTexture2DRHIRef InitHitDistanceTexture;
 	uint32 InitProbeCount = 0;
 	if (DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
-		Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture, InitProbeCount))
+		Scene, InitDirectionsTexture, InitRadianceTexture, InitHitDistanceTexture, InitProbeCount))
 	{
-		FUnorderedAccessViewRHIRef DirectionsUAV = RHICreateUnorderedAccessView(DirectionsTexture);
-		FUnorderedAccessViewRHIRef RadianceUAV = RHICreateUnorderedAccessView(RadianceTexture);
-		FUnorderedAccessViewRHIRef HitDistanceUAV = RHICreateUnorderedAccessView(HitDistanceTexture);
-
-		if (DirectionsUAV.IsValid() && RadianceUAV.IsValid() && HitDistanceUAV.IsValid())
+		if (!InitDirectionsTexture.IsValid() ||
+			!InitRadianceTexture.IsValid() ||
+			!InitHitDistanceTexture.IsValid())
 		{
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, DirectionsTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RadianceTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitDistanceTexture);
+			UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: initialization returned invalid textures."));
+			return;
+		}
+
+		FUnorderedAccessViewRHIRef InitDirectionsUAV = RHICreateUnorderedAccessView(InitDirectionsTexture);
+		FUnorderedAccessViewRHIRef InitRadianceUAV = RHICreateUnorderedAccessView(InitRadianceTexture);
+		FUnorderedAccessViewRHIRef InitHitDistanceUAV = RHICreateUnorderedAccessView(InitHitDistanceTexture);
+
+		if (InitDirectionsUAV.IsValid() && InitRadianceUAV.IsValid() && InitHitDistanceUAV.IsValid())
+		{
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitDirectionsTexture);
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitRadianceTexture);
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitHitDistanceTexture);
 
 			TShaderMapRef<FDDGIRadianceCascadeInitializeRHI> InitializeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 			RHICmdList.SetComputeShader(InitializeShader.GetComputeShader());
 			InitializeShader->SetParameters(
-				RHICmdList, InitializeShader.GetComputeShader(), DirectionsUAV, RadianceUAV, HitDistanceUAV,
+				RHICmdList, InitializeShader.GetComputeShader(), InitDirectionsUAV, InitRadianceUAV, InitHitDistanceUAV,
 				TotalRaysPerProbe,
 				static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
 				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64)),
@@ -565,14 +579,14 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			DispatchComputeShader(RHICmdList, InitializeShader.GetShader(), GroupsX, GroupsY, 1);
 			InitializeShader->UnbindResources(RHICmdList, InitializeShader.GetComputeShader());
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DirectionsTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InitDirectionsTexture);
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InitRadianceTexture);
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InitHitDistanceTexture);
 			DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(Scene);
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create initialization SRV/UAV views."));
+			UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create initialization UAVs."));
 			return;
 		}
 	}
