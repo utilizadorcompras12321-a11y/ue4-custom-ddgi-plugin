@@ -435,9 +435,10 @@ void DDGISoftwareBVH::BuildStaticWorld(
 				continue;
 			}
 
-			if (Cast<UInstancedStaticMeshComponent>(Component))
+			if (UInstancedStaticMeshComponent* InstancedComponent = Cast<UInstancedStaticMeshComponent>(Component))
 			{
 				++OutStats.SkippedInstanced;
+				OutStats.SkippedInstancedInstances += InstancedComponent->GetInstanceCount();
 				continue;
 			}
 
