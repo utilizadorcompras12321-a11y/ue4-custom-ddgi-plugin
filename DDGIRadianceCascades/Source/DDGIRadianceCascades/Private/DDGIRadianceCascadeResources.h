@@ -66,6 +66,11 @@ bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
     uint32& OutHashCapacity,
     float& OutProbeSpacing);
 
+bool DDGIGetRadianceCascadeProbeNeighborList_RenderThread(
+    const FSceneInterface* Scene,
+    FShaderResourceViewRHIRef& OutNeighborListSRV,
+    uint32& OutProbeCount);
+
 /** Returns immutable spatial-hash and BVH-triangle SRVs required by lighting surface rejection. */
 bool DDGIGetRadianceCascadeLightingGeometry_RenderThread(
     const FSceneInterface* Scene,
