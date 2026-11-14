@@ -508,6 +508,20 @@ float3 EvaluateHitSurfaceRadiance(
     float3 ToLight)
 {
     uint TriangleBase = TriangleIndex * 4u;
+    float3 Emissive = float3(
+        BVHTriangles[TriangleBase + 0u].w,
+        BVHTriangles[TriangleBase + 1u].w,
+        BVHTriangles[TriangleBase + 2u].w) * GIIntensity;
+    float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
+
+    // The geometric normal is only needed for direct diffuse lighting.
+    // Emissive-only surfaces and scenes without a directional light can
+    // return immediately without cross products or normal normalization.
+    if (bHasDirectionalLight == 0u || !any(BaseColor > 1.0e-6f))
+    {
+        return Emissive;
+    }
+
     float3 A = BVHTriangles[TriangleBase + 0u].xyz;
     float3 B = BVHTriangles[TriangleBase + 1u].xyz;
     float3 C = BVHTriangles[TriangleBase + 2u].xyz;
@@ -517,16 +531,8 @@ float3 EvaluateHitSurfaceRadiance(
         Normal = -Normal;
     }
 
-    float3 Emissive = float3(
-        BVHTriangles[TriangleBase + 0u].w,
-        BVHTriangles[TriangleBase + 1u].w,
-        BVHTriangles[TriangleBase + 2u].w) * GIIntensity;
-
     float3 Direct = 0.0f;
-    float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
-    // Black diffuse surfaces cannot receive direct diffuse light. Avoid
-    // launching a shadow traversal for emissive-only / zero-albedo triangles.
-    if (dot(Normal, Normal) > 0.0f && bHasDirectionalLight != 0u && any(BaseColor > 1.0e-6f))
+    if (dot(Normal, Normal) > 0.0f)
     {
         float NdotL = saturate(dot(Normal, ToLight));
         if (NdotL > 0.0f)
