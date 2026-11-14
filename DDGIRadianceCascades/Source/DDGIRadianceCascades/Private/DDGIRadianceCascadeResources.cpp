@@ -60,7 +60,10 @@ namespace
 		FShaderResourceViewRHIRef BVHNodesSRV;
 		FBufferRHIRef BVHTriangles;
 		FShaderResourceViewRHIRef BVHTrianglesSRV;
-		const FDDGISoftwareBVHData* BVHDataIdentity = nullptr;
+		// Retain the immutable CPU snapshot while its GPU buffers are cached.
+		// This also prevents allocator address reuse from making a new BVH look
+		// identical to a previously uploaded snapshot.
+		TSharedPtr<FDDGISoftwareBVHData, ESPMode::ThreadSafe> BVHDataReference;
 		uint32 BVHRetryCountdown = 0;
 		uint32 BVHNodeCount = 0;
 		uint32 BVHTriangleCount = 0;
@@ -98,7 +101,7 @@ namespace
 			BVHNodesSRV.SafeRelease();
 			BVHTriangles.SafeRelease();
 			BVHTrianglesSRV.SafeRelease();
-			BVHDataIdentity = nullptr;
+			BVHDataReference.Reset();
 			BVHRetryCountdown = 0;
 			BVHNodeCount = 0;
 			BVHTriangleCount = 0;
@@ -545,7 +548,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Upload the immutable CPU BVH once per snapshot. Master Actor movement
     // republishes probe origins but keeps the same shared BVH pointer.
     FDDGISoftwareBVHData* CurrentBVH = Config.SoftwareBVH.Get();
-    const bool bBVHSourceChanged = Storage.BVHDataIdentity != CurrentBVH;
+    const bool bBVHSourceChanged = Storage.BVHDataReference.Get() != CurrentBVH;
     const bool bBVHResourcesReady =
         Storage.BVHNodesSRV.IsValid() && Storage.BVHTrianglesSRV.IsValid();
     if (bBVHSourceChanged)
@@ -565,7 +568,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.BVHTrianglesSRV.SafeRelease();
         Storage.BVHNodeCount = 0;
         Storage.BVHTriangleCount = 0;
-        Storage.BVHDataIdentity = CurrentBVH;
+        // Keep the exact CPU snapshot alive for as long as these GPU buffers
+        // represent it. The config may be replaced before the next render update.
+        Storage.BVHDataReference = Config.SoftwareBVH;
 
         if (CurrentBVH && CurrentBVH->NodeCount > 0 && CurrentBVH->TriangleCount > 0 &&
             static_cast<int64>(CurrentBVH->PackedNodes.Num()) >= static_cast<int64>(CurrentBVH->NodeCount) * 3ll &&
