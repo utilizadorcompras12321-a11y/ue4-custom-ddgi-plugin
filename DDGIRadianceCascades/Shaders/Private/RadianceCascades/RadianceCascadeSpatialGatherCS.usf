@@ -75,7 +75,11 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
     uint RayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
     uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
-    float3 CenterPosition = ProbePositionsTexture.Load(int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0)).xyz;
+    // ProbePositionsTexture stores grid-relative offsets. Reconstruct the
+    // position in BVH-local coordinates before comparing hit positions or
+    // distances with neighboring probes.
+    float3 CenterPositionOffset = ProbePositionsTexture.Load(int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0)).xyz;
+    float3 CenterPosition = ProbeGridOrigin.xyz + CenterPositionOffset;
     float3 CenterDirection = normalize(DirectionsTexture.Load(int3(Pixel, 0)).xyz);
     float4 CenterRadianceSample = RadianceTexture.Load(int3(Pixel, 0));
     float CenterHitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
@@ -121,7 +125,9 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     float MaxHitPositionDeltaSquared = MaxHitPositionDelta * MaxHitPositionDelta;
     float PlaneTolerance = clamp(SafeSpacing * 0.01f, 0.05f, 1.0f);
     float WeightDistanceRange = SafeSpacing * 1.75f;
-    int3 CenterCell = int3(round((CenterPosition - ProbeGridOrigin.xyz) / SafeSpacing));
+    // Cell coordinates are relative to the grid origin; use the stored
+    // offset directly rather than subtracting the origin from world position.
+    int3 CenterCell = int3(round(CenterPositionOffset / SafeSpacing));
     uint NeighborSlot = 0u;
     [unroll] for (int Z=-1; Z<=1; ++Z)
     [unroll] for (int Y=-1; Y<=1; ++Y)
