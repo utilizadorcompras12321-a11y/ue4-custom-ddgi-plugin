@@ -12,7 +12,7 @@
 #include "HAL/IConsoleManager.h"
 #include "PostProcess/PostProcessMaterial.h"
 #include "ScreenPass.h"
-#include "SceneTextureParameters.h"
+
 #include "RenderGraphUtils.h"
 #include "RHIStaticStates.h"
 
@@ -574,8 +574,6 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		return SceneColor;
 	}
 
-	const FSceneTextureParameters SceneTextures = GetSceneTextureParameters(
-		GraphBuilder, Inputs.SceneTextures.SceneTextures);
 	const FIntPoint ViewSize = SceneColor.ViewRect.Size();
 	if (ViewSize.X <= 0 || ViewSize.Y <= 0)
 	{
@@ -591,10 +589,10 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		GraphBuilder.AllocParameters<FDDGIApplyRadianceCascadesLightingCS::FParameters>();
 	PassParameters->View = View.ViewUniformBuffer;
 	PassParameters->SceneColorTexture = SceneColor.Texture;
-	PassParameters->NormalTexture = SceneTextures.GBufferATexture;
-	PassParameters->DepthTexture = SceneTextures.SceneDepthTexture;
-	PassParameters->BaseColorTexture = SceneTextures.GBufferCTexture;
-	PassParameters->MetallicTexture = SceneTextures.GBufferBTexture;
+	PassParameters->NormalTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferATexture;
+	PassParameters->DepthTexture = (*Inputs.SceneTextures.SceneTextures)->SceneDepthTexture;
+	PassParameters->BaseColorTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferCTexture;
+	PassParameters->MetallicTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferBTexture;
 	PassParameters->DirectionsTexture = DirectionsTexture;
 	PassParameters->RadianceTexture = RadianceTexture;
 	PassParameters->ProbePositionsTexture = ProbePositionsTexture;
