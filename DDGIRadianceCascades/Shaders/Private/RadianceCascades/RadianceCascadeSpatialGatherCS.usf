@@ -49,9 +49,11 @@ uint DDGIHashProbeCell(int3 Cell)
 bool DDGIFindProbeInCell(int3 Cell, out uint OutProbeIndex)
 {
     OutProbeIndex = 0u;
-    if (HashCapacity == 0u) return false;
+    if (HashCapacity == 0u || ProbeCount == 0u) return false;
     uint Slot = DDGIHashProbeCell(Cell) & (HashCapacity - 1u);
-    [loop] for (uint Attempt = 0u; Attempt < HashCapacity; ++Attempt)
+    // The table contains at most one entry per active probe, so no lookup
+    // can require more than ProbeCount occupied slots before finding a match.
+    [loop] for (uint Attempt = 0u; Attempt < ProbeCount; ++Attempt)
     {
         float4 Entry = ProbeSpatialHash[Slot];
         if (Entry.w < 0.0f) return false;
