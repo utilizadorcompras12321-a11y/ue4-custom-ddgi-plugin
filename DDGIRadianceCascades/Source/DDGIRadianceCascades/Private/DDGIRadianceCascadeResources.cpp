@@ -300,10 +300,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Translation leaves the uploaded probe offsets and relative lattice
     // unchanged. Only a changed lattice requires clearing/reinitializing
     // per-ray radiance; ray storage recreation already sets this flag in Release().
+    // Layout identity comes from the successfully uploaded probe-position
+    // snapshot, not from the optional spatial-hash allocation. A failed hash
+    // allocation must not make an unchanged probe lattice reinitialize rays
+    // every frame.
     const bool bProbeLayoutChanged =
-        Storage.ProbeSpatialHashProbeCount != ProbeCountForHash ||
-        Storage.ProbeSpatialHashLayoutHash != ProbeLayoutHash ||
-        !FMath::IsNearlyEqual(Storage.ProbeSpatialHashSpacing, SafeProbeSpacing, 1.0e-4f);
+        Storage.UploadedProbeCount != ProbeCount ||
+        Storage.UploadedProbeLayoutHash != ProbeLayoutHash ||
+        !FMath::IsNearlyEqual(Storage.UploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f);
     if (bProbeLayoutChanged)
     {
         Storage.bNeedsInitialization = true;
