@@ -125,6 +125,27 @@ namespace
 		}
 		return EffectiveSpacing;
 	}
+	uint32 DDGIComputeProbeLayoutHash(
+		const TArray<FVector4>& ProbePositions,
+		const FVector& ProbeGridOrigin,
+		float ProbeSpacing)
+	{
+		const float SafeProbeSpacing = FMath::Max(1.0f, ProbeSpacing);
+		uint32 Hash = 2166136261u;
+		for (const FVector4& Position : ProbePositions)
+		{
+			const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - ProbeGridOrigin;
+			const FIntVector Cell(
+				FMath::RoundToInt(Relative.X / SafeProbeSpacing),
+				FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
+				FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
+			Hash = (Hash ^ static_cast<uint32>(Cell.X)) * 16777619u;
+			Hash = (Hash ^ static_cast<uint32>(Cell.Y)) * 16777619u;
+			Hash = (Hash ^ static_cast<uint32>(Cell.Z)) * 16777619u;
+		}
+		return Hash;
+	}
+
 	/** Accessed only on the render thread. */
 	TMap<const FSceneInterface*, FDDGIMasterConfig> GDDGIMasterConfigs_RenderThread;
 }
@@ -406,6 +427,8 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 		Config.MaxActiveProbes,
 		Config.ProbePositions);
 	Config.ProbeCount = Config.ProbePositions.Num();
+	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
+		Config.ProbePositions, Config.ProbeGridOrigin, Config.ProbeSpacing);
 
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;
