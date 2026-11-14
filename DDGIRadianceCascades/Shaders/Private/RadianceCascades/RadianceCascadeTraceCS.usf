@@ -517,7 +517,10 @@ float3 EvaluateHitSurfaceRadiance(
     // The geometric normal is only needed for direct diffuse lighting.
     // Emissive-only surfaces and scenes without a directional light can
     // return immediately without cross products or normal normalization.
-    if (bHasDirectionalLight == 0u || !any(BaseColor > 1.0e-6f))
+    if (bHasDirectionalLight == 0u ||
+        DirectionalLightIntensity == 0.0f ||
+        !any(DirectionalLightColor.rgb != 0.0f) ||
+        !any(BaseColor > 1.0e-6f))
     {
         return Emissive;
     }
