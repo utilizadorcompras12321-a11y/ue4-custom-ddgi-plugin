@@ -10,7 +10,6 @@
 
 #include "DDGIVolumeComponent.h"
 #include "DDGIVolume.h"
-#include "DDGIVolumeUpdate.h"
 #include "DDGIMasterSubsystem.h"
 
 #include "DDGIRadianceCascadesPluginSettings.h"
@@ -362,7 +361,6 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 	{
 		RDG_GPU_STAT_SCOPE(GraphBuilder, DDGIRadianceCascades_Update);
 		RDG_EVENT_SCOPE(GraphBuilder, "DDGIRadianceCascades Update");
-		DDGIVolumeUpdate::DDGIUpdatePerFrame_RenderThread(Scene, View, GraphBuilder);
 	}
 
 	// Register the GBuffer textures with the render graph
