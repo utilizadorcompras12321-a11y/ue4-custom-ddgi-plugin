@@ -316,7 +316,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
         {
             const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
-            const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - Config.ProbeGridOrigin;
+            const FVector Relative(Position.X, Position.Y, Position.Z);
             const FIntVector Cell(
                 FMath::RoundToInt(Relative.X / SafeProbeSpacing),
                 FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
@@ -405,7 +405,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
         {
             const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
-            const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - Config.ProbeGridOrigin;
+            const FVector Relative(Position.X, Position.Y, Position.Z);
             const FIntVector Cell(
                 FMath::RoundToInt(Relative.X / SafeProbeSpacing),
                 FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
@@ -430,7 +430,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash && bBuildSucceeded; ++ProbeIndex)
             {
                 const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
-                const FVector Relative = FVector(Position.X, Position.Y, Position.Z) - Config.ProbeGridOrigin;
+                const FVector Relative(Position.X, Position.Y, Position.Z);
                 const FIntVector CenterCell(
                     FMath::RoundToInt(Relative.X / SafeProbeSpacing),
                     FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
