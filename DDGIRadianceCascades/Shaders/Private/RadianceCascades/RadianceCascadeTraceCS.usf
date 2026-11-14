@@ -563,7 +563,9 @@ float3 TraceDeterministicDiffuseBounce(
     float3 SurfaceNormal,
     uint IgnoreTriangleIndex)
 {
-    float3 Normal = normalize(SurfaceNormal);
+    // ComputeTriangleGeometricNormal already returns a finite unit vector.
+    // The caller only flips its sign, so normalizing it again is redundant.
+    float3 Normal = SurfaceNormal;
 
     // Stable orthonormal basis (Frisvad/Duff construction). Unlike a
     // cross-product against a selected world-up vector, this avoids a basis
