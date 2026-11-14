@@ -696,6 +696,7 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     FRDGTextureRef& OutDirections,
     FRDGTextureRef& OutRadiance,
     FRDGTextureRef& OutHitDistance,
+    FRDGTextureRef& OutHitTriangleIndex,
     FRDGTextureRef& OutProbePositions,
     uint32& OutProbeCount,
     uint32& OutTotalRaysPerProbe)
@@ -705,6 +706,7 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     OutDirections = nullptr;
     OutRadiance = nullptr;
     OutHitDistance = nullptr;
+    OutHitTriangleIndex = nullptr;
     OutProbePositions = nullptr;
     OutProbeCount = 0;
     OutTotalRaysPerProbe = 0;
@@ -714,6 +716,7 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
         !Storage->Directions.IsValid() ||
         !Storage->Radiance.IsValid() ||
         !Storage->HitDistance.IsValid() ||
+        !Storage->HitTriangleIndex.IsValid() ||
         !Storage->ProbePositions.IsValid() ||
         Storage->bNeedsInitialization ||
         Storage->UploadedProbeCount <= 0 ||
@@ -727,12 +730,14 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     OutDirections = GraphBuilder.RegisterExternalTexture(Storage->Directions);
     OutRadiance = GraphBuilder.RegisterExternalTexture(Storage->Radiance);
     OutHitDistance = GraphBuilder.RegisterExternalTexture(Storage->HitDistance);
+    OutHitTriangleIndex = GraphBuilder.RegisterExternalTexture(Storage->HitTriangleIndex);
     OutProbePositions = GraphBuilder.RegisterExternalTexture(Storage->ProbePositions);
     OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
     OutTotalRaysPerProbe = static_cast<uint32>(Storage->TotalRaysPerProbe);
 
     return OutDirections != nullptr && OutRadiance != nullptr &&
-        OutHitDistance != nullptr && OutProbePositions != nullptr;
+        OutHitDistance != nullptr && OutHitTriangleIndex != nullptr &&
+        OutProbePositions != nullptr;
 }
 
 void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInterface* Scene)
