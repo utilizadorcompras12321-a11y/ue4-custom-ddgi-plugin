@@ -125,7 +125,6 @@ private:
 	FShaderResourceParameter DirectionsUAV;
 	FShaderResourceParameter RadianceUAV;
 	FShaderResourceParameter HitDistanceUAV;
-	FShaderResourceParameter HitTriangleIndexUAV;
 };
 
 IMPLEMENT_SHADER_TYPE(
@@ -325,6 +324,7 @@ private:
 	FShaderResourceParameter BVHTriangles;
 	FShaderResourceParameter RadianceUAV;
 	FShaderResourceParameter HitDistanceUAV;
+	FShaderResourceParameter HitTriangleIndexUAV;
 };
 
 IMPLEMENT_SHADER_TYPE(
