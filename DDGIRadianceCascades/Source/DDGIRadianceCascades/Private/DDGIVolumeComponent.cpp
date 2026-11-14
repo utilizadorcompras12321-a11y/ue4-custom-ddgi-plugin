@@ -11,6 +11,7 @@
 #include "DDGIVolumeComponent.h"
 #include "DDGIVolume.h"
 #include "DDGIMasterSubsystem.h"
+#include "DDGIRadianceCascadeResources.h"
 
 #include "DDGIRadianceCascadesPluginSettings.h"
 
@@ -103,6 +104,28 @@ BEGIN_SHADER_PARAMETER_STRUCT(FApplyLightingDeferredShaderParameters, )
 	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 END_SHADER_PARAMETER_STRUCT()
 
+BEGIN_SHADER_PARAMETER_STRUCT(FApplyRadianceCascadeLightingParameters, )
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, NormalTexture)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, BaseColorTexture)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MetallicTexture)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
+	SHADER_PARAMETER_SRV(StructuredBuffer<float4>, ProbeSpatialHash)
+	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, LightingPassUAV)
+	SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
+	SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
+	SHADER_PARAMETER(uint32, ProbeCount)
+	SHADER_PARAMETER(uint32, TotalRaysPerProbe)
+	SHADER_PARAMETER(uint32, BaseRayCount)
+	SHADER_PARAMETER(uint32, HashCapacity)
+	SHADER_PARAMETER(float, ProbeSpacing)
+	SHADER_PARAMETER(FVector4, ProbeGridOrigin)
+	SHADER_PARAMETER(FVector4, BVHWorldOrigin)
+	SHADER_PARAMETER(uint32, ShouldUsePreExposure)
+	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
+END_SHADER_PARAMETER_STRUCT()
+
 BEGIN_SHADER_PARAMETER_STRUCT(FUpscaleLightingShaderParameters, )
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, InputGITexture)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, NormalTexture)
@@ -176,6 +199,24 @@ public:
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 };
+
+class FApplyRadianceCascadeLightingShaderCS : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FApplyRadianceCascadeLightingShaderCS);
+	SHADER_USE_PARAMETER_STRUCT(FApplyRadianceCascadeLightingShaderCS, FGlobalShader);
+	using FParameters = FApplyRadianceCascadeLightingParameters;
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FApplyRadianceCascadeLightingShaderCS,
+	"/Plugin/DDGIRadianceCascades/Private/ApplyRadianceCascadesLighting.usf",
+	"MainCS",
+	SF_Compute);
 
 IMPLEMENT_GLOBAL_SHADER(FApplyLightingDeferredShaderCS, "/Plugin/DDGIRadianceCascades/Private/ApplyLightingDeferred.usf", "MainCS", SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FUpscaleLightingShaderCS, "/Plugin/DDGIRadianceCascades/Private/UpscaleLighting.usf", "MainCS", SF_Compute);
@@ -369,6 +410,32 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 	FRDGTextureRef GBufferCTexture = GraphBuilder.RegisterExternalTexture(Resources.GBufferC);
 	FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(Resources.SceneDepthZ);
 	FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(Resources.SceneColor);
+	// Consume the completed software Radiance Cascades data when it is available.
+	FRDGTextureRef RCDirectionsTexture = nullptr;
+	FRDGTextureRef RCRadianceTexture = nullptr;
+	FRDGTextureRef RCHitDistanceTexture = nullptr;
+	FRDGTextureRef RCHitTriangleIndexTexture = nullptr;
+	FRDGTextureRef RCProbePositionsTexture = nullptr;
+	uint32 RCProbeCount = 0;
+	uint32 RCTotalRaysPerProbe = 0;
+	FShaderResourceViewRHIRef RCProbeSpatialHashSRV;
+	uint32 RCHashCapacity = 0;
+	float RCProbeSpacing = 0.0f;
+	const bool bHasRadianceCascadeLighting =
+		bHasMasterConfig &&
+		MasterConfig.bEnableDynamicGI &&
+		MasterConfig.SoftwareBVH.IsValid() &&
+		DDGIGetRadianceCascadeLightingTextures_RenderThread(
+			GraphBuilder, &Scene, RCDirectionsTexture, RCRadianceTexture,
+			RCHitDistanceTexture, RCHitTriangleIndexTexture, RCProbePositionsTexture,
+			RCProbeCount, RCTotalRaysPerProbe) &&
+		DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
+			&Scene, RCProbeSpatialHashSRV, RCHashCapacity, RCProbeSpacing) &&
+		RCProbeSpatialHashSRV.IsValid() && RCHashCapacity > 0 &&
+		RCProbeCount > 0 && RCTotalRaysPerProbe > 0 &&
+		MasterConfig.RadianceCascades.BaseRayCount > 0 &&
+		MasterConfig.ProbeSpacing > 0.0f;
+
 	if (!View.bUsesLightingChannels) Resources.LightingChannelsTexture = nullptr;
 
 	float ScreenScale = FMath::Clamp(CVarLightingPassScale.GetValueOnRenderThread(), 0.25f, 1.0f);
@@ -431,7 +498,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 
 		// Static background can run without any DDGI volumes.
 		const bool bMasterStaticBackgroundEnabled = bHasMasterConfig && MasterConfig.bEnableStaticBackground;
-		if (volumes.Num() == 0 && !bMasterStaticBackgroundEnabled) return;
+		if (volumes.Num() == 0 && !bMasterStaticBackgroundEnabled && !bHasRadianceCascadeLighting) return;
 
 		// TODO: manage in-frustum volumes in a more sophisticated way
 		// Support a large number of volumes by culling volumes based on spatial data, projected view area, and/or other heuristics
@@ -603,6 +670,55 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 				FIntVector(numGroupsX, numGroupsY, 1)
 			);
 		}
+	}
+
+
+	// Apply the integrated software Radiance Cascades once, after legacy volumes.
+	if (bHasRadianceCascadeLighting)
+	{
+		FRadianceCascadeApplyLightingParameters* PassParameters =
+			GraphBuilder.AllocParameters<FRadianceCascadeApplyLightingParameters>();
+		PassParameters->NormalTexture = GBufferATexture;
+		PassParameters->DepthTexture = SceneDepthTexture;
+		PassParameters->BaseColorTexture = GBufferCTexture;
+		PassParameters->MetallicTexture = GBufferBTexture;
+		PassParameters->DirectionsTexture = RCDirectionsTexture;
+		PassParameters->RadianceTexture = RCRadianceTexture;
+		PassParameters->ProbeSpatialHash = RCProbeSpatialHashSRV;
+		PassParameters->LightingPassUAV = (ScreenScale < 1.0f)
+			? LightingPassUAV
+			: GraphBuilder.CreateUAV(SceneColorTexture);
+		PassParameters->PointClampSampler =
+			TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+		PassParameters->ScaledViewSizeAndInvSize = FVector4(
+			ScaledViewSize.X, ScaledViewSize.Y,
+			1.0f / ScaledViewSize.X, 1.0f / ScaledViewSize.Y);
+		PassParameters->ProbeCount = RCProbeCount;
+		PassParameters->TotalRaysPerProbe = RCTotalRaysPerProbe;
+		PassParameters->BaseRayCount = FMath::Clamp(
+			MasterConfig.RadianceCascades.BaseRayCount, 1, 64);
+		PassParameters->HashCapacity = RCHashCapacity;
+		PassParameters->ProbeSpacing = RCProbeSpacing;
+		PassParameters->ProbeGridOrigin = FVector4(
+			MasterConfig.ProbeGridOrigin.X, MasterConfig.ProbeGridOrigin.Y,
+			MasterConfig.ProbeGridOrigin.Z, 0.0f);
+		PassParameters->BVHWorldOrigin = FVector4(
+			MasterConfig.SoftwareBVH->WorldOrigin.X,
+			MasterConfig.SoftwareBVH->WorldOrigin.Y,
+			MasterConfig.SoftwareBVH->WorldOrigin.Z, 0.0f);
+		PassParameters->ShouldUsePreExposure = View.Family->EngineShowFlags.Tonemapper ? 1u : 0u;
+		PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
+
+		TShaderMapRef<FApplyRadianceCascadeLightingShaderCS> ComputeShader(
+			GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+		const uint32 GroupCountX = FMath::DivideAndRoundUp(ScaledViewSizeX, 8u);
+		const uint32 GroupCountY = FMath::DivideAndRoundUp(ScaledViewSizeY, 8u);
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("DDGI Apply Software Radiance Cascades"),
+			ComputeShader,
+			PassParameters,
+			FIntVector(GroupCountX, GroupCountY, 1));
 	}
 
 	if (CVarLightingPassScale.GetValueOnRenderThread() < 1.0f)
