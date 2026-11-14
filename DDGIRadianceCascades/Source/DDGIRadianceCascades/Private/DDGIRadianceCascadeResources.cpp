@@ -125,7 +125,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const int64 Height64 = (TotalTexels + GDDGIRadianceCascadeTextureWidth - 1) /
         GDDGIRadianceCascadeTextureWidth;
 
-    const int64 EstimatedRayStorageBytes = TotalTexels * GDDGIRadianceCascadeBytesPerRay;
+    // Account for complete allocated rows, not only logically active ray records.
+    const int64 AllocatedRayTexels = Height64 * GDDGIRadianceCascadeTextureWidth;
+    const int64 EstimatedRayStorageBytes = AllocatedRayTexels * GDDGIRadianceCascadeBytesPerRay;
     if (TotalTexels <= 0 || TotalTexels > MaxTextureTexels ||
         Height64 <= 0 || Height64 > GDDGIRadianceCascadeMaxTextureDimension ||
         EstimatedRayStorageBytes > GDDGIRadianceCascadeMaxRayStorageBytes)
