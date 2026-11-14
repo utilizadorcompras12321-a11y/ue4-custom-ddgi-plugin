@@ -556,8 +556,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	}
 
 	const FSceneInterface* Scene = InView.Family->Scene;
-	FDDGIMasterConfig Config;
-	if (!DDGIGetMasterConfig_RenderThread(Scene, Config) || !Config.bEnableDynamicGI)
+	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
+	if (!Config || !Config->bEnableDynamicGI)
 	{
 		return;
 	}
@@ -614,9 +614,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			InitializeShader->SetParameters(
 				RHICmdList, DirectionsUAV, RadianceUAV, HitDistanceUAV,
 				TotalRaysPerProbe,
-				static_cast<uint32>(Config.RadianceCascades.GetSafeCascadeCount()),
-				static_cast<uint32>(FMath::Clamp(Config.RadianceCascades.BaseRayCount, 1, 64)),
-				static_cast<uint32>(FMath::Clamp(Config.RadianceCascades.RaySplitFactor, 1, 4)),
+				static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
+				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64)),
+				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.RaySplitFactor, 1, 4)),
 				InitProbeCount, TotalTexels, GroupsX);
 			DispatchComputeShader(RHICmdList, *InitializeShader, GroupsX, GroupsY, 1);
 			InitializeShader->UnbindResources(RHICmdList);
@@ -667,18 +667,18 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
 		TotalTexels, GroupsX, ProbeCount, TotalRaysPerProbe,
 		NodeCount, TriangleCount,
-		static_cast<uint32>(Config.RadianceCascades.GetSafeCascadeCount()),
-		Config.RadianceCascades.BaseSegmentLength, Config.RadianceCascades.CascadeScale,
-		Config.RadianceCascades.MaxTraceDistance,
-		FVector4(Config.StaticBackgroundColor.R, Config.StaticBackgroundColor.G, Config.StaticBackgroundColor.B, Config.StaticBackgroundColor.A),
-		Config.StaticBackgroundIntensity, Config.GIIntensity,
-		FVector4(Config.ProbeGridOrigin.X, Config.ProbeGridOrigin.Y, Config.ProbeGridOrigin.Z, 0.0f),
-		Config.BackgroundTransitionStart, Config.BackgroundTransitionEnd,
-		Config.bEnableStaticBackground ? 1u : 0u,
-		FVector4(Config.DirectionalLightDirection.X, Config.DirectionalLightDirection.Y, Config.DirectionalLightDirection.Z, 0.0f),
-		FVector4(Config.DirectionalLightColor.R, Config.DirectionalLightColor.G, Config.DirectionalLightColor.B, 0.0f),
-		Config.DirectionalLightIntensity,
-		Config.bHasDirectionalLight ? 1u : 0u);
+		static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
+		Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
+		Config->RadianceCascades.MaxTraceDistance,
+		FVector4(Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G, Config->StaticBackgroundColor.B, Config->StaticBackgroundColor.A),
+		Config->StaticBackgroundIntensity, Config->GIIntensity,
+		FVector4(Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f),
+		Config->BackgroundTransitionStart, Config->BackgroundTransitionEnd,
+		Config->bEnableStaticBackground ? 1u : 0u,
+		FVector4(Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z, 0.0f),
+		FVector4(Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B, 0.0f),
+		Config->DirectionalLightIntensity,
+		Config->bHasDirectionalLight ? 1u : 0u);
 	DispatchComputeShader(RHICmdList, *TraceShader, GroupsX, GroupsY, 1);
 	TraceShader->UnbindResources(RHICmdList);
 
@@ -716,7 +716,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	GatherShader->SetParameters(RHICmdList,GatherRadianceSRV,GatherHitSRV,GatherHitIndicesSRV,GatherDirectionsSRV,
 		GatherPositionsSRV,TrianglesSRV,SpatialHashSRV,NeighborListSRV,GatherOutputUAV,TotalTexels,GroupsX,ProbeCount,
 		TotalRaysPerProbe,HashCapacity,TriangleCount,ProbeSpacing,
-		FVector4(Config.ProbeGridOrigin.X,Config.ProbeGridOrigin.Y,Config.ProbeGridOrigin.Z,0.0f),bUseNeighborList);
+		FVector4(Config->ProbeGridOrigin.X,Config->ProbeGridOrigin.Y,Config->ProbeGridOrigin.Z,0.0f),bUseNeighborList);
 	DispatchComputeShader(RHICmdList,*GatherShader,GroupsX,GroupsY,1);
 	GatherShader->UnbindResources(RHICmdList);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,RadianceScratchTexture);
@@ -725,8 +725,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	{
 		FTexture2DRHIRef CurrentInputRadiance = RadianceScratchTexture;
 		FTexture2DRHIRef CurrentOutputRadiance = RadianceTexture;
-		const uint32 CascadeCount = static_cast<uint32>(Config.RadianceCascades.GetSafeCascadeCount());
-		const uint32 TotalRays = static_cast<uint32>(Config.TotalRaysPerProbe);
+		const uint32 CascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
+		const uint32 TotalRays = static_cast<uint32>(Config->TotalRaysPerProbe);
 		const uint32 TotalProbeTexels = ProbeCount * TotalRays;
 		const uint32 IntegrationGroups = FMath::Min(FMath::DivideAndRoundUp(TotalProbeTexels, 64u), 65535u);
 		const uint32 IntegrationGroupsY = FMath::DivideAndRoundUp(TotalProbeTexels, IntegrationGroups * 64u);
@@ -752,12 +752,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			IntegrateShader->SetParameters(
 				RHICmdList, InputRadianceSRV, HitDistanceSRV, OutputRadianceUAV,
 				TotalProbeTexels, IntegrationGroups, TotalRays,
-				static_cast<uint32>(Config.RadianceCascades.GetRayStorageOffset(CascadeIndex)),
-				static_cast<uint32>(Config.RadianceCascades.GetRayCount(CascadeIndex)),
-				static_cast<uint32>(Config.RadianceCascades.GetRayStorageOffset(CascadeIndex + 1)),
+				static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
+				static_cast<uint32>(Config->RadianceCascades.GetRayCount(CascadeIndex)),
+				static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex + 1)),
 				static_cast<uint32>(FMath::Max(1,
-					Config.RadianceCascades.GetRayCount(CascadeIndex + 1) /
-					FMath::Max(1, Config.RadianceCascades.GetRayCount(CascadeIndex)))));
+					Config->RadianceCascades.GetRayCount(CascadeIndex + 1) /
+					FMath::Max(1, Config->RadianceCascades.GetRayCount(CascadeIndex)))));
 			DispatchComputeShader(RHICmdList, *IntegrateShader, IntegrationGroups, IntegrationGroupsY, 1);
 			IntegrateShader->UnbindResources(RHICmdList);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, CurrentOutputRadiance);
