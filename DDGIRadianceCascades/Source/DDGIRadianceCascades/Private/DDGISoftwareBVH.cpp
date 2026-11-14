@@ -457,7 +457,7 @@ void DDGISoftwareBVH::BuildStaticWorld(
 
 			const FStaticMeshLODResources& LOD = RenderData->LODResources[0];
 			const FPositionVertexBuffer& PositionBuffer = LOD.VertexBuffers.PositionVertexBuffer;
-			if (!PositionBuffer.GetAllowCPUAccess() || !LOD.IndexBuffer.GetAllowCPUAccess())
+			if (!StaticMesh->bAllowCPUAccess)
 			{
 				++OutStats.SkippedNoCPUAccess;
 				continue;
