@@ -264,36 +264,33 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
         return false;
     }
 
+    // Test the root once before traversal. Child bounds are tested before
+    // insertion, so no per-node near-distance stack is needed.
+    if (!IntersectBounds(
+        Origin, Direction,
+        BVHNodes[0u].xyz,
+        BVHNodes[1u].xyz,
+        MaxDistance))
+    {
+        return false;
+    }
+
     uint Stack[64];
-    float NearStack[64];
     uint StackSize = 0u;
     uint IterationCount = 0u;
-    Stack[StackSize] = 0u;
-    NearStack[StackSize++] = -1.0f; // Root bounds have not been tested yet.
+    Stack[StackSize++] = 0u;
 
     [loop]
     while (StackSize > 0u && IterationCount < NodeCount)
     {
         ++IterationCount;
-        --StackSize;
-        uint NodeIndex = Stack[StackSize];
-        float NodeNear = NearStack[StackSize];
+        uint NodeIndex = Stack[--StackSize];
         if (NodeIndex >= NodeCount)
         {
             continue;
         }
 
         uint NodeBase = NodeIndex * 3u;
-        // Child bounds were tested before insertion. Only the root needs
-        // its bounds tested here; avoid repeating every child AABB test.
-        if (NodeNear < 0.0f && !IntersectBounds(Origin, Direction,
-            BVHNodes[NodeBase + 0u].xyz,
-            BVHNodes[NodeBase + 1u].xyz,
-            MaxDistance))
-        {
-            continue;
-        }
-
         float4 Metadata = BVHNodes[NodeBase + 2u];
         uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
         uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
@@ -342,42 +339,34 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
                     BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
                     MaxDistance, RightNear);
             }
-            // The CPU builder rejects BVHs deeper than 48 levels. A depth-first
-            // traversal therefore needs at most 49 stack entries, leaving room
-            // for both children in this 64-entry stack. Never silently discard
-            // a hit child because of a defensive capacity branch.
+            // Visit the nearer child first to find an occluder sooner.
+            // The CPU builder caps validated tree depth at 48, below this
+            // 64-entry stack capacity.
             if (bHitLeft && bHitRight)
             {
                 if (LeftNear <= RightNear)
                 {
-                    Stack[StackSize] = RightChild;
-                    NearStack[StackSize++] = RightNear;
-                    Stack[StackSize] = LeftChild;
-                    NearStack[StackSize++] = LeftNear;
+                    Stack[StackSize++] = RightChild;
+                    Stack[StackSize++] = LeftChild;
                 }
                 else
                 {
-                    Stack[StackSize] = LeftChild;
-                    NearStack[StackSize++] = LeftNear;
-                    Stack[StackSize] = RightChild;
-                    NearStack[StackSize++] = RightNear;
+                    Stack[StackSize++] = LeftChild;
+                    Stack[StackSize++] = RightChild;
                 }
             }
             else if (bHitLeft)
             {
-                Stack[StackSize] = LeftChild;
-                NearStack[StackSize++] = LeftNear;
+                Stack[StackSize++] = LeftChild;
             }
             else if (bHitRight)
             {
-                Stack[StackSize] = RightChild;
-                NearStack[StackSize++] = RightNear;
+                Stack[StackSize++] = RightChild;
             }
         }
     }
     return false;
 }
-
 
 bool TraceClosestHit(
     float3 Origin,
