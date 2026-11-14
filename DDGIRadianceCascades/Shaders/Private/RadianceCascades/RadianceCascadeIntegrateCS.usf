@@ -25,13 +25,13 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
     uint PackedRayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
     uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
-    float4 Result = InputRadianceTexture.Load(int3(Pixel, 0));
 
     const uint SafeSplitFactor = max(EffectiveSplitFactor, 1u);
     const bool bIsTargetCascadeRay =
         PackedRayIndex >= CascadeStorageOffset &&
         PackedRayIndex < CascadeStorageOffset + CascadeRayCount;
 
+    float4 Result;
     // A hit in this interval, or a hit in an earlier interval, terminates
     // transport along this direction. Only empty intervals inherit farther radiance.
     if (bIsTargetCascadeRay && HitDistanceTexture.Load(int3(Pixel, 0)) < 0.0f)
@@ -56,6 +56,12 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         }
 
         Result = float4(IntegratedRadiance / (float)SafeSplitFactor, 1.0f);
+    }
+    else
+    {
+        // Preserve existing radiance only when this ray is not being replaced
+        // by its child cascade. This avoids a discarded texture read on misses.
+        Result = InputRadianceTexture.Load(int3(Pixel, 0));
     }
 
     OutputRadianceUAV[Pixel] = Result;
