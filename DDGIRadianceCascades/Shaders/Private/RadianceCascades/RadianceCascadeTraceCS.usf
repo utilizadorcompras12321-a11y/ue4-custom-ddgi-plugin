@@ -481,20 +481,13 @@ bool TraceClosestHit(
             // a hit child because of a defensive capacity branch.
             if (bHitLeft && bHitRight)
             {
-                if (LeftNear <= RightNear)
-                {
-                    Stack[StackSize] = RightChild;
-                    NearStack[StackSize++] = RightNear;
-                    Stack[StackSize] = LeftChild;
-                    NearStack[StackSize++] = LeftNear;
-                }
-                else
-                {
-                    Stack[StackSize] = LeftChild;
-                    NearStack[StackSize++] = LeftNear;
-                    Stack[StackSize] = RightChild;
-                    NearStack[StackSize++] = RightNear;
-                }
+                // Fixed traversal order avoids an FXC optimizer crash caused by
+                // comparing the two dynamic near distances. Near distances remain
+                // cached for pruning when each child is popped from the stack.
+                Stack[StackSize] = RightChild;
+                NearStack[StackSize++] = RightNear;
+                Stack[StackSize] = LeftChild;
+                NearStack[StackSize++] = LeftNear;
             }
             else if (bHitLeft)
             {
