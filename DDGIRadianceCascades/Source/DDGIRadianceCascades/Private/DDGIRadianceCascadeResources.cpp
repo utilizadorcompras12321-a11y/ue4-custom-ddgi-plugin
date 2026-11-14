@@ -230,13 +230,10 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     const int32 ProbeCount = ActiveProbeCount;
-    // Only upload rows containing active probes. The backing texture remains
-    // sized to MaxActiveProbes, but unused capacity is never sampled by tracing.
-    const int32 ProbeUploadHeight = FMath::Max(
-        1, FMath::DivideAndRoundUp(ProbeCount, ProbePositionDimensions.X));
-    const int32 ProbeUploadTexelCount = ProbePositionDimensions.X * ProbeUploadHeight;
+    // Keep the CPU staging buffer tightly packed. Upload only active texels;
+    // in particular, do not transfer the unused tail of the final texture row.
     TArray<FVector4> UploadData;
-    UploadData.SetNumZeroed(ProbeUploadTexelCount);
+    UploadData.SetNumUninitialized(ProbeCount);
     for (int32 ProbeIndex = 0; ProbeIndex < ProbeCount; ++ProbeIndex)
     {
         UploadData[ProbeIndex] = Config.ProbePositions[ProbeIndex];
@@ -246,14 +243,26 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbePositions->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D();
     if (ProbePositionRHI.IsValid())
     {
-        const FUpdateTextureRegion2D UpdateRegion(
-            0, 0, 0, 0, ProbePositionDimensions.X, ProbeUploadHeight);
-        RHICmdList.UpdateTexture2D(
-            ProbePositionRHI,
-            0,
-            UpdateRegion,
-            static_cast<uint32>(ProbePositionDimensions.X * sizeof(FVector4)),
-            reinterpret_cast<const uint8*>(UploadData.GetData()));
+        for (int32 Row = 0; Row < ProbePositionDimensions.Y; ++Row)
+        {
+            const int32 FirstProbe = Row * ProbePositionDimensions.X;
+            const int32 RowProbeCount = FMath::Min(
+                ProbePositionDimensions.X, ProbeCount - FirstProbe);
+            if (RowProbeCount <= 0)
+            {
+                break;
+            }
+
+            const FUpdateTextureRegion2D UpdateRegion(
+                0, Row, 0, 0, RowProbeCount, 1);
+            const FVector4* RowData = UploadData.GetData() + FirstProbe;
+            RHICmdList.UpdateTexture2D(
+                ProbePositionRHI,
+                0,
+                UpdateRegion,
+                static_cast<uint32>(RowProbeCount * sizeof(FVector4)),
+                reinterpret_cast<const uint8*>(RowData));
+        }
         Storage.UploadedProbeCount = ProbeCount;
     }
     else
