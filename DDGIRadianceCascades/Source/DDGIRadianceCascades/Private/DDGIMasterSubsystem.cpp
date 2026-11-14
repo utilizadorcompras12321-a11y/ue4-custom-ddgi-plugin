@@ -129,16 +129,10 @@ namespace
 	TMap<const FSceneInterface*, FDDGIMasterConfig> GDDGIMasterConfigs_RenderThread;
 }
 
-bool DDGIGetMasterConfig_RenderThread(const FSceneInterface* Scene, FDDGIMasterConfig& OutConfig)
+const FDDGIMasterConfig* DDGIGetMasterConfig_RenderThread(const FSceneInterface* Scene)
 {
 	check(IsInRenderingThread() || IsInParallelRenderingThread());
-
-	if (const FDDGIMasterConfig* FoundConfig = GDDGIMasterConfigs_RenderThread.Find(Scene))
-	{
-		OutConfig = *FoundConfig;
-		return true;
-	}
-	return false;
+	return GDDGIMasterConfigs_RenderThread.Find(Scene);
 }
 
 void UDDGIMasterSubsystem::Deinitialize()
