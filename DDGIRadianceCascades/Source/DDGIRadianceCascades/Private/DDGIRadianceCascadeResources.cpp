@@ -50,6 +50,10 @@ namespace
 		float ProbeNeighborSpacing = 0.0f;
 		uint32 ProbeSpatialHashCapacity = 0;
 		uint32 ProbeSpatialHashProbeCount = 0;
+		// Resource updates run at most once per scene/frame. Retry failed lookup
+		// allocations periodically instead of rebuilding them on every frame.
+		uint32 ProbeSpatialHashRetryCountdown = 0;
+		uint32 ProbeNeighborRetryCountdown = 0;
 		uint32 ProbeSpatialHashLayoutHash = 0;
 		float ProbeSpatialHashSpacing = 0.0f;
 		FBufferRHIRef BVHNodes;
@@ -85,6 +89,8 @@ namespace
 			ProbeNeighborSpacing = 0.0f;
 			ProbeSpatialHashCapacity = 0;
 			ProbeSpatialHashProbeCount = 0;
+			ProbeSpatialHashRetryCountdown = 0;
+			ProbeNeighborRetryCountdown = 0;
 			ProbeSpatialHashLayoutHash = 0;
 			ProbeSpatialHashSpacing = 0.0f;
 			BVHNodes.SafeRelease();
@@ -320,6 +326,10 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     if (bProbeLayoutChanged)
     {
         Storage.bNeedsInitialization = true;
+        // A different layout is a new allocation target, so do not inherit
+        // backoff from failures associated with the previous probe lattice.
+        Storage.ProbeSpatialHashRetryCountdown = 0;
+        Storage.ProbeNeighborRetryCountdown = 0;
     }
 
     const bool bProbeHashMatches =
@@ -329,7 +339,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbeSpatialHashProbeCount == ProbeCountForHash &&
         Storage.ProbeSpatialHashLayoutHash == ProbeLayoutHash &&
         FMath::IsNearlyEqual(Storage.ProbeSpatialHashSpacing, SafeProbeSpacing, 1.0e-4f);
-    if (!bProbeHashMatches)
+    if (bProbeHashMatches)
+    {
+        Storage.ProbeSpatialHashRetryCountdown = 0;
+    }
+    else if (Storage.ProbeSpatialHashRetryCountdown > 0)
+    {
+        --Storage.ProbeSpatialHashRetryCountdown;
+    }
+    else
     {
         Storage.ProbeSpatialHash.SafeRelease();
         Storage.ProbeSpatialHashSRV.SafeRelease();
@@ -401,7 +419,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.ProbeSpatialHashCapacity = 0;
             Storage.ProbeSpatialHashProbeCount = 0;
             Storage.ProbeSpatialHashLayoutHash = 0;
-            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to build sparse probe spatial hash."));
+            Storage.ProbeSpatialHashSpacing = 0.0f;
+            Storage.ProbeSpatialHashRetryCountdown = 60;
+            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to build sparse probe spatial hash; retrying in 60 scene updates."));
         }
         else
         {
@@ -409,6 +429,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.ProbeSpatialHashProbeCount = ProbeCountForHash;
             Storage.ProbeSpatialHashLayoutHash = ProbeLayoutHash;
             Storage.ProbeSpatialHashSpacing = SafeProbeSpacing;
+            Storage.ProbeSpatialHashRetryCountdown = 0;
         }
     }
 
@@ -420,7 +441,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbeNeighborProbeCount == ProbeCountForHash &&
         Storage.ProbeNeighborLayoutHash == ProbeLayoutHash &&
         FMath::IsNearlyEqual(Storage.ProbeNeighborSpacing, SafeProbeSpacing, 1.0e-4f);
-    if (!bNeighborListMatches)
+    if (bNeighborListMatches)
+    {
+        Storage.ProbeNeighborRetryCountdown = 0;
+    }
+    else if (Storage.ProbeNeighborRetryCountdown > 0)
+    {
+        --Storage.ProbeNeighborRetryCountdown;
+    }
+    else
     {
         Storage.ProbeNeighborIndices.SafeRelease();
         Storage.ProbeNeighborIndicesSRV.SafeRelease();
@@ -499,13 +528,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         {
             Storage.ProbeNeighborIndices.SafeRelease();
             Storage.ProbeNeighborIndicesSRV.SafeRelease();
-            UE_LOG(LogTemp, Warning, TEXT("Radiance Cascades: precomputed neighbor buffer unavailable; using spatial-hash fallback."));
+            Storage.ProbeNeighborRetryCountdown = 60;
+            UE_LOG(LogTemp, Warning, TEXT("Radiance Cascades: precomputed neighbor buffer unavailable; using spatial-hash fallback (retry in 60 scene updates)."));
         }
         else
         {
             Storage.ProbeNeighborProbeCount = ProbeCountForHash;
             Storage.ProbeNeighborLayoutHash = ProbeLayoutHash;
             Storage.ProbeNeighborSpacing = SafeProbeSpacing;
+            Storage.ProbeNeighborRetryCountdown = 0;
         }
     }
 
