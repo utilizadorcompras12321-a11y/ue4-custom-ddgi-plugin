@@ -447,6 +447,11 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 			BuildStats.MaxLeafTriangleCount, BuildStats.EstimatedSAHCost,
 			NewBVH->IncludedComponents, NewBVH->SkippedNoCPUAccess, NewBVH->SkippedMovable,
 			NewBVH->SkippedInstanced, NewBVH->SkippedInvalidTriangles, BuildStats.MaterialsUsingDefaultBaseColor);
+		if (BuildStats.SkippedInstanced > 0)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI: Skipped %d ISM/HISM components containing %d instances. Their geometry is not currently included in the software BVH."),
+				BuildStats.SkippedInstanced, BuildStats.SkippedInstancedInstances);
+		}
 		if (BuildStats.bTriangleLimitReached)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("DDGI: Software BVH reached its %d-triangle limit. Components encountered later in world iteration may be omitted; increase MaxSoftwareTriangles or reduce static-mesh geometry if coverage is incomplete."), Config.MaxSoftwareTriangles);
