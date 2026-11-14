@@ -10,7 +10,6 @@
 
 #include "DDGIVolumeComponent.h"
 #include "DDGIVolume.h"
-#include "DDGIVolumeUpdate.h"
 #include "DDGIRadianceCascadesPluginSettings.h"
 #include "RenderGraphBuilder.h"
 #include "ShaderParameterStruct.h"
