@@ -14,6 +14,7 @@ struct FDDGISoftwareBVHBuildStats
 	int32 SkippedInvalidTriangles = 0;
 	int32 MaterialsUsingDefaultBaseColor = 0;
 	int32 TriangleCount = 0;
+	bool bTriangleLimitReached = false;
 	int32 NodeCount = 0;
 	int32 MaxDepth = 0;
 	int32 LeafCount = 0;
