@@ -50,6 +50,17 @@ void ADDGIMasterActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+void ADDGIMasterActor::RebuildStaticGeometryBVH()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (UDDGIMasterSubsystem* Subsystem = World->GetSubsystem<UDDGIMasterSubsystem>())
+		{
+			Subsystem->RebuildSoftwareBVH(this);
+		}
+	}
+}
+
 void ADDGIMasterActor::RefreshWorldConfig()
 {
 	if (UWorld* World = GetWorld())
