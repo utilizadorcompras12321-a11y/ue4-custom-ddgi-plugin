@@ -12,12 +12,8 @@
 
 #include "Modules/ModuleManager.h"
 #include "Interfaces/IPluginManager.h"
-#include "Tickable.h"
-
-#include "DDGIVolumeUpdate.h"
 #include "DDGIRadianceCascadeRHIViewExtension.h"
 #include "SceneViewExtension.h"
-#include "DDGIVolumeComponent.h"
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
 
@@ -26,18 +22,6 @@
 namespace
 {
 	TSharedPtr<FDDGIRadianceCascadeRHIViewExtension, ESPMode::ThreadSafe> GDDGIRadianceCascadeViewExtension;
-}
-
-void FDDGIRadianceCascadesPlugin::StartupDDGI()
-{
-	DDGIVolumeUpdate::Startup();
-	UDDGIVolumeComponent::Startup();
-}
-
-void FDDGIRadianceCascadesPlugin::ShutdownDDGI()
-{
-	DDGIVolumeUpdate::Shutdown();
-	UDDGIVolumeComponent::Shutdown();
 }
 
 void FDDGIRadianceCascadesPlugin::StartupModule()
@@ -50,7 +34,6 @@ void FDDGIRadianceCascadesPlugin::StartupModule()
 	FString PluginMapping = TEXT("/Plugin/") + GetModularFeatureName();
 	AddShaderSourceDirectoryMapping(PluginMapping, PluginShaderDir);
 
-	StartupDDGI();
 
 	// UE4.27 view extensions expose an RHI command list here (not an RDG builder).
 	// This independent callback initializes the cascade storage without DXR.
@@ -63,7 +46,6 @@ void FDDGIRadianceCascadesPlugin::ShutdownModule()
 	// we call this function before unloading the module.
 
 	GDDGIRadianceCascadeViewExtension.Reset();
-	ShutdownDDGI();
 }
 
 #undef LOCTEXT_NAMESPACE
