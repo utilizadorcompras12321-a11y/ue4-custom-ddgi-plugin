@@ -9,6 +9,8 @@ Texture2D<float4> DirectionsTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> BVHTriangles;
 StructuredBuffer<float4> ProbeSpatialHash;
+StructuredBuffer<uint> ProbeNeighborIndices;
+uint UsePrecomputedProbeNeighbors;
 RWTexture2D<float4> OutputRadianceUAV;
 
 // Match the tracing shader's scale-aware normal calculation so gather
@@ -120,6 +122,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     float PlaneTolerance = clamp(SafeSpacing * 0.01f, 0.05f, 1.0f);
     float WeightDistanceRange = SafeSpacing * 1.75f;
     int3 CenterCell = int3(round((CenterPosition - ProbeGridOrigin.xyz) / SafeSpacing));
+    uint NeighborSlot = 0u;
     [unroll] for (int Z=-1; Z<=1; ++Z)
     [unroll] for (int Y=-1; Y<=1; ++Y)
     [unroll] for (int X=-1; X<=1; ++X)
@@ -127,7 +130,21 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         if (X==0 && Y==0 && Z==0) continue;
         int3 NeighborCell = CenterCell + int3(X,Y,Z);
         uint NeighborIndex;
-        if (!DDGIFindProbeInCell(NeighborCell, NeighborIndex)) continue;
+        if (UsePrecomputedProbeNeighbors != 0u)
+        {
+            NeighborIndex = ProbeNeighborIndices[ProbeIndex * 26u + NeighborSlot];
+            ++NeighborSlot;
+            if (NeighborIndex == 0xFFFFFFFFu || NeighborIndex >= ProbeCount) continue;
+        }
+        else
+        {
+            if (!DDGIFindProbeInCell(NeighborCell, NeighborIndex))
+            {
+                ++NeighborSlot;
+                continue;
+            }
+            ++NeighborSlot;
+        }
         // Probe positions are generated as ProbeGridOrigin + integer cell * spacing.
         // Reconstruct the neighbor origin instead of fetching another position texel.
         float3 NeighborPosition = ProbeGridOrigin.xyz + float3(NeighborCell) * SafeSpacing;
