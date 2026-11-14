@@ -1,6 +1,7 @@
 #include "DDGIMasterSubsystem.h"
 #include "DDGIMasterActor.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "RenderingThread.h"
 #include "RHICommandList.h"
 #include "DDGIRadianceCascadeResources.h"
