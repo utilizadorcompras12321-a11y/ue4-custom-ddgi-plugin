@@ -10,6 +10,11 @@
 #include "SceneInterface.h"
 #include "SceneView.h"
 #include "HAL/IConsoleManager.h"
+#include "PostProcess/PostProcessMaterial.h"
+#include "ScreenPass.h"
+#include "SceneTextures.h"
+#include "RenderGraphUtils.h"
+#include "RHIStaticStates.h"
 
 static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
     TEXT("r.DDGI.UsePrecomputedProbeNeighbors"),
@@ -478,6 +483,159 @@ IMPLEMENT_SHADER_TYPE(
 	TEXT("RadianceCascadeIntegrateCS"),
 	SF_Compute);
 
+
+
+class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FDDGIApplyRadianceCascadesLightingCS);
+	SHADER_USE_PARAMETER_STRUCT(FDDGIApplyRadianceCascadesLightingCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, NormalTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, BaseColorTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MetallicTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbePositionsTexture)
+		SHADER_PARAMETER_SRV(StructuredBuffer<float4>, ProbeSpatialHash)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, SceneColorOutputUAV)
+		SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
+		SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
+		SHADER_PARAMETER(FVector2D, ViewRectMin)
+		SHADER_PARAMETER(uint32, ProbeCount)
+		SHADER_PARAMETER(uint32, TotalRaysPerProbe)
+		SHADER_PARAMETER(uint32, BaseRayCount)
+		SHADER_PARAMETER(uint32, HashCapacity)
+		SHADER_PARAMETER(float, ProbeSpacing)
+		SHADER_PARAMETER(FVector4, ProbeGridOrigin)
+		SHADER_PARAMETER(FVector4, BVHWorldOrigin)
+		SHADER_PARAMETER(uint32, ShouldUsePreExposure)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FDDGIApplyRadianceCascadesLightingCS,
+	"/Plugin/DDGIRadianceCascades/Private/ApplyRadianceCascadesLighting.usf",
+	"MainCS",
+	SF_Compute);
+
+static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
+	FRDGBuilder& GraphBuilder,
+	const FSceneView& View,
+	const FPostProcessMaterialInputs& Inputs)
+{
+	const FScreenPassTexture SceneColor = Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
+	if (!SceneColor.IsValid() || !View.Family || !View.Family->Scene)
+	{
+		return SceneColor;
+	}
+
+	const FSceneInterface* Scene = View.Family->Scene;
+	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
+	if (!Config || !Config->bEnableDynamicGI || !Config->SoftwareBVH.IsValid())
+	{
+		return SceneColor;
+	}
+
+	FRDGTextureRef DirectionsTexture = nullptr;
+	FRDGTextureRef RadianceTexture = nullptr;
+	FRDGTextureRef HitDistanceTexture = nullptr;
+	FRDGTextureRef HitTriangleIndexTexture = nullptr;
+	FRDGTextureRef ProbePositionsTexture = nullptr;
+	uint32 ProbeCount = 0;
+	uint32 TotalRaysPerProbe = 0;
+	if (!DDGIGetRadianceCascadeLightingTextures_RenderThread(
+		GraphBuilder, Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture,
+		HitTriangleIndexTexture, ProbePositionsTexture, ProbeCount, TotalRaysPerProbe))
+	{
+		return SceneColor;
+	}
+
+	FShaderResourceViewRHIRef ProbeSpatialHashSRV;
+	uint32 HashCapacity = 0;
+	float ProbeSpacing = 0.0f;
+	if (!DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
+		Scene, ProbeSpatialHashSRV, HashCapacity, ProbeSpacing) ||
+		!ProbeSpatialHashSRV.IsValid() || HashCapacity == 0)
+	{
+		return SceneColor;
+	}
+
+	if (!Inputs.SceneTextures.SceneTextures)
+	{
+		return SceneColor;
+	}
+
+	const FSceneTextureParameters SceneTextures = GetSceneTextureParameters(
+		GraphBuilder, Inputs.SceneTextures.SceneTextures);
+	const FIntPoint ViewSize = SceneColor.ViewRect.Size();
+	if (ViewSize.X <= 0 || ViewSize.Y <= 0)
+	{
+		return SceneColor;
+	}
+
+	FRDGTextureDesc OutputDesc = SceneColor.Texture->Desc;
+	OutputDesc.Flags |= TexCreate_UAV | TexCreate_ShaderResource;
+	FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(
+		OutputDesc, TEXT("DDGI.RadianceCascades.SceneColor"));
+
+	FDDGIApplyRadianceCascadesLightingCS::FParameters* PassParameters =
+		GraphBuilder.AllocParameters<FDDGIApplyRadianceCascadesLightingCS::FParameters>();
+	PassParameters->View = View.ViewUniformBuffer;
+	PassParameters->SceneColorTexture = SceneColor.Texture;
+	PassParameters->NormalTexture = SceneTextures.GBufferATexture;
+	PassParameters->DepthTexture = SceneTextures.SceneDepthTexture;
+	PassParameters->BaseColorTexture = SceneTextures.GBufferCTexture;
+	PassParameters->MetallicTexture = SceneTextures.GBufferBTexture;
+	PassParameters->DirectionsTexture = DirectionsTexture;
+	PassParameters->RadianceTexture = RadianceTexture;
+	PassParameters->ProbePositionsTexture = ProbePositionsTexture;
+	PassParameters->ProbeSpatialHash = ProbeSpatialHashSRV;
+	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
+	PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	PassParameters->ScaledViewSizeAndInvSize = FVector4(
+		static_cast<float>(ViewSize.X), static_cast<float>(ViewSize.Y),
+		1.0f / static_cast<float>(ViewSize.X), 1.0f / static_cast<float>(ViewSize.Y));
+	PassParameters->ViewRectMin = FVector2D(
+		static_cast<float>(SceneColor.ViewRect.Min.X),
+		static_cast<float>(SceneColor.ViewRect.Min.Y));
+	PassParameters->ProbeCount = ProbeCount;
+	PassParameters->TotalRaysPerProbe = TotalRaysPerProbe;
+	PassParameters->BaseRayCount = static_cast<uint32>(FMath::Clamp(
+		Config->RadianceCascades.BaseRayCount, 1, 64));
+	PassParameters->HashCapacity = HashCapacity;
+	PassParameters->ProbeSpacing = ProbeSpacing;
+	PassParameters->ProbeGridOrigin = FVector4(
+		Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f);
+	PassParameters->BVHWorldOrigin = FVector4(
+		Config->SoftwareBVH->WorldOrigin.X,
+		Config->SoftwareBVH->WorldOrigin.Y,
+		Config->SoftwareBVH->WorldOrigin.Z, 0.0f);
+	PassParameters->ShouldUsePreExposure = 1u;
+
+	TShaderMapRef<FDDGIApplyRadianceCascadesLightingCS> ComputeShader(
+		GetGlobalShaderMap(View.GetFeatureLevel()));
+	FComputeShaderUtils::AddPass(
+		GraphBuilder,
+		RDG_EVENT_NAME("DDGI Apply Radiance Cascades Lighting"),
+		ComputeShader,
+		PassParameters,
+		FIntVector(
+			FMath::DivideAndRoundUp(ViewSize.X, 8),
+			FMath::DivideAndRoundUp(ViewSize.Y, 8),
+			1));
+
+	return FScreenPassTexture(OutputTexture, SceneColor.ViewRect);
+}
+
 FDDGIRadianceCascadeRHIViewExtension::FDDGIRadianceCascadeRHIViewExtension(const FAutoRegister& AutoRegister)
 	: FSceneViewExtensionBase(AutoRegister)
 {
@@ -486,6 +644,18 @@ FDDGIRadianceCascadeRHIViewExtension::FDDGIRadianceCascadeRHIViewExtension(const
 bool FDDGIRadianceCascadeRHIViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
 {
 	return true;
+}
+
+void FDDGIRadianceCascadeRHIViewExtension::SubscribeToPostProcessingPass(
+	EPostProcessingPass Pass,
+	FAfterPassCallbackDelegateArray& InOutPassCallbacks,
+	bool bIsPassEnabled)
+{
+	if (Pass == EPostProcessingPass::MotionBlur)
+	{
+		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateStatic(
+			&DDGIApplyRadianceCascadesAfterMotionBlur));
+	}
 }
 
 void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
