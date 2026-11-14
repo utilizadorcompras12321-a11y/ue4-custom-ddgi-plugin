@@ -687,139 +687,24 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         (int)CascadeIndex, BaseSegmentLength, CascadeScale, MaxTraceDistance);
     float CascadeStartDistance = CascadeInterval.x;
     float CascadeEndDistance = CascadeInterval.y;
-    // Stop BVH traversal at this interval's end; hits before the interval are
-    // still detected so they can occlude farther cascades.
+    // Reuse the shared closest-hit traversal for primary and secondary rays.
+    // Keeping one BVH traversal implementation substantially reduces the
+    // generated SM5 shader and avoids duplicating large local traversal stacks.
     float ClosestHit = CascadeEndDistance;
-    bool bHit = false;
     uint ClosestTriangleIndex = 0u;
-
-    uint Stack[64];
-    float NearStack[64];
-    uint StackSize = 0u;
-    uint IterationCount = 0u;
-
-    // Empty geometry has no root node to read. The root is the only node
-    // whose bounds have not already been tested by its parent.
-    if (NodeCount > 0u && TriangleCount > 0u)
-    {
-        Stack[StackSize] = 0u;
-        NearStack[StackSize++] = -1.0f;
-    }
-
-    [loop]
-    while (StackSize > 0u && IterationCount < NodeCount)
-    {
-        ++IterationCount;
-        --StackSize;
-        uint NodeIndex = Stack[StackSize];
-        float NodeNear = NearStack[StackSize];
-        if (NodeIndex >= NodeCount || (NodeNear >= 0.0f && NodeNear > ClosestHit))
-        {
-            continue;
-        }
-
-        uint NodeBase = NodeIndex * 3u;
-        // Child bounds were tested before insertion. Reuse their saved
-        // near distance and only test the root bounds on first visit.
-        if (NodeNear < 0.0f && !IntersectBounds(
-            Origin, Direction,
-            BVHNodes[NodeBase + 0u].xyz,
-            BVHNodes[NodeBase + 1u].xyz,
-            ClosestHit))
-        {
-            continue;
-        }
-
-        float4 Metadata = BVHNodes[NodeBase + 2u];
-        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
-        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
-
-        if (LeafTriangleCount > 0u)
-        {
-            [loop]
-            for (uint LocalTriangle = 0u; LocalTriangle < LeafTriangleCount; ++LocalTriangle)
-            {
-                uint TriangleIndex = FirstTriangle + LocalTriangle;
-                if (TriangleIndex >= TriangleCount)
-                {
-                    continue;
-                }
-
-                uint TriangleBase = TriangleIndex * 4u;
-                float HitDistance;
-                if (IntersectTriangle(
-                    Origin, Direction,
-                    BVHTriangles[TriangleBase + 0u].xyz,
-                    BVHTriangles[TriangleBase + 1u].xyz,
-                    BVHTriangles[TriangleBase + 2u].xyz,
-                    HitDistance) && HitDistance < ClosestHit)
-                {
-                    ClosestHit = HitDistance;
-                    ClosestTriangleIndex = TriangleIndex;
-                    bHit = true;
-                }
-            }
-        }
-        else
-        {
-            uint LeftChild = (uint)max(Metadata.x, 0.0f);
-            uint RightChild = (uint)max(Metadata.y, 0.0f);
-            float LeftNear = 0.0f;
-            float RightNear = 0.0f;
-            bool bHitLeft = false;
-            bool bHitRight = false;
-
-            if (LeftChild < NodeCount)
-            {
-                uint LeftBase = LeftChild * 3u;
-                bHitLeft = IntersectBoundsWithNear(
-                    Origin, Direction,
-                    BVHNodes[LeftBase + 0u].xyz,
-                    BVHNodes[LeftBase + 1u].xyz,
-                    ClosestHit, LeftNear);
-            }
-            if (RightChild < NodeCount)
-            {
-                uint RightBase = RightChild * 3u;
-                bHitRight = IntersectBoundsWithNear(
-                    Origin, Direction,
-                    BVHNodes[RightBase + 0u].xyz,
-                    BVHNodes[RightBase + 1u].xyz,
-                    ClosestHit, RightNear);
-            }
-
-            // Push the farther child first; the nearer child is popped next.
-            // The CPU builder caps validated tree depth at 48, so the maximum
-            // pending DFS stack is below this 64-entry capacity.
-            if (bHitLeft && bHitRight)
-            {
-                if (LeftNear <= RightNear)
-                {
-                    Stack[StackSize] = RightChild;
-                    NearStack[StackSize++] = RightNear;
-                    Stack[StackSize] = LeftChild;
-                    NearStack[StackSize++] = LeftNear;
-                }
-                else
-                {
-                    Stack[StackSize] = LeftChild;
-                    NearStack[StackSize++] = LeftNear;
-                    Stack[StackSize] = RightChild;
-                    NearStack[StackSize++] = RightNear;
-                }
-            }
-            else if (bHitLeft)
-            {
-                Stack[StackSize] = LeftChild;
-                NearStack[StackSize++] = LeftNear;
-            }
-            else if (bHitRight)
-            {
-                Stack[StackSize] = RightChild;
-                NearStack[StackSize++] = RightNear;
-            }
-        }
-    }
+    float3 ClosestTriangleA = 0.0f;
+    float3 ClosestTriangleB = 0.0f;
+    float3 ClosestTriangleC = 0.0f;
+    bool bHit = TraceClosestHit(
+        Origin,
+        Direction,
+        CascadeEndDistance,
+        0xFFFFFFFFu,
+        ClosestHit,
+        ClosestTriangleIndex,
+        ClosestTriangleA,
+        ClosestTriangleB,
+        ClosestTriangleC);
 
     // Cascades own disjoint ray-distance intervals. A hit before this
     // interval means an earlier surface blocks the ray; a hit beyond it
