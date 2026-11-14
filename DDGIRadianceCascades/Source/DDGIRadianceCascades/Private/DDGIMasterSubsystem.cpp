@@ -241,7 +241,9 @@ void UDDGIMasterSubsystem::RefreshProbeGridOrigin(ADDGIMasterActor* InActor)
 
 	Config.ProbeGridOrigin = NewOrigin;
 	// ProbePositions are grid-relative offsets and therefore do not change.
-	PublishConfig(true);
+	// Publish only the origin; copying the full config here would also copy
+	// the probe array and shared BVH on every actor movement.
+	PublishProbeGridOriginOnly();
 }
 
 void UDDGIMasterSubsystem::RefreshDirectionalLighting(ADDGIMasterActor* InActor)
@@ -341,6 +343,31 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 				ExistingConfig->DirectionalLightDirection = DirectionalLightDirection;
 				ExistingConfig->DirectionalLightColor = DirectionalLightColor;
 				ExistingConfig->DirectionalLightIntensity = DirectionalLightIntensity;
+			}
+		});
+}
+
+
+void UDDGIMasterSubsystem::PublishProbeGridOriginOnly()
+{
+	UWorld* World = GetWorld();
+	FSceneInterface* Scene = World ? World->Scene : nullptr;
+	if (!Scene)
+	{
+		return;
+	}
+
+	// The probe offsets, layout, BVH and GPU resources are unchanged by a
+	// translation. Capture only the small origin value and patch the existing
+	// render-thread config. Render commands preserve publication order.
+	const FVector ProbeGridOrigin = Config.ProbeGridOrigin;
+
+	ENQUEUE_RENDER_COMMAND(DDGIUpdateProbeGridOrigin)(
+		[Scene, ProbeGridOrigin](FRHICommandListImmediate& RHICmdList)
+		{
+			if (FDDGIMasterConfig* ExistingConfig = GDDGIMasterConfigs_RenderThread.Find(Scene))
+			{
+				ExistingConfig->ProbeGridOrigin = ProbeGridOrigin;
 			}
 		});
 }
