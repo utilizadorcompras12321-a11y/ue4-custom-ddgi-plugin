@@ -72,6 +72,7 @@ class DDGIRADIANCECASCADES_API UDDGIMasterSubsystem : public UWorldSubsystem
 	GENERATED_BODY()
 
 public:
+	virtual void Deinitialize() override;
 	void RegisterMasterActor(ADDGIMasterActor* InActor);
 	void UnregisterMasterActor(ADDGIMasterActor* InActor);
 	void RefreshConfig(ADDGIMasterActor* InActor);
