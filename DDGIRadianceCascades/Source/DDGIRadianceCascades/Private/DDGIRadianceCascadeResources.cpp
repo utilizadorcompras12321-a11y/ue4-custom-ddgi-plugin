@@ -246,7 +246,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbePositions->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D();
     if (ProbePositionRHI.IsValid())
     {
-        Storage.bNeedsInitialization = true;
         const FUpdateTextureRegion2D UpdateRegion(
             0, 0, 0, 0, ProbePositionDimensions.X, ProbeUploadHeight);
         RHICmdList.UpdateTexture2D(
@@ -289,6 +288,18 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         ProbeLayoutHash = (ProbeLayoutHash ^ static_cast<uint32>(Cell.X)) * 16777619u;
         ProbeLayoutHash = (ProbeLayoutHash ^ static_cast<uint32>(Cell.Y)) * 16777619u;
         ProbeLayoutHash = (ProbeLayoutHash ^ static_cast<uint32>(Cell.Z)) * 16777619u;
+    }
+
+    // Translation changes the uploaded probe positions but preserves the
+    // relative lattice. Only a changed lattice requires clearing/reinitializing
+    // per-ray radiance; ray storage recreation already sets this flag in Release().
+    const bool bProbeLayoutChanged =
+        Storage.ProbeSpatialHashProbeCount != ProbeCountForHash ||
+        Storage.ProbeSpatialHashLayoutHash != ProbeLayoutHash ||
+        !FMath::IsNearlyEqual(Storage.ProbeSpatialHashSpacing, SafeProbeSpacing, 1.0e-4f);
+    if (bProbeLayoutChanged)
+    {
+        Storage.bNeedsInitialization = true;
     }
 
     const bool bProbeHashMatches =
