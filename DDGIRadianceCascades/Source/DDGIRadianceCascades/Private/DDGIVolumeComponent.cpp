@@ -297,8 +297,7 @@ void FDDGIVolumeSceneProxy::ReallocateSurfaces_RenderThread(FRHICommandListImmed
 	}
 	else
 	{
-		ProbesOffsets.SafeRelease();
-	}
+		ProbesOffsets.SafeRelease();	}
 
 	// probe classifications
 	if (FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_PROBE_CLASSIFICATION)
@@ -597,8 +596,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar = volumeProxy->ComponentData.IrradianceScalar * MasterGIIntensity;
 
 				// Apply the lighting multiplier to artificially lighten or darken the indirect light from the volume
-				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar /= volumeProxy->ComponentData.LightingMultiplier;
-			}
+				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar /= volumeProxy->ComponentData.LightingMultiplier;			}
 
 			// When there are fewer relevant volumes than the maximum supported, set the empty volume texture slots to dummy values
 			for (int32 volumeIndex = numVolumes; volumeIndex < FDDGIVolumeSceneProxy::FComponentData::c_DDGIRadianceCascades_DDGI_MAX_SHADING_VOLUMES; ++volumeIndex)
@@ -640,55 +638,6 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 		}
 	}
 
-
-	// Apply the integrated software Radiance Cascades once, after legacy volumes.
-	if (bHasRadianceCascadeLighting)
-	{
-		FApplyRadianceCascadeLightingParameters* PassParameters =
-			GraphBuilder.AllocParameters<FApplyRadianceCascadeLightingParameters>();
-		PassParameters->NormalTexture = GBufferATexture;
-		PassParameters->DepthTexture = SceneDepthTexture;
-		PassParameters->BaseColorTexture = GBufferCTexture;
-		PassParameters->MetallicTexture = GBufferBTexture;
-		PassParameters->DirectionsTexture = RCDirectionsTexture;
-		PassParameters->RadianceTexture = RCRadianceTexture;
-		PassParameters->ProbePositionsTexture = RCProbePositionsTexture;
-		PassParameters->ProbeSpatialHash = RCProbeSpatialHashSRV;
-		PassParameters->LightingPassUAV = (ScreenScale < 1.0f)
-			? LightingPassUAV
-			: GraphBuilder.CreateUAV(SceneColorTexture);
-		PassParameters->PointClampSampler =
-			TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-		PassParameters->ScaledViewSizeAndInvSize = FVector4(
-			ScaledViewSize.X, ScaledViewSize.Y,
-			1.0f / ScaledViewSize.X, 1.0f / ScaledViewSize.Y);
-		PassParameters->ProbeCount = RCProbeCount;
-		PassParameters->TotalRaysPerProbe = RCTotalRaysPerProbe;
-		PassParameters->BaseRayCount = FMath::Clamp(
-			static_cast<int32>(MasterConfig->RadianceCascades.BaseRayCount), 1, 64);
-		PassParameters->HashCapacity = RCHashCapacity;
-		PassParameters->ProbeSpacing = RCProbeSpacing;
-		PassParameters->ProbeGridOrigin = FVector4(
-			MasterConfig->ProbeGridOrigin.X, MasterConfig->ProbeGridOrigin.Y,
-			MasterConfig->ProbeGridOrigin.Z, 0.0f);
-		PassParameters->BVHWorldOrigin = FVector4(
-			MasterConfig->SoftwareBVH->WorldOrigin.X,
-			MasterConfig->SoftwareBVH->WorldOrigin.Y,
-			MasterConfig->SoftwareBVH->WorldOrigin.Z, 0.0f);
-		PassParameters->ShouldUsePreExposure = View.Family->EngineShowFlags.Tonemapper ? 1u : 0u;
-		PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
-
-		TShaderMapRef<FApplyRadianceCascadeLightingShaderCS> ComputeShader(
-			GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-		const uint32 GroupCountX = FMath::DivideAndRoundUp(ScaledViewSizeX, 8u);
-		const uint32 GroupCountY = FMath::DivideAndRoundUp(ScaledViewSizeY, 8u);
-		FComputeShaderUtils::AddPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("DDGI Apply Software Radiance Cascades"),
-			ComputeShader,
-			PassParameters,
-			FIntVector(GroupCountX, GroupCountY, 1));
-	}
 
 	if (CVarLightingPassScale.GetValueOnRenderThread() < 1.0f)
 	{
@@ -897,8 +846,7 @@ static void LoadFDDGITexturePixels(FArchive& Ar, FDDGITexturePixels& texturePixe
 						SourceBuffer += texturePixels.Desc.Stride;
 					}
 				}
-				RHIUnlockTexture2D(texturePixels.Texture, 0, false);
-			}
+				RHIUnlockTexture2D(texturePixels.Texture, 0, false);			}
 
 			// Only clear the texels when in a game.
 			// Cooking needs this data to write textures to disk on save, after load, when headless etc.
@@ -1197,8 +1145,7 @@ void UDDGIVolumeComponent::EnableVolumeComponent(bool enabled)
 void UDDGIVolumeComponent::Startup()
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	FGlobalIlluminationExperimentalPluginDelegates::FRenderDiffuseIndirectVisualizations& RVDelegate = FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectVisualizations();
-	FDDGIVolumeSceneProxy::RenderDiffuseIndirectVisualizationsHandle = RVDelegate.AddStatic(FDDGIVolumeSceneProxy::RenderDiffuseIndirectVisualizations_RenderThread);
+	FGlobalIlluminationExperimentalPluginDelegates::FRenderDiffuseIndirectVisualizations& RVDelegate = FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectVisualizations();	FDDGIVolumeSceneProxy::RenderDiffuseIndirectVisualizationsHandle = RVDelegate.AddStatic(FDDGIVolumeSceneProxy::RenderDiffuseIndirectVisualizations_RenderThread);
 #endif
 
 	FGlobalIlluminationExperimentalPluginDelegates::FRenderDiffuseIndirectLight& RDILDelegate = FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight();
