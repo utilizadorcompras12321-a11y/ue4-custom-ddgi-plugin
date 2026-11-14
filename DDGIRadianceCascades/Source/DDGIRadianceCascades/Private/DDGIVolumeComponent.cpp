@@ -111,6 +111,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FApplyRadianceCascadeLightingParameters, )
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MetallicTexture)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbePositionsTexture)
 	SHADER_PARAMETER_SRV(StructuredBuffer<float4>, ProbeSpatialHash)
 	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, LightingPassUAV)
 	SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
@@ -694,6 +695,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 		PassParameters->MetallicTexture = GBufferBTexture;
 		PassParameters->DirectionsTexture = RCDirectionsTexture;
 		PassParameters->RadianceTexture = RCRadianceTexture;
+		PassParameters->ProbePositionsTexture = RCProbePositionsTexture;
 		PassParameters->ProbeSpatialHash = RCProbeSpatialHashSRV;
 		PassParameters->LightingPassUAV = (ScreenScale < 1.0f)
 			? LightingPassUAV
