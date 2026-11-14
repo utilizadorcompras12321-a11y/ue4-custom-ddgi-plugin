@@ -56,7 +56,7 @@ bool DDGIFindProbeInCell(int3 Cell, out uint OutProbeIndex)
     {
         float4 Entry = ProbeSpatialHash[Slot];
         if (Entry.w < 0.0f) return false;
-        if (all(int3(round(Entry.xyz)) == Cell))
+        if (all(Entry.xyz == float3(Cell)))
         {
             OutProbeIndex = (uint)max(Entry.w, 0.0f);
             return OutProbeIndex < ProbeCount;
