@@ -65,6 +65,8 @@ namespace
 		int32 TotalRaysPerProbe = 0;
 		FIntPoint ProbePositionDimensions = FIntPoint::ZeroValue;
 		int32 UploadedProbeCount = 0;
+		uint32 UploadedProbeLayoutHash = 0;
+		float UploadedProbeSpacing = 0.0f;
 
 		void Release()
 		{
@@ -95,6 +97,8 @@ namespace
 			Dimensions = FIntPoint::ZeroValue;
 			ProbePositionDimensions = FIntPoint::ZeroValue;
 			UploadedProbeCount = 0;
+			UploadedProbeLayoutHash = 0;
+			UploadedProbeSpacing = 0.0f;
 			TotalRaysPerProbe = 0;
 			bNeedsInitialization = true;
 			LastRadianceUpdateFrameNumber = MAX_uint32;
@@ -227,59 +231,65 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             return;
         }
         Storage.ProbePositionDimensions = ProbePositionDimensions;
+        Storage.UploadedProbeCount = 0;
+        Storage.UploadedProbeLayoutHash = 0;
+        Storage.UploadedProbeSpacing = 0.0f;
     }
 
     const int32 ProbeCount = ActiveProbeCount;
-    // Config.ProbePositions is already tightly packed and remains alive for
-    // this render-thread update. Upload directly from it instead of allocating
-    // and copying a second CPU array on every config publication.
-    FTexture2DRHIRef ProbePositionRHI =
-        Storage.ProbePositions->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D();
-    if (ProbePositionRHI.IsValid())
-    {
-        const FVector4* ProbePositionData = Config.ProbePositions.GetData();
-        for (int32 Row = 0; Row < ProbePositionDimensions.Y; ++Row)
-        {
-            const int32 FirstProbe = Row * ProbePositionDimensions.X;
-            const int32 RowProbeCount = FMath::Min(
-                ProbePositionDimensions.X, ProbeCount - FirstProbe);
-            if (RowProbeCount <= 0)
-            {
-                break;
-            }
-
-            const FUpdateTextureRegion2D UpdateRegion(
-                0, Row, 0, 0, RowProbeCount, 1);
-            const FVector4* RowData = ProbePositionData + FirstProbe;
-            RHICmdList.UpdateTexture2D(
-                ProbePositionRHI,
-                0,
-                UpdateRegion,
-                static_cast<uint32>(RowProbeCount * sizeof(FVector4)),
-                reinterpret_cast<const uint8*>(RowData));
-        }
-        Storage.UploadedProbeCount = ProbeCount;
-    }
-    else
-    {
-        Storage.UploadedProbeCount = 0;
-        UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no 2D RHI resource."));
-    }
-
-
-    // Build a deterministic open-addressed spatial hash for sparse probe cells.
-    // Probe positions are generated on a regular lattice around ProbeGridOrigin,
-    // so integer cell coordinates remain stable when the Master Actor translates.
     const uint32 ProbeCountForHash = static_cast<uint32>(ActiveProbeCount);
     const float SafeProbeSpacing = FMath::Max(1.0f, Config.ProbeSpacing);
-    uint32 RequiredHashCapacity = 2u;
-    while (RequiredHashCapacity < FMath::Max(2u, ProbeCountForHash * 2u) && RequiredHashCapacity < (1u << 30))
-    {
-        RequiredHashCapacity <<= 1u;
-    }
-    // The subsystem computes this fingerprint only when rebuilding the
-    // lattice. Actor translation preserves it, avoiding an O(N) CPU pass here.
+    // The subsystem computes this fingerprint only when rebuilding the lattice.
+    // Probe offsets are invariant under actor translation, so their texture
+    // needs uploading only when count, topology, spacing, or allocation changes.
     const uint32 ProbeLayoutHash = Config.ProbeLayoutHash;
+    const bool bProbePositionsMatch =
+        Storage.ProbePositions.IsValid() &&
+        Storage.UploadedProbeCount == ProbeCount &&
+        Storage.UploadedProbeLayoutHash == ProbeLayoutHash &&
+        FMath::IsNearlyEqual(Storage.UploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f);
+    if (!bProbePositionsMatch)
+    {
+        FTexture2DRHIRef ProbePositionRHI =
+            Storage.ProbePositions->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D();
+        if (ProbePositionRHI.IsValid())
+        {
+            const FVector4* ProbePositionData = Config.ProbePositions.GetData();
+            for (int32 Row = 0; Row < ProbePositionDimensions.Y; ++Row)
+            {
+                const int32 FirstProbe = Row * ProbePositionDimensions.X;
+                const int32 RowProbeCount = FMath::Min(
+                    ProbePositionDimensions.X, ProbeCount - FirstProbe);
+                if (RowProbeCount <= 0)
+                {
+                    break;
+                }
+
+                const FUpdateTextureRegion2D UpdateRegion(
+                    0, Row, 0, 0, RowProbeCount, 1);
+                const FVector4* RowData = ProbePositionData + FirstProbe;
+                RHICmdList.UpdateTexture2D(
+                    ProbePositionRHI,
+                    0,
+                    UpdateRegion,
+                    static_cast<uint32>(RowProbeCount * sizeof(FVector4)),
+                    reinterpret_cast<const uint8*>(RowData));
+            }
+            Storage.UploadedProbeCount = ProbeCount;
+            Storage.UploadedProbeLayoutHash = ProbeLayoutHash;
+            Storage.UploadedProbeSpacing = SafeProbeSpacing;
+        }
+        else
+        {
+            Storage.UploadedProbeCount = 0;
+            Storage.UploadedProbeLayoutHash = 0;
+            Storage.UploadedProbeSpacing = 0.0f;
+            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no 2D RHI resource."));
+        }
+    }
+
+    // Build a deterministic open-addressed spatial hash for sparse probe cells.
+    // Probe offsets are integer-lattice-relative and remain stable on translation.
 
     // Translation changes the uploaded probe positions but preserves the
     // relative lattice. Only a changed lattice requires clearing/reinitializing
