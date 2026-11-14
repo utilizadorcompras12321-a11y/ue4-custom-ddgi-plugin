@@ -212,10 +212,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbePositionDimensions = ProbePositionDimensions;
     }
 
-    const int32 ProbeTextureTexelCount = ProbePositionDimensions.X * ProbePositionDimensions.Y;
-    TArray<FVector4> UploadData;
-    UploadData.SetNumZeroed(ProbeTextureTexelCount);
     const int32 ProbeCount = FMath::Min(Config.ProbePositions.Num(), Config.MaxActiveProbes);
+    // Only upload rows containing active probes. The backing texture remains
+    // sized to MaxActiveProbes, but unused capacity is never sampled by tracing.
+    const int32 ProbeUploadHeight = FMath::Max(
+        1, FMath::DivideAndRoundUp(ProbeCount, ProbePositionDimensions.X));
+    const int32 ProbeUploadTexelCount = ProbePositionDimensions.X * ProbeUploadHeight;
+    TArray<FVector4> UploadData;
+    UploadData.SetNumZeroed(ProbeUploadTexelCount);
     for (int32 ProbeIndex = 0; ProbeIndex < ProbeCount; ++ProbeIndex)
     {
         UploadData[ProbeIndex] = Config.ProbePositions[ProbeIndex];
@@ -227,7 +231,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     {
         Storage.bNeedsInitialization = true;
         const FUpdateTextureRegion2D UpdateRegion(
-            0, 0, 0, 0, ProbePositionDimensions.X, ProbePositionDimensions.Y);
+            0, 0, 0, 0, ProbePositionDimensions.X, ProbeUploadHeight);
         RHICmdList.UpdateTexture2D(
             ProbePositionRHI,
             0,
