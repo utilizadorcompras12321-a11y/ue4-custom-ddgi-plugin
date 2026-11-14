@@ -104,28 +104,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FApplyLightingDeferredShaderParameters, )
 	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 END_SHADER_PARAMETER_STRUCT()
 
-BEGIN_SHADER_PARAMETER_STRUCT(FApplyRadianceCascadeLightingParameters, )
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, NormalTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, BaseColorTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MetallicTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbePositionsTexture)
-	SHADER_PARAMETER_SRV(StructuredBuffer<float4>, ProbeSpatialHash)
-	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, LightingPassUAV)
-	SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
-	SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
-	SHADER_PARAMETER(uint32, ProbeCount)
-	SHADER_PARAMETER(uint32, TotalRaysPerProbe)
-	SHADER_PARAMETER(uint32, BaseRayCount)
-	SHADER_PARAMETER(uint32, HashCapacity)
-	SHADER_PARAMETER(float, ProbeSpacing)
-	SHADER_PARAMETER(FVector4, ProbeGridOrigin)
-	SHADER_PARAMETER(FVector4, BVHWorldOrigin)
-	SHADER_PARAMETER(uint32, ShouldUsePreExposure)
-	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
-END_SHADER_PARAMETER_STRUCT()
+
 
 BEGIN_SHADER_PARAMETER_STRUCT(FUpscaleLightingShaderParameters, )
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, InputGITexture)
@@ -201,31 +180,9 @@ public:
 	}
 };
 
-class FApplyRadianceCascadeLightingShaderCS : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FApplyRadianceCascadeLightingShaderCS);
-	SHADER_USE_PARAMETER_STRUCT(FApplyRadianceCascadeLightingShaderCS, FGlobalShader);
-	using FParameters = FApplyRadianceCascadeLightingParameters;
-	static void ModifyCompilationEnvironment(
-		const FGlobalShaderPermutationParameters& Parameters,
-		FShaderCompilerEnvironment& OutEnvironment)
-	{
-		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		// LightingPassUAV is accumulated with +=, which requires typed UAV loads.
-		OutEnvironment.CompilerFlags.Add(CFLAG_AllowTypedUAVLoads);
-	}
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
 
-IMPLEMENT_GLOBAL_SHADER(
-	FApplyRadianceCascadeLightingShaderCS,
-	"/Plugin/DDGIRadianceCascades/Private/ApplyRadianceCascadesLighting.usf",
-	"MainCS",
-	SF_Compute);
+
+
 
 IMPLEMENT_GLOBAL_SHADER(FApplyLightingDeferredShaderCS, "/Plugin/DDGIRadianceCascades/Private/ApplyLightingDeferred.usf", "MainCS", SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FUpscaleLightingShaderCS, "/Plugin/DDGIRadianceCascades/Private/UpscaleLighting.usf", "MainCS", SF_Compute);
