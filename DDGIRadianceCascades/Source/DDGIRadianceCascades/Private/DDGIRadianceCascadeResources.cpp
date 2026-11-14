@@ -212,8 +212,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.TotalRaysPerProbe = Config.TotalRaysPerProbe;
     }
 
-    // Keep probe origins in a separate float4 texture. Refresh its contents on
-    // every Master Actor publication, including actor movement with unchanged probe count.
+    // Keep grid-relative probe offsets in a separate float4 texture. A pure
+    // Master Actor translation changes only ProbeGridOrigin and does not require
+    // rewriting this texture.
     const int32 ProbeTextureWidth = 4096;
     const int32 ProbeTextureHeight = FMath::Max(1, FMath::DivideAndRoundUp(ActiveProbeCount, ProbeTextureWidth));
     const FIntPoint ProbePositionDimensions(ProbeTextureWidth, ProbeTextureHeight);
@@ -291,8 +292,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Build a deterministic open-addressed spatial hash for sparse probe cells.
     // Probe offsets are integer-lattice-relative and remain stable on translation.
 
-    // Translation changes the uploaded probe positions but preserves the
-    // relative lattice. Only a changed lattice requires clearing/reinitializing
+    // Translation leaves the uploaded probe offsets and relative lattice
+    // unchanged. Only a changed lattice requires clearing/reinitializing
     // per-ray radiance; ray storage recreation already sets this flag in Release().
     const bool bProbeLayoutChanged =
         Storage.ProbeSpatialHashProbeCount != ProbeCountForHash ||
