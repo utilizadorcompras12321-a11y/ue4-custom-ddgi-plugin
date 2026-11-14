@@ -63,6 +63,15 @@ bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
     uint32& OutHashCapacity,
     float& OutProbeSpacing);
 
+/** Returns immutable spatial-hash and BVH-triangle SRVs required by lighting surface rejection. */
+bool DDGIGetRadianceCascadeLightingGeometry_RenderThread(
+    const FSceneInterface* Scene,
+    FShaderResourceViewRHIRef& OutSpatialHashSRV,
+    FShaderResourceViewRHIRef& OutBVHTrianglesSRV,
+    uint32& OutHashCapacity,
+    uint32& OutTriangleCount,
+    float& OutProbeSpacing);
+
 /** Returns the persistent sparse probe-origin texture for RHI compute passes. */
 bool DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(
     const FSceneInterface* Scene,
