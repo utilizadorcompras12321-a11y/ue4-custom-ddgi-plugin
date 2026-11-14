@@ -593,10 +593,13 @@ float3 TraceDeterministicDiffuseBounce(
     for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
     {
         float Phi = ((float)SampleIndex + 0.5f) * HalfPi;
-        float3 SecondaryDirection = normalize(
+        // Tangent and bitangent form an orthonormal basis around the
+        // unit surface normal. The cosine-weighted sample is therefore
+        // unit length analytically; avoid a per-ray normalize/rsqrt here.
+        float3 SecondaryDirection =
             Tangent * (SinTheta * cos(Phi)) +
             Bitangent * (SinTheta * sin(Phi)) +
-            Normal * CosTheta);
+            Normal * CosTheta;
 
         float SecondaryDistance;
         uint SecondaryTriangleIndex;
