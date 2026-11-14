@@ -1,8 +1,11 @@
 #include "DDGIMasterActor.h"
 #include "DDGIMasterSubsystem.h"
+#include "Components/SceneComponent.h"
 
 ADDGIMasterActor::ADDGIMasterActor()
 {
+	SceneRootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	SetRootComponent(SceneRootComponent);
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = false;
 }
