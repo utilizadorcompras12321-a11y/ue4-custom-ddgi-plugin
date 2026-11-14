@@ -57,7 +57,6 @@ void ADDGIMasterActor::RefreshWorldConfig()
 		if (UDDGIMasterSubsystem* Subsystem = World->GetSubsystem<UDDGIMasterSubsystem>())
 		{
 			Subsystem->RegisterMasterActor(this);
-			Subsystem->RefreshConfig(this);
 		}
 	}
 }
