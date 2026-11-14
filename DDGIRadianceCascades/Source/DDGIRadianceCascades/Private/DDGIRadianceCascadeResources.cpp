@@ -61,6 +61,7 @@ namespace
 		FBufferRHIRef BVHTriangles;
 		FShaderResourceViewRHIRef BVHTrianglesSRV;
 		const FDDGISoftwareBVHData* BVHDataIdentity = nullptr;
+		uint32 BVHRetryCountdown = 0;
 		uint32 BVHNodeCount = 0;
 		uint32 BVHTriangleCount = 0;
 		uint32 LastRadianceUpdateFrameNumber = MAX_uint32;
@@ -98,6 +99,7 @@ namespace
 			BVHTriangles.SafeRelease();
 			BVHTrianglesSRV.SafeRelease();
 			BVHDataIdentity = nullptr;
+			BVHRetryCountdown = 0;
 			BVHNodeCount = 0;
 			BVHTriangleCount = 0;
 			Dimensions = FIntPoint::ZeroValue;
@@ -543,7 +545,19 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Upload the immutable CPU BVH once per snapshot. Master Actor movement
     // republishes probe origins but keeps the same shared BVH pointer.
     FDDGISoftwareBVHData* CurrentBVH = Config.SoftwareBVH.Get();
-    if (Storage.BVHDataIdentity != CurrentBVH || !Storage.BVHNodesSRV.IsValid() || !Storage.BVHTrianglesSRV.IsValid())
+    const bool bBVHSourceChanged = Storage.BVHDataIdentity != CurrentBVH;
+    const bool bBVHResourcesReady =
+        Storage.BVHNodesSRV.IsValid() && Storage.BVHTrianglesSRV.IsValid();
+    if (bBVHSourceChanged)
+    {
+        Storage.BVHRetryCountdown = 0;
+    }
+    else if (!bBVHResourcesReady && Storage.BVHRetryCountdown > 0)
+    {
+        --Storage.BVHRetryCountdown;
+    }
+
+    if (bBVHSourceChanged || (!bBVHResourcesReady && Storage.BVHRetryCountdown == 0))
     {
         Storage.BVHNodes.SafeRelease();
         Storage.BVHNodesSRV.SafeRelease();
@@ -627,6 +641,16 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             }
             Storage.BVHNodeCount = 0;
             Storage.BVHTriangleCount = 0;
+        }
+
+        if (Storage.BVHNodesSRV.IsValid() && Storage.BVHTrianglesSRV.IsValid())
+        {
+            Storage.BVHRetryCountdown = 0;
+        }
+        else
+        {
+            Storage.BVHRetryCountdown = 60;
+            UE_LOG(LogTemp, Warning, TEXT("Radiance Cascades: BVH GPU resources unavailable; retrying in 60 scene updates."));
         }
     }
 }
