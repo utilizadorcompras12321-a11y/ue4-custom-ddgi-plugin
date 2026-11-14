@@ -116,9 +116,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         return;
     }
 
-    // The probe-position texture and spatial hash are sized from MaxActiveProbes.
-    // Enforce the same hard cap here as in the actor/subsystem so invalid
-    // Blueprint or externally supplied configs cannot trigger oversized allocations.
+    // MaxActiveProbes is a hard safety cap. GPU ray and probe-position textures
+    // are sized from the actual active probe count to avoid reserving unused capacity.
+    // Enforce the cap here as well as in the actor/subsystem for external configs.
     if (Config.MaxActiveProbes <= 0 || Config.MaxActiveProbes > 32768 ||
         Config.TotalRaysPerProbe <= 0 || Config.ProbePositions.Num() > Config.MaxActiveProbes)
     {
@@ -151,7 +151,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     {
         DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
         UE_LOG(LogTemp, Error,
-            TEXT("Radiance Cascades: requested ray storage exceeds supported limits (%lld records, %.1f MiB; limit %.1f MiB). Reduce MaxActiveProbes or cascade ray counts."),
+            TEXT("Radiance Cascades: requested ray storage exceeds supported limits (%lld records, %.1f MiB; limit %.1f MiB). Reduce active probes or cascade ray counts."),
             TotalTexels,
             static_cast<double>(EstimatedRayStorageBytes) / (1024.0 * 1024.0),
             static_cast<double>(GDDGIRadianceCascadeMaxRayStorageBytes) / (1024.0 * 1024.0));
@@ -209,7 +209,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     // Keep probe origins in a separate float4 texture. Refresh its contents on
-    // every Master Actor publication, including actor movement with unchanged capacity.
+    // every Master Actor publication, including actor movement with unchanged probe count.
     const int32 ProbeTextureWidth = 4096;
     const int32 ProbeTextureHeight = FMath::Max(1, FMath::DivideAndRoundUp(ActiveProbeCount, ProbeTextureWidth));
     const FIntPoint ProbePositionDimensions(ProbeTextureWidth, ProbeTextureHeight);
