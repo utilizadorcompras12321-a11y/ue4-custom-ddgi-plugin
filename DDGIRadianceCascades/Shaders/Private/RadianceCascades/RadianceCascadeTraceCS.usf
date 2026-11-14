@@ -584,21 +584,24 @@ float3 TraceDeterministicDiffuseBounce(
     const uint SampleCount = 4u;
     const float CosTheta = 0.6666666666666667f;
     const float SinTheta = 0.7453559924999299f;
-    const float HalfPi = 1.5707963267948966f;
+    const float AzimuthComponent = 0.7071067811865475f;
 
-    // Fourfold-symmetric cosine-weighted quadrature. The azimuths are evenly
-    // spaced and the cosine is the exact first moment (2/3) of a cosine
-    // hemisphere distribution. No random values or frame-dependent inputs.
+    // Fourfold-symmetric cosine-weighted quadrature. The four azimuths are
+    // the exact sign permutations of (1/sqrt(2), 1/sqrt(2)); encode those
+    // signs directly instead of evaluating sin/cos for compile-time angles.
+    // The sample order matches the original +,+ / -,+ / -,- / +,- sequence.
     [unroll]
     for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
     {
-        float Phi = ((float)SampleIndex + 0.5f) * HalfPi;
+        float TangentSign = ((SampleIndex + 1u) & 2u) != 0u ? -1.0f : 1.0f;
+        float BitangentSign = (SampleIndex & 2u) != 0u ? -1.0f : 1.0f;
         // Tangent and bitangent form an orthonormal basis around the
         // unit surface normal. The cosine-weighted sample is therefore
         // unit length analytically; avoid a per-ray normalize/rsqrt here.
+        float AzimuthScale = SinTheta * AzimuthComponent;
         float3 SecondaryDirection =
-            Tangent * (SinTheta * cos(Phi)) +
-            Bitangent * (SinTheta * sin(Phi)) +
+            Tangent * (TangentSign * AzimuthScale) +
+            Bitangent * (BitangentSign * AzimuthScale) +
             Normal * CosTheta;
 
         float SecondaryDistance;
