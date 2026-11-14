@@ -141,6 +141,31 @@ bool DDGIGetMasterConfig_RenderThread(const FSceneInterface* Scene, FDDGIMasterC
 	return false;
 }
 
+void UDDGIMasterSubsystem::Deinitialize()
+{
+	// Remove render-thread state while the world's scene is still available.
+	// The queued command is ordered after any earlier config publications.
+	UWorld* World = GetWorld();
+	FSceneInterface* Scene = World ? World->Scene : nullptr;
+	if (Scene)
+	{
+		ENQUEUE_RENDER_COMMAND(DDGIDeinitializeWorldSubsystem)(
+			[Scene](FRHICommandListImmediate& RHICmdList)
+			{
+				GDDGIMasterConfigs_RenderThread.Remove(Scene);
+				DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+			});
+	}
+
+	ActiveMasterActor.Reset();
+	ActiveDirectionalLight.Reset();
+	Config = FDDGIMasterConfig();
+	CachedSoftwareBVHTriangleLimit = INDEX_NONE;
+	bHasSearchedDirectionalLights = false;
+
+	Super::Deinitialize();
+}
+
 void UDDGIMasterSubsystem::RegisterMasterActor(ADDGIMasterActor* InActor)
 {
 	if (!IsValid(InActor))
