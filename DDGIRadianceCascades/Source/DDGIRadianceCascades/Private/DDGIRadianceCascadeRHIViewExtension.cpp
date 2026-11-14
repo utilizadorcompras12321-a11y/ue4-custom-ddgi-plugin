@@ -562,7 +562,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64)),
 				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.RaySplitFactor, 1, 4)),
 				InitProbeCount, TotalTexels, GroupsX);
-			DispatchComputeShader(RHICmdList, *InitializeShader, GroupsX, GroupsY, 1);
+			DispatchComputeShader(RHICmdList, InitializeShader.GetShader(), GroupsX, GroupsY, 1);
 			InitializeShader->UnbindResources(RHICmdList, InitializeShader.GetComputeShader());
 
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DirectionsTexture);
@@ -623,7 +623,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		FVector4(Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B, 0.0f),
 		Config->DirectionalLightIntensity,
 		Config->bHasDirectionalLight ? 1u : 0u);
-	DispatchComputeShader(RHICmdList, *TraceShader, GroupsX, GroupsY, 1);
+	DispatchComputeShader(RHICmdList, TraceShader.GetShader(), GroupsX, GroupsY, 1);
 	TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
 
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceTexture);
@@ -674,7 +674,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		GatherPositionsSRV,TrianglesSRV,SpatialHashSRV,NeighborListSRV,GatherOutputUAV,TotalTexels,GroupsX,ProbeCount,
 		TotalRaysPerProbe,HashCapacity,TriangleCount,ProbeSpacing,
 		FVector4(Config->ProbeGridOrigin.X,Config->ProbeGridOrigin.Y,Config->ProbeGridOrigin.Z,0.0f),bUseNeighborList);
-	DispatchComputeShader(RHICmdList,*GatherShader,GroupsX,GroupsY,1);
+	DispatchComputeShader(RHICmdList,GatherShader.GetShader(),GroupsX,GroupsY,1);
 	GatherShader->UnbindResources(RHICmdList,GatherShader.GetComputeShader());
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,RadianceScratchTexture);
 
@@ -715,7 +715,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 				static_cast<uint32>(FMath::Max(1,
 					Config->RadianceCascades.GetRayCount(CascadeIndex + 1) /
 					FMath::Max(1, Config->RadianceCascades.GetRayCount(CascadeIndex)))));
-			DispatchComputeShader(RHICmdList, *IntegrateShader, IntegrationGroups, IntegrationGroupsY, 1);
+			DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), IntegrationGroups, IntegrationGroupsY, 1);
 			IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, CurrentOutputRadiance);
 
