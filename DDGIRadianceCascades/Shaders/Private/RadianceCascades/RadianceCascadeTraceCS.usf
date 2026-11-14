@@ -508,11 +508,17 @@ float3 EvaluateHitSurfaceRadiance(
     float3 ToLight)
 {
     uint TriangleBase = TriangleIndex * 4u;
+    // Load the four packed triangle records once. The emissive channels,
+    // vertex positions and base color all come from these same records.
+    float4 TriangleA = BVHTriangles[TriangleBase + 0u];
+    float4 TriangleB = BVHTriangles[TriangleBase + 1u];
+    float4 TriangleC = BVHTriangles[TriangleBase + 2u];
+    float4 TriangleMaterial = BVHTriangles[TriangleBase + 3u];
     float3 Emissive = float3(
-        BVHTriangles[TriangleBase + 0u].w,
-        BVHTriangles[TriangleBase + 1u].w,
-        BVHTriangles[TriangleBase + 2u].w) * GIIntensity;
-    float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
+        TriangleA.w,
+        TriangleB.w,
+        TriangleC.w) * GIIntensity;
+    float3 BaseColor = max(TriangleMaterial.xyz, 0.0f);
 
     // The geometric normal is only needed for direct diffuse lighting.
     // Emissive-only surfaces and scenes without a directional light can
@@ -525,10 +531,8 @@ float3 EvaluateHitSurfaceRadiance(
         return Emissive;
     }
 
-    float3 A = BVHTriangles[TriangleBase + 0u].xyz;
-    float3 B = BVHTriangles[TriangleBase + 1u].xyz;
-    float3 C = BVHTriangles[TriangleBase + 2u].xyz;
-    float3 Normal = ComputeTriangleGeometricNormal(A, B, C);
+    float3 Normal = ComputeTriangleGeometricNormal(
+        TriangleA.xyz, TriangleB.xyz, TriangleC.xyz);
     if (dot(Normal, IncomingDirection) > 0.0f)
     {
         Normal = -Normal;
