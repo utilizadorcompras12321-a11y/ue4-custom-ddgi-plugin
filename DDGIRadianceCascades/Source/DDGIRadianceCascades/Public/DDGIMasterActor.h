@@ -29,6 +29,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Global", meta = (ClampMin = "0.0"))
 	float GIIntensity = 1.0f;
 
+	// Scales only the directional-light contribution injected into DDGI. Does not change the scene light or exposure.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Lighting", meta = (ClampMin = "0.0", ClampMax = "10000.0", UIMin = "0.0", UIMax = "500.0"))
+	float DirectionalLightGIIntensityScale = 100.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "0.0", Units = "cm"))
 	float DynamicGIDistance = 10000.0f;
 
