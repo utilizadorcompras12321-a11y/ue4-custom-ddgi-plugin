@@ -62,6 +62,7 @@ void FDDGIRadianceCascadesPlugin::RegisterViewExtension()
 	{
 		GDDGIRadianceCascadeViewExtension =
 			FSceneViewExtensions::NewExtension<FDDGIRadianceCascadeRHIViewExtension>();
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: RHI view extension registered after engine initialization."));
 	}
 }
 
