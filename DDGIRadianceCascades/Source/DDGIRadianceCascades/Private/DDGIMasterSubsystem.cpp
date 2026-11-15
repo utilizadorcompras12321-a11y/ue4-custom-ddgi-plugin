@@ -59,6 +59,60 @@ namespace
 	 * If the requested spacing exceeds the probe budget, spacing is increased
 	 * uniformly until the whole spherical domain fits. No partial shell is kept.
 	 */
+	void DDGIBuildMultiResolutionProbePositionsAtSpacing(
+		float Spacing,
+		float Radius,
+		TArray<FVector4>& OutPositions)
+	{
+		OutPositions.Reset();
+		const float SafeSpacing = FMath::Max(1.0f, Spacing);
+		const float SafeRadius = FMath::Max(0.0f, Radius);
+		const int32 MaxCell = FMath::CeilToInt(SafeRadius / SafeSpacing);
+		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
+		const float TransitionWidth = FMath::Max(SafeSpacing * 2.0f, SafeRadius * 0.05f);
+
+		// Four spatial levels: each level doubles the lattice stride.
+		// Adjacent radial support bands overlap around their blend boundary.
+		for (int32 Level = 0; Level < 4; ++Level)
+		{
+			const int32 LevelStep = 1 << Level;
+			const float BoundaryBefore = SafeRadius * (static_cast<float>(Level) / 4.0f);
+			const float BoundaryAfter = SafeRadius * (static_cast<float>(Level + 1) / 4.0f);
+			const float InnerRadius = Level == 0 ? 0.0f :
+				FMath::Max(0.0f, BoundaryBefore - TransitionWidth);
+			const float OuterRadius = Level == 3 ? SafeRadius :
+				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
+			const double InnerRadiusSquared = static_cast<double>(InnerRadius) * InnerRadius;
+			const double OuterRadiusSquared = static_cast<double>(OuterRadius) * OuterRadius;
+			const int32 FirstCell = -((MaxCell / LevelStep) * LevelStep);
+
+			for (int32 Z = FirstCell; Z <= MaxCell; Z += LevelStep)
+			{
+				for (int32 Y = FirstCell; Y <= MaxCell; Y += LevelStep)
+				{
+					for (int32 X = FirstCell; X <= MaxCell; X += LevelStep)
+					{
+						const double DX = static_cast<double>(X) * SafeSpacing;
+						const double DY = static_cast<double>(Y) * SafeSpacing;
+						const double DZ = static_cast<double>(Z) * SafeSpacing;
+						const double DistanceSquared = DX * DX + DY * DY + DZ * DZ;
+						if (DistanceSquared < InnerRadiusSquared ||
+							DistanceSquared > OuterRadiusSquared)
+						{
+							continue;
+						}
+
+						OutPositions.Add(FVector4(
+							static_cast<float>(DX),
+							static_cast<float>(DY),
+							static_cast<float>(DZ),
+							static_cast<float>(Level)));
+					}
+				}
+			}
+		}
+	}
+
 	float DDGIBuildSparseProbePositions(
 		float RequestedSpacing,
 		float Radius,
@@ -67,21 +121,28 @@ namespace
 	{
 		OutPositions.Reset();
 		const int32 SafeMaxProbeCount = FMath::Max(0, MaxProbeCount);
-		if (SafeMaxProbeCount == 0)
-		{
-			return FMath::Max(1.0f, RequestedSpacing);
-		}
-
 		const float SafeRadius = FMath::Max(0.0f, Radius);
 		float EffectiveSpacing = FMath::Max(1.0f, RequestedSpacing);
-		if (DDGICountSparseProbePositions(EffectiveSpacing, SafeRadius, SafeMaxProbeCount) > SafeMaxProbeCount)
+		if (SafeMaxProbeCount == 0)
+		{
+			return EffectiveSpacing;
+		}
+
+		DDGIBuildMultiResolutionProbePositionsAtSpacing(
+			EffectiveSpacing, SafeRadius, OutPositions);
+		if (OutPositions.Num() > SafeMaxProbeCount)
 		{
 			float LowerSpacing = EffectiveSpacing;
-			float UpperSpacing = FMath::Max(EffectiveSpacing, SafeRadius * 2.0f + EffectiveSpacing);
+			float UpperSpacing = FMath::Max(
+				EffectiveSpacing, SafeRadius * 2.0f + EffectiveSpacing);
+			TArray<FVector4> CandidatePositions;
 			for (int32 Iteration = 0; Iteration < 24; ++Iteration)
 			{
-				const float CandidateSpacing = LowerSpacing + (UpperSpacing - LowerSpacing) * 0.5f;
-				if (DDGICountSparseProbePositions(CandidateSpacing, SafeRadius, SafeMaxProbeCount) > SafeMaxProbeCount)
+				const float CandidateSpacing =
+					LowerSpacing + (UpperSpacing - LowerSpacing) * 0.5f;
+				DDGIBuildMultiResolutionProbePositionsAtSpacing(
+					CandidateSpacing, SafeRadius, CandidatePositions);
+				if (CandidatePositions.Num() > SafeMaxProbeCount)
 				{
 					LowerSpacing = CandidateSpacing;
 				}
@@ -91,40 +152,8 @@ namespace
 				}
 			}
 			EffectiveSpacing = UpperSpacing;
-		}
-
-		const int32 MaxShell = FMath::CeilToInt(SafeRadius / EffectiveSpacing);
-		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
-		OutPositions.Reserve(SafeMaxProbeCount);
-		// Store probe positions relative to ProbeGridOrigin. The origin is
-		// supplied separately to shaders, so translating the actor never
-		// accumulates float error in every probe position.
-		OutPositions.Add(FVector4(0.0f, 0.0f, 0.0f, 0.0f));
-
-		for (int32 Z = -MaxShell; Z <= MaxShell; ++Z)
-		{
-			for (int32 Y = -MaxShell; Y <= MaxShell; ++Y)
-			{
-				for (int32 X = -MaxShell; X <= MaxShell; ++X)
-				{
-					if (X == 0 && Y == 0 && Z == 0)
-					{
-						continue;
-					}
-					const double DX = static_cast<double>(X) * EffectiveSpacing;
-					const double DY = static_cast<double>(Y) * EffectiveSpacing;
-					const double DZ = static_cast<double>(Z) * EffectiveSpacing;
-					if (DX * DX + DY * DY + DZ * DZ > RadiusSquared)
-					{
-						continue;
-					}
-					const FVector Position(
-						static_cast<float>(DX),
-						static_cast<float>(DY),
-						static_cast<float>(DZ));
-					OutPositions.Add(FVector4(Position.X, Position.Y, Position.Z, 0.0f));
-				}
-			}
+			DDGIBuildMultiResolutionProbePositionsAtSpacing(
+				EffectiveSpacing, SafeRadius, OutPositions);
 		}
 		return EffectiveSpacing;
 	}
