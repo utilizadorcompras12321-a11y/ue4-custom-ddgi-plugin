@@ -263,7 +263,13 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
         Storage.Dimensions = RequiredDimensions;
         Storage.TotalRaysPerProbe = Config.TotalRaysPerProbe;
-        Storage.RayProbeCapacity = static_cast<int32>(RequiredProbeCapacity);
+        // The final texture row is fully allocated, even when the active ray
+        // count does not fill it. Count every complete probe-sized range that
+        // physically fits in the allocated texture, not only active probes.
+        const int64 AllocatedRayTexels =
+            static_cast<int64>(Storage.Dimensions.X) * Storage.Dimensions.Y;
+        Storage.RayProbeCapacity = static_cast<int32>(
+            AllocatedRayTexels / Config.TotalRaysPerProbe);
     }
 
     // Keep grid-relative probe offsets in a separate float4 texture. A pure
