@@ -122,7 +122,7 @@ namespace
 			const float BoundaryBefore = SafeRadius * (static_cast<float>(Level) / 4.0f);
 			const float BoundaryAfter = SafeRadius * (static_cast<float>(Level + 1) / 4.0f);
 			const float InnerRadius = Level == 0 ? 0.0f :
-				FMath::Max(0.0, BoundaryBefore - TransitionWidth);
+				FMath::Max(0.0f, BoundaryBefore - TransitionWidth);
 			const float OuterRadius = Level == 3 ? SafeRadius :
 				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
 			const double SpacingSquared = SafeSpacingDouble * SafeSpacingDouble;
@@ -336,9 +336,9 @@ namespace
 						const int32 CellY = static_cast<int32>(static_cast<int64>(CenterCell.Y) + DY);
 						const int32 CellZ = static_cast<int32>(static_cast<int64>(CenterCell.Z) + DZ);
 						OutPositions.Add(FVector4(
-							static_cast<float>(CellX) * static_cast<float>(SafeSpacing),
-							static_cast<float>(CellY) * static_cast<float>(SafeSpacing),
-							static_cast<float>(CellZ) * static_cast<float>(SafeSpacing),
+							static_cast<float>(CellX) * SafeSpacing,
+							static_cast<float>(CellY) * SafeSpacing,
+							static_cast<float>(CellZ) * SafeSpacing,
 							static_cast<float>(Level)));
 					}
 				}
