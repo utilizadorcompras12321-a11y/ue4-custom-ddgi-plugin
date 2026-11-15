@@ -268,6 +268,31 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const int64 RequiredCapacityTexels = RequiredProbeCapacity * static_cast<int64>(Config.TotalRaysPerProbe);
     const int64 CapacityHeight64 = (RequiredCapacityTexels + GDDGIRadianceCascadeTextureWidth - 1) /
         GDDGIRadianceCascadeTextureWidth;
+
+    // Validate the actual grow-only allocation, including power-of-two headroom
+    // and any retained high-water capacity. The active-count estimate above is
+    // not sufficient to bound the textures that will really be allocated.
+    const int64 AllocatedCapacityRayTexels =
+        CapacityHeight64 * GDDGIRadianceCascadeTextureWidth;
+    const int64 EstimatedCapacityStorageBytes =
+        AllocatedCapacityRayTexels * GDDGIRadianceCascadeBytesPerProbeRay +
+        AllocatedDirectionTexels * GDDGIRadianceCascadeBytesPerSharedDirection;
+    if (RequiredCapacityTexels <= 0 ||
+        RequiredCapacityTexels > MaxTextureTexels ||
+        CapacityHeight64 <= 0 ||
+        CapacityHeight64 > GDDGIRadianceCascadeMaxTextureDimension ||
+        EstimatedCapacityStorageBytes > GDDGIRadianceCascadeMaxRayStorageBytes)
+    {
+        DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+        UE_LOG(LogTemp, Error,
+            TEXT("Radiance Cascades: allocated ray capacity exceeds supported limits (%lld probes, %lld records, %.1f MiB; limit %.1f MiB). Reduce active probes or cascade ray counts."),
+            RequiredProbeCapacity,
+            RequiredCapacityTexels,
+            static_cast<double>(EstimatedCapacityStorageBytes) / (1024.0 * 1024.0),
+            static_cast<double>(GDDGIRadianceCascadeMaxRayStorageBytes) / (1024.0 * 1024.0));
+        return;
+    }
+
     const FIntPoint RequiredDimensions(GDDGIRadianceCascadeTextureWidth, static_cast<int32>(CapacityHeight64));
     const FIntPoint RequiredDirectionDimensions(GDDGIRadianceCascadeTextureWidth, static_cast<int32>(DirectionHeight64));
     const bool bRayStorageMatches =
@@ -497,8 +522,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     {
         // A matching uploaded snapshot without its CPU identity cache is an
         // inconsistent state; fail closed rather than building lookup data
-        // from stale or incomplete keys.
-        DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+        // from stale or incomplete keys.        DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
         UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: cached probe-cell identity count does not match the uploaded layout."));
         return;
     }
@@ -997,8 +1021,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             EmptyNodeCreateInfo.ResourceArray = &EmptyNodeData;
             Storage.BVHNodes = RHICreateStructuredBuffer(
                 sizeof(FVector4),
-                static_cast<uint32>(EmptyNodeData.GetResourceDataSize()),
-                BUF_ShaderResource,
+                static_cast<uint32>(EmptyNodeData.GetResourceDataSize()),                BUF_ShaderResource,
                 EmptyNodeCreateInfo);
 
             TResourceArray<FVector4> EmptyTriangleData;
