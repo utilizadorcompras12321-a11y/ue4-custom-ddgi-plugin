@@ -410,9 +410,11 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Build a deterministic open-addressed spatial hash for sparse probe cells.
     // Probe offsets are integer-lattice-relative and remain stable on translation.
 
-    // The camera-centered grid moves by changing only its origin; uploaded probe
-    // offsets remain unchanged. The view extension invalidates per-ray radiance
-    // when that snapped origin changes. Ray storage recreation also sets this flag.
+    // Probe positions currently describe a fixed world-origin lattice. They are not
+    // recentered around the camera, and changing ProbeGridOrigin alone would only
+    // translate their world-space locations. A future camera-selected active window
+    // must preserve stable cell identity and initialize only newly assigned slots.
+    // Ray storage recreation also sets this flag.
     // The change flag was captured before the upload, so a failed hash
     // allocation cannot trigger repeated initialization on an unchanged layout.
     if (bProbeLayoutChanged)
