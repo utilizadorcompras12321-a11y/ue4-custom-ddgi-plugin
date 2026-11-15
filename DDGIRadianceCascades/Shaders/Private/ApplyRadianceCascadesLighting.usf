@@ -102,6 +102,15 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         PixelIndex.y >= (int)ScaledViewSizeAndInvSize.y) return;
 
     int2 BufferPixelIndex = PixelIndex + int2(ViewRectMin);
+
+    // Isolate the post-process output path from all DDGI inputs. If this mode
+    // is visible, the callback's output is reaching the final scene image.
+    if (DebugMode == 3u)
+    {
+        SceneColorOutputUAV[BufferPixelIndex] = float4(1.0f, 0.0f, 1.0f, 1.0f);
+        return;
+    }
+
     float2 ScreenUV = (float2(PixelIndex) + 0.5f) * ScaledViewSizeAndInvSize.zw;
     int2 GBufferPixel = int2(ScreenUV * View.ViewSizeAndInvSize.xy);
     float2 GBufferUV = (float2(GBufferPixel) + 0.5f) * View.ViewSizeAndInvSize.zw;
