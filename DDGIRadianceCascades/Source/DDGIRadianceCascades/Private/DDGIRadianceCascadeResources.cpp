@@ -11,11 +11,12 @@
 
 namespace
 {
-	FORCEINLINE uint32 DDGIHashProbeCell(const FIntVector& Cell)
+	FORCEINLINE uint32 DDGIHashProbeCell(const FIntVector& Cell, uint32 Level)
 	{
 		uint32 Hash = static_cast<uint32>(Cell.X) * 0x8DA6B343u;
 		Hash ^= static_cast<uint32>(Cell.Y) * 0xD8163841u;
 		Hash ^= static_cast<uint32>(Cell.Z) * 0xCB1AB31Fu;
+		Hash ^= (Level + 1u) * 0x9E3779B9u;
 		Hash ^= Hash >> 16;
 		Hash *= 0x7FEB352Du;
 		Hash ^= Hash >> 15;
@@ -23,6 +24,20 @@ namespace
 		Hash ^= Hash >> 16;
 		return Hash;
 	}
+
+	struct FDDGIProbeCellKey
+	{
+		FIntVector Cell;
+		uint32 Level;
+		bool operator==(const FDDGIProbeCellKey& Other) const
+		{
+			return Cell == Other.Cell && Level == Other.Level;
+		}
+		friend uint32 GetTypeHash(const FDDGIProbeCellKey& Key)
+		{
+			return HashCombine(GetTypeHash(Key.Cell), GetTypeHash(Key.Level));
+		}
+	};
 }
 
 namespace
@@ -415,7 +430,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                 FMath::RoundToInt(Relative.X / SafeProbeSpacing),
                 FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
                 FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
-            uint32 Slot = DDGIHashProbeCell(Cell) & (RequiredHashCapacity - 1u);
+            const uint32 ProbeLevel = static_cast<uint32>(FMath::Clamp(FMath::RoundToInt(Position.W), 0, 7));
+            uint32 Slot = DDGIHashProbeCell(Cell, ProbeLevel) & (RequiredHashCapacity - 1u);
             bool bInserted = false;
             for (uint32 ProbeAttempt = 0u; ProbeAttempt < RequiredHashCapacity; ++ProbeAttempt)
             {
@@ -426,13 +442,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                         static_cast<float>(Cell.X),
                         static_cast<float>(Cell.Y),
                         static_cast<float>(Cell.Z),
-                        static_cast<float>(ProbeIndex));
+                        static_cast<float>(ProbeIndex * 8u + ProbeLevel));
                     bInserted = true;
                     break;
                 }
                 if (FMath::RoundToInt(Entry.X) == Cell.X &&
                     FMath::RoundToInt(Entry.Y) == Cell.Y &&
-                    FMath::RoundToInt(Entry.Z) == Cell.Z)
+                    FMath::RoundToInt(Entry.Z) == Cell.Z &&
+                    (static_cast<uint32>(FMath::RoundToInt(Entry.W)) & 7u) == ProbeLevel)
                 {
                     bHashBuildSucceeded = false;
                     break;
@@ -504,7 +521,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbeNeighborLayoutHash = 0;
         Storage.ProbeNeighborSpacing = 0.0f;
 
-        TMap<FIntVector, uint32> ProbeCellToIndex;
+        TMap<FDDGIProbeCellKey, uint32> ProbeCellToIndex;
         ProbeCellToIndex.Reserve(static_cast<int32>(ProbeCountForHash));
         bool bBuildSucceeded = true;
         for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
@@ -515,12 +532,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                 FMath::RoundToInt(Relative.X / SafeProbeSpacing),
                 FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
                 FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
-            if (ProbeCellToIndex.Contains(Cell))
+            const uint32 ProbeLevel = static_cast<uint32>(FMath::Clamp(FMath::RoundToInt(Position.W), 0, 7));
+            const FDDGIProbeCellKey Key{ Cell, ProbeLevel };
+            if (ProbeCellToIndex.Contains(Key))
             {
                 bBuildSucceeded = false;
                 break;
             }
-            ProbeCellToIndex.Add(Cell, ProbeIndex);
+            ProbeCellToIndex.Add(Key, ProbeIndex);
         }
 
         TResourceArray<uint32> NeighborEntries;
@@ -549,16 +568,10 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                 {
                     if (X == 0 && Y == 0 && Z == 0) continue;
                     const FIntVector NeighborCell = CenterCell + FIntVector(X, Y, Z) * LevelCellStep;
-                    if (const uint32* NeighborIndex = ProbeCellToIndex.Find(NeighborCell))
+                    const FDDGIProbeCellKey NeighborKey{ NeighborCell, static_cast<uint32>(ProbeLevel) };
+                    if (const uint32* NeighborIndex = ProbeCellToIndex.Find(NeighborKey))
                     {
-                        const FVector4& NeighborPosition = Config.ProbePositions[static_cast<int32>(*NeighborIndex)];
-                        const int32 NeighborLevel = FMath::Clamp(FMath::RoundToInt(NeighborPosition.W), 0, 7);
-                        // The gather kernel uses the center probe's spacing.
-                        // Never feed it a neighbor from another spatial level.
-                        if (NeighborLevel == ProbeLevel)
-                        {
-                            NeighborEntries[static_cast<int32>(ProbeIndex * 26u + Slot)] = *NeighborIndex;
-                        }
+                        NeighborEntries[static_cast<int32>(ProbeIndex * 26u + Slot)] = *NeighborIndex;
                     }
                     ++Slot;
                 }
