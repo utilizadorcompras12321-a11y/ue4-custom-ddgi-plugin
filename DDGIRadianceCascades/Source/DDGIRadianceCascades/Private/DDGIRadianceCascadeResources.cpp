@@ -404,11 +404,29 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // before doing per-probe validation/quantization so steady-state scene
     // updates reuse the cached integer keys instead of rebuilding them.
     const uint32 ProbeLayoutHash = Config.ProbeLayoutHash;
+    bool bProbeIdentityMatches =
+        Config.ProbeCellCoordinates.Num() == ActiveProbeCount &&
+        Config.ProbeLevels.Num() == ActiveProbeCount &&
+        Storage.ProbeCellKeys.Num() == ActiveProbeCount;
+    if (bProbeIdentityMatches)
+    {
+        for (int32 ProbeIndex = 0; ProbeIndex < ActiveProbeCount; ++ProbeIndex)
+        {
+            const FDDGIProbeCellKey& CachedKey = Storage.ProbeCellKeys[ProbeIndex];
+            if (CachedKey.Cell != Config.ProbeCellCoordinates[ProbeIndex] ||
+                CachedKey.Level != static_cast<uint32>(Config.ProbeLevels[ProbeIndex]))
+            {
+                bProbeIdentityMatches = false;
+                break;
+            }
+        }
+    }
     const bool bProbePositionsMatch =
         Storage.ProbePositions.IsValid() &&
         Storage.UploadedProbeCount == ProbeCount &&
         Storage.UploadedProbeLayoutHash == ProbeLayoutHash &&
-        FMath::IsNearlyEqual(Storage.UploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f);
+        FMath::IsNearlyEqual(Storage.UploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f) &&
+        bProbeIdentityMatches;
     const bool bPhysicalMappingMissing =
         Storage.PhysicalSlotCapacity == 0 ||
         Storage.LogicalToPhysicalSlotCPU.Num() != ActiveProbeCount ||
@@ -417,6 +435,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
     if (bProbeLayoutChanged)
     {
+        if (Config.ProbeCellCoordinates.Num() != ActiveProbeCount ||
+            Config.ProbeLevels.Num() != ActiveProbeCount)
+        {
+            DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+            UE_LOG(LogTemp, Error,
+                TEXT("Radiance Cascades: exact integer probe identity arrays do not match the active probe count."));
+            return;
+        }
         const float LatticeTolerance = FMath::Max(0.01f, SafeProbeSpacing * 1.0e-4f);
         Storage.ProbeCellKeys.SetNumUninitialized(ActiveProbeCount);
         Storage.ProbeCellToLogicalIndex.Reset();
@@ -424,22 +450,19 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         for (int32 ProbeIndex = 0; ProbeIndex < ActiveProbeCount; ++ProbeIndex)
         {
             const FVector4& Position = Config.ProbePositions[ProbeIndex];
-            const int32 ProbeLevel = FMath::RoundToInt(Position.W);
+            const int32 ProbeLevel = Config.ProbeLevels[ProbeIndex];
+            const FIntVector Cell = Config.ProbeCellCoordinates[ProbeIndex];
             if (ProbeLevel < 0 || ProbeLevel > 7 ||
                 !FMath::IsNearlyEqual(Position.W, static_cast<float>(ProbeLevel), 1.0e-3f))
             {
                 DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
                 UE_LOG(LogTemp, Error,
-                    TEXT("Radiance Cascades: probe %d has invalid spatial level %.3f; supported levels are integer values 0..7."),
-                    ProbeIndex, Position.W);
+                    TEXT("Radiance Cascades: probe %d has invalid explicit spatial level %d (position level %.3f)."),
+                    ProbeIndex, ProbeLevel, Position.W);
                 return;
             }
 
             const int32 LevelCellStep = 1 << ProbeLevel;
-            const FIntVector Cell(
-                FMath::RoundToInt(Position.X / SafeProbeSpacing),
-                FMath::RoundToInt(Position.Y / SafeProbeSpacing),
-                FMath::RoundToInt(Position.Z / SafeProbeSpacing));
             const FDDGIProbeCellKey ProbeKey{ Cell, static_cast<uint32>(ProbeLevel) };
             Storage.ProbeCellKeys[ProbeIndex] = ProbeKey;
             if (Storage.ProbeCellToLogicalIndex.Contains(ProbeKey))
@@ -452,9 +475,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             }
             Storage.ProbeCellToLogicalIndex.Add(ProbeKey, static_cast<uint32>(ProbeIndex));
             const bool bOnBaseLattice =
-                FMath::IsNearlyEqual(Position.X, static_cast<float>(Cell.X) * SafeProbeSpacing, LatticeTolerance) &&
-                FMath::IsNearlyEqual(Position.Y, static_cast<float>(Cell.Y) * SafeProbeSpacing, LatticeTolerance) &&
-                FMath::IsNearlyEqual(Position.Z, static_cast<float>(Cell.Z) * SafeProbeSpacing, LatticeTolerance);
+                FMath::IsNearlyEqual(Position.X, static_cast<float>(static_cast<double>(Cell.X) * SafeProbeSpacing), LatticeTolerance) &&
+                FMath::IsNearlyEqual(Position.Y, static_cast<float>(static_cast<double>(Cell.Y) * SafeProbeSpacing), LatticeTolerance) &&
+                FMath::IsNearlyEqual(Position.Z, static_cast<float>(static_cast<double>(Cell.Z) * SafeProbeSpacing), LatticeTolerance);
             const bool bAlignedToLevel =
                 (Cell.X % LevelCellStep) == 0 &&
                 (Cell.Y % LevelCellStep) == 0 &&
