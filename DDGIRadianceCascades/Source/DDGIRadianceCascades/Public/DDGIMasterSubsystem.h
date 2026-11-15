@@ -43,6 +43,7 @@ struct FDDGIMasterConfig
 	UPROPERTY() FLinearColor DirectionalLightColor = FLinearColor::White;
 	UPROPERTY() float DirectionalLightIntensity = 0.0f;
 	UPROPERTY() float DynamicGIDistance = 10000.0f;
+	UPROPERTY() float ProbeGridDistance = 4000.0f;
 	UPROPERTY() FDDGIRadianceCascadeConfig RadianceCascades;
 	UPROPERTY() TArray<FDDGIRadianceCascadeSlice> RadianceCascadeSlices;
 	UPROPERTY() int32 TotalRaysPerProbe = 0;
