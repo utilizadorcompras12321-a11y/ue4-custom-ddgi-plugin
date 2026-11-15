@@ -139,37 +139,6 @@ const FDDGIMasterConfig* DDGIGetMasterConfig_RenderThread(const FSceneInterface*
 	return GDDGIMasterConfigs_RenderThread.Find(Scene);
 }
 
-void DDGIUpdateCameraProbeGridOrigin_RenderThread(
-	const FSceneInterface* Scene,
-	const FVector& CameraWorldPosition)
-{
-	check(IsInRenderingThread() || IsInParallelRenderingThread());
-	FDDGIMasterConfig* Config = GDDGIMasterConfigs_RenderThread.Find(Scene);
-	if (!Config || !Config->SoftwareBVH.IsValid() || Config->ProbePositions.Num() == 0)
-	{
-		return;
-	}
-
-	// Snap in the BVH-local coordinate frame. This keeps the lattice stable
-	// between cell crossings instead of continuously swimming with the camera.
-	const float SafeSpacing = FMath::Max(1.0f, Config->ProbeSpacing);
-	const FVector CameraInBVHSpace = CameraWorldPosition - Config->SoftwareBVH->WorldOrigin;
-	const FVector SnappedOrigin(
-		static_cast<float>(FMath::RoundToInt(CameraInBVHSpace.X / SafeSpacing)) * SafeSpacing,
-		static_cast<float>(FMath::RoundToInt(CameraInBVHSpace.Y / SafeSpacing)) * SafeSpacing,
-		static_cast<float>(FMath::RoundToInt(CameraInBVHSpace.Z / SafeSpacing)) * SafeSpacing);
-
-	if (Config->ProbeGridOrigin.Equals(SnappedOrigin, 0.01f))
-	{
-		return;
-	}
-
-	Config->ProbeGridOrigin = SnappedOrigin;
-	// Probe offsets and topology are unchanged, but each slot now represents
-	// a different world position. Never reuse radiance from the previous center.
-	DDGIInvalidateRadianceCascadeHistory_RenderThread(Scene);
-}
-
 void UDDGIMasterSubsystem::Deinitialize()
 {
 	// Remove render-thread state while the world's scene is still available.
@@ -430,9 +399,10 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 		}
 	}
 
-	// The BVH origin remains fixed until the BVH is rebuilt. The Master Actor
-	// may move independently; only its probe lattice moves within this frame.
-	Config.ProbeGridOrigin = InActor->GetActorLocation() - Config.SoftwareBVH->WorldOrigin;
+	// The probe lattice is anchored to world origin (0,0,0), never to the
+	// Master Actor or the active camera. Probe positions remain world-stable.
+	// Coordinates are stored relative to the BVH origin for shader precision.
+	Config.ProbeGridOrigin = -Config.SoftwareBVH->WorldOrigin;
 	const float RequestedProbeSpacing = Config.ProbeSpacing;
 	Config.ProbeSpacing = DDGIBuildSparseProbePositions(
 		RequestedProbeSpacing,
