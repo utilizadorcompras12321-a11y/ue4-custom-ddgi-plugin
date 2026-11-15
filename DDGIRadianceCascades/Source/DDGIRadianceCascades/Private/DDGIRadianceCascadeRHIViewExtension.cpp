@@ -18,8 +18,8 @@
 
 static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
     TEXT("r.DDGI.UsePrecomputedProbeNeighbors"),
-    0,
-    TEXT("Use precomputed probe neighbors in DDGI spatial gather (0=spatial hash, 1=precomputed list)."),
+    1,
+    TEXT("Use precomputed probe neighbors in DDGI spatial gather (0=spatial hash, 1=precomputed list; default 1)."),
     ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
