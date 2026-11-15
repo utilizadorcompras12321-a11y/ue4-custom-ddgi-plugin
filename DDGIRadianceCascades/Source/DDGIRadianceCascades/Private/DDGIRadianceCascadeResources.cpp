@@ -87,6 +87,7 @@ namespace
 		bool bNeedsInitialization = true;
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
 		int32 TotalRaysPerProbe = 0;
+		int32 RayProbeCapacity = 0;
 		FIntPoint ProbePositionDimensions = FIntPoint::ZeroValue;
 		int32 UploadedProbeCount = 0;
 		uint32 UploadedProbeLayoutHash = 0;
@@ -122,6 +123,7 @@ namespace
 			BVHNodeCount = 0;
 			BVHTriangleCount = 0;
 			Dimensions = FIntPoint::ZeroValue;
+			RayProbeCapacity = 0;
 			ProbePositionDimensions = FIntPoint::ZeroValue;
 			UploadedProbeCount = 0;
 			UploadedProbeLayoutHash = 0;
@@ -199,8 +201,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.TotalRaysPerProbe != 0 &&
         Storage.TotalRaysPerProbe != Config.TotalRaysPerProbe;
     const int64 ExistingProbeCapacity =
-        (!bRayLayoutChanged && Storage.Dimensions.X > 0 && Storage.Dimensions.Y > 0)
-        ? (static_cast<int64>(Storage.Dimensions.X) * Storage.Dimensions.Y) / Config.TotalRaysPerProbe
+        (!bRayLayoutChanged && Storage.RayProbeCapacity > 0)
+        ? static_cast<int64>(Storage.RayProbeCapacity)
         : 0;
     const int64 RequiredProbeCapacity = FMath::Max<int64>(ActiveProbeCount, ExistingProbeCapacity);
     const int64 RequiredCapacityTexels = RequiredProbeCapacity * static_cast<int64>(Config.TotalRaysPerProbe);
@@ -225,6 +227,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.HitTriangleIndex.SafeRelease();
         Storage.Dimensions = FIntPoint::ZeroValue;
         Storage.TotalRaysPerProbe = 0;
+        Storage.RayProbeCapacity = 0;
         Storage.bNeedsInitialization = true;
 
         // Half-float RGBA texels store direction and radiance; R32F stores hit distance.
@@ -260,6 +263,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
         Storage.Dimensions = RequiredDimensions;
         Storage.TotalRaysPerProbe = Config.TotalRaysPerProbe;
+        Storage.RayProbeCapacity = static_cast<int32>(RequiredProbeCapacity);
     }
 
     // Keep grid-relative probe offsets in a separate float4 texture. A pure
