@@ -700,6 +700,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     const bool bProbeHashMatches =
+        !bProbeLayoutChanged &&
         Storage.ProbeSpatialHash.IsValid() &&
         Storage.ProbeSpatialHashSRV.IsValid() &&
         Storage.ProbeSpatialHashCapacity == RequiredHashCapacity &&
@@ -799,6 +800,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Precompute each probe's 26 neighboring probe indices. Slot order exactly
     // matches the shader's Z/Y/X traversal, excluding the center cell.
     const bool bNeighborListMatches =
+        !bProbeLayoutChanged &&
         Storage.ProbeNeighborIndices.IsValid() &&
         Storage.ProbeNeighborIndicesSRV.IsValid() &&
         Storage.ProbeNeighborProbeCount == ProbeCountForHash &&
@@ -844,11 +846,26 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                 for (int32 X = -1; X <= 1; ++X)
                 {
                     if (X == 0 && Y == 0 && Z == 0) continue;
-                    const FIntVector NeighborCell = CenterCell + FIntVector(X, Y, Z) * LevelCellStep;
-                    const FDDGIProbeCellKey NeighborKey{ NeighborCell, static_cast<uint32>(ProbeLevel) };
-                    if (const uint32* NeighborIndex = ProbeCellToIndex.Find(NeighborKey))
+                    const int64 NeighborX = static_cast<int64>(CenterCell.X) +
+                        static_cast<int64>(X) * LevelCellStep;
+                    const int64 NeighborY = static_cast<int64>(CenterCell.Y) +
+                        static_cast<int64>(Y) * LevelCellStep;
+                    const int64 NeighborZ = static_cast<int64>(CenterCell.Z) +
+                        static_cast<int64>(Z) * LevelCellStep;
+                    if (NeighborX >= MIN_int32 && NeighborX <= MAX_int32 &&
+                        NeighborY >= MIN_int32 && NeighborY <= MAX_int32 &&
+                        NeighborZ >= MIN_int32 && NeighborZ <= MAX_int32)
                     {
-                        NeighborEntries[static_cast<int32>(ProbeIndex * 26u + Slot)] = *NeighborIndex;
+                        const FIntVector NeighborCell(
+                            static_cast<int32>(NeighborX),
+                            static_cast<int32>(NeighborY),
+                            static_cast<int32>(NeighborZ));
+                        const FDDGIProbeCellKey NeighborKey{
+                            NeighborCell, static_cast<uint32>(ProbeLevel) };
+                        if (const uint32* NeighborIndex = ProbeCellToIndex.Find(NeighborKey))
+                        {
+                            NeighborEntries[static_cast<int32>(ProbeIndex * 26u + Slot)] = *NeighborIndex;
+                        }
                     }
                     ++Slot;
                 }
