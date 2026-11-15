@@ -13,6 +13,8 @@ uint ProbeCount;
 RWTexture2D<float4> DirectionsUAV;
 RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
+RWTexture2D<float4> RadianceScratchUAV;
+RWTexture2D<uint> HitTriangleIndexUAV;
 
 
 [numthreads(64, 1, 1)]
@@ -91,4 +93,6 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     DirectionsUAV[Pixel] = float4(Direction, (float)CascadeIndex);
     RadianceUAV[Pixel] = 0.0f;
     HitDistanceUAV[Pixel] = -1.0f;
+    RadianceScratchUAV[Pixel] = 0.0f;
+    HitTriangleIndexUAV[Pixel] = 0u;
 }
