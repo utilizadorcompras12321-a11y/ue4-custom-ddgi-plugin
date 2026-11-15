@@ -79,7 +79,11 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     // ProbePositionsTexture stores grid-relative offsets. Reconstruct the
     // position in BVH-local coordinates before comparing hit positions or
     // distances with neighboring probes.
-    float3 CenterPositionOffset = ProbePositionsTexture.Load(int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0)).xyz;
+    // Load the probe metadata once: both position and level are needed for
+    // every ray processed by this probe.
+    float4 CenterProbeData = ProbePositionsTexture.Load(
+        int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0));
+    float3 CenterPositionOffset = CenterProbeData.xyz;
     float3 CenterPosition = ProbeGridOrigin.xyz + CenterPositionOffset;
     float3 CenterDirection = normalize(DirectionsTexture.Load(int3(Pixel, 0)).xyz);
     float4 CenterRadianceSample = RadianceTexture.Load(int3(Pixel, 0));
@@ -123,8 +127,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     float WeightSum = 1.0f;
     // ProbePositionsTexture.w stores the spatial level. Level zero preserves
     // the original uniform lattice; each subsequent level doubles spacing.
-    float CenterLevelValue = ProbePositionsTexture.Load(
-        int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0)).w;
+    float CenterLevelValue = CenterProbeData.w;
     uint CenterLevel = (uint)clamp(round(CenterLevelValue), 0.0f, 7.0f);
     float LevelScale = (float)(1u << CenterLevel);
     float SafeSpacing = max(ProbeSpacing, 1.0f) * LevelScale;
