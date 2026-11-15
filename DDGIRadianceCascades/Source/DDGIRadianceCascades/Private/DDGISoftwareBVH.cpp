@@ -396,6 +396,10 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 	FVector& OutWorldOrigin,
 	FDDGISoftwareBVHBuildStats& OutStats)
 {
+	// This builder reads UWorld, component, mesh render-data, and material UObjects.
+	// Keep the entire snapshot operation on the Game Thread; do not add worker-thread calls.
+	check(IsInGameThread());
+
 	OutPackedNodes.Reset();
 	OutPackedTriangles.Reset();
 	OutWorldOrigin = FVector::ZeroVector;
