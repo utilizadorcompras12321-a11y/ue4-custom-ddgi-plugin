@@ -11,6 +11,7 @@ Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> BVHTriangles;
 StructuredBuffer<int4> ProbeSpatialHash;
 StructuredBuffer<uint> ProbeNeighborIndices;
+StructuredBuffer<uint> LogicalToPhysicalSlots;
 uint UsePrecomputedProbeNeighbors;
 RWTexture2D<float4> OutputRadianceUAV;
 
@@ -75,7 +76,9 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     if (LinearIndex >= TotalTexels || ProbeCount == 0u || TotalRaysPerProbe == 0u) return;
     uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
     uint RayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
-    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
+    uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+    uint PhysicalLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
+    uint2 Pixel = uint2(PhysicalLinearIndex % TextureWidth, PhysicalLinearIndex / TextureWidth);
     // ProbePositionsTexture stores grid-relative offsets. Reconstruct the
     // position in BVH-local coordinates before comparing hit positions or
     // distances with neighboring probes.
@@ -174,7 +177,8 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         float3 NeighborPositionOffset = ProbePositionsTexture.Load(
             int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
         float3 NeighborPosition = ProbeGridOrigin.xyz + NeighborPositionOffset;
-        uint NeighborLinear = NeighborIndex * TotalRaysPerProbe + RayIndex;
+        uint NeighborPhysicalIndex = LogicalToPhysicalSlots[NeighborIndex];
+        uint NeighborLinear = NeighborPhysicalIndex * TotalRaysPerProbe + RayIndex;
         uint2 NeighborPixel = uint2(NeighborLinear % TextureWidth, NeighborLinear / TextureWidth);
         // Ray directions are initialized solely from RayIndex and cascade
         // layout, so every probe stores the exact same direction for this ray.
