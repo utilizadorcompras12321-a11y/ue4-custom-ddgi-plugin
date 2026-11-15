@@ -22,6 +22,12 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
     TEXT("Use precomputed probe neighbors in DDGI spatial gather (0=spatial hash, 1=precomputed list)."),
     ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
+    TEXT("r.DDGI.DebugApply"),
+    0,
+    TEXT("DDGI apply debug view (0=off, 1=probe coverage, 2=raw irradiance)."),
+    ECVF_RenderThreadSafe);
+
 class FDDGIRadianceCascadeInitializeRHI : public FGlobalShader
 {
 	DECLARE_SHADER_TYPE(FDDGIRadianceCascadeInitializeRHI, Global);
@@ -513,6 +519,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(FVector4, ProbeGridOrigin)
 		SHADER_PARAMETER(FVector4, BVHWorldOrigin)
 		SHADER_PARAMETER(uint32, ShouldUsePreExposure)
+		SHADER_PARAMETER(uint32, DebugMode)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -654,6 +661,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		Config->SoftwareBVH->WorldOrigin.Y,
 		Config->SoftwareBVH->WorldOrigin.Z, 0.0f);
 	PassParameters->ShouldUsePreExposure = 1u;
+	PassParameters->DebugMode = static_cast<uint32>(FMath::Clamp(CVarDDGIDebugApply.GetValueOnRenderThread(), 0, 2));
 
 	TShaderMapRef<FDDGIApplyRadianceCascadesLightingCS> ComputeShader(
 		GetGlobalShaderMap(View.GetFeatureLevel()));
