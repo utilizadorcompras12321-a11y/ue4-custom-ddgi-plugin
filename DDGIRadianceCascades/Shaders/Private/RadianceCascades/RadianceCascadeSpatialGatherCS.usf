@@ -136,17 +136,21 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     float MaxHitPositionDeltaSquared = MaxHitPositionDelta * MaxHitPositionDelta;
     float PlaneTolerance = clamp(SafeSpacing * 0.01f, 0.05f, 1.0f);
     float WeightDistanceRange = SafeSpacing * 1.75f;
-    // Hash cells remain expressed in base-spacing units. Search the 26
-    // adjacent cells at this probe level's stride.
-    int3 CenterCell = int3(round(CenterPositionOffset / max(ProbeSpacing, 1.0f)));
-    int3 LevelCellStep = int3((int)LevelScale, (int)LevelScale, (int)LevelScale);
+    // Hash coordinates are only needed by the fallback lookup. Avoid the
+    // per-ray conversion when the precomputed neighbor list is active.
+    int3 CenterCell = 0;
+    int3 LevelCellStep = 0;
+    if (UsePrecomputedProbeNeighbors == 0u)
+    {
+        CenterCell = int3(round(CenterPositionOffset / max(ProbeSpacing, 1.0f)));
+        LevelCellStep = int3((int)LevelScale, (int)LevelScale, (int)LevelScale);
+    }
     uint NeighborSlot = 0u;
     [unroll] for (int Z=-1; Z<=1; ++Z)
     [unroll] for (int Y=-1; Y<=1; ++Y)
     [unroll] for (int X=-1; X<=1; ++X)
     {
         if (X==0 && Y==0 && Z==0) continue;
-        int3 NeighborCell = CenterCell + int3(X,Y,Z) * LevelCellStep;
         uint NeighborIndex;
         if (UsePrecomputedProbeNeighbors != 0u)
         {
@@ -156,6 +160,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         }
         else
         {
+            int3 NeighborCell = CenterCell + int3(X,Y,Z) * LevelCellStep;
             if (!DDGIFindProbeInCell(NeighborCell, CenterLevel, NeighborIndex))
             {
                 ++NeighborSlot;
