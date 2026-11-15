@@ -33,6 +33,26 @@ namespace
 		return A.CellX < B.CellX;
 	}
 
+	int64 DDGISafeFloorCell(double Value)
+	{
+		if (!std::isfinite(Value) || Value <= static_cast<double>(MIN_int32))
+		{
+			return Value < 0.0 ? MIN_int32 : MAX_int32;
+		}
+		if (Value >= static_cast<double>(MAX_int32)) return MAX_int32;
+		return static_cast<int64>(std::floor(Value));
+	}
+
+	int64 DDGISafeCeilCell(double Value)
+	{
+		if (!std::isfinite(Value) || Value <= static_cast<double>(MIN_int32))
+		{
+			return Value < 0.0 ? MIN_int32 : MAX_int32;
+		}
+		if (Value >= static_cast<double>(MAX_int32)) return MAX_int32;
+		return static_cast<int64>(std::ceil(Value));
+	}
+
 	int64 DDGIFloorSqrt(int64 Value)
 	{
 		if (Value <= 0) return 0;
@@ -210,13 +230,10 @@ namespace
 		const int32 SafeMaxProbeCount = FMath::Max(0, MaxProbeCount);
 		if (SafeMaxProbeCount == 0) return;
 
-		const FVector CenterWorld(
-			static_cast<double>(CenterCell.X) * SafeSpacing,
-			static_cast<double>(CenterCell.Y) * SafeSpacing,
-			static_cast<double>(CenterCell.Z) * SafeSpacing);
-		const float TransitionWidth = FMath::Max(SafeSpacing * 2.0f, SafeRadius * 0.05f);
+		const double TransitionWidth = FMath::Max(
+			SafeSpacingDouble * 2.0, static_cast<double>(SafeRadius) * 0.05);
 		int64 LevelCandidateCounts[4] = { 0, 0, 0, 0 };
-		int32 FirstX[4], LastX[4], FirstY[4], LastY[4], FirstZ[4], LastZ[4];
+		int64 FirstX[4], LastX[4], FirstY[4], LastY[4], FirstZ[4], LastZ[4];
 		int32 LevelSteps[4] = { 1, 2, 4, 8 };
 		int64 MinDistanceSquared[4] = { 0, 0, 0, 0 };
 		int64 MaxDistanceSquared[4] = { 0, 0, 0, 0 };
@@ -226,30 +243,47 @@ namespace
 		for (int32 Level = 0; Level < 4; ++Level)
 		{
 			const int32 LevelStep = LevelSteps[Level];
-			const float BoundaryBefore = SafeRadius * (static_cast<float>(Level) / 4.0f);
-			const float BoundaryAfter = SafeRadius * (static_cast<float>(Level + 1) / 4.0f);
-			const float InnerRadius = Level == 0 ? 0.0f :
-				FMath::Max(0.0f, BoundaryBefore - TransitionWidth);
-			const float OuterRadius = Level == 3 ? SafeRadius :
-				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
+			const double BoundaryBefore = static_cast<double>(SafeRadius) *
+				(static_cast<double>(Level) / 4.0);
+			const double BoundaryAfter = static_cast<double>(SafeRadius) *
+				(static_cast<double>(Level + 1) / 4.0);
+			const double InnerRadius = Level == 0 ? 0.0 :
+				FMath::Max(0.0, BoundaryBefore - TransitionWidth);
+			const double OuterRadius = Level == 3 ? static_cast<double>(SafeRadius) :
+				FMath::Min(static_cast<double>(SafeRadius), BoundaryAfter + TransitionWidth);
+			const double RadiusInCells = OuterRadius / SafeSpacingDouble;
+			const double MaxSafeRadiusInCells =
+				std::sqrt(static_cast<double>(MAX_int64) / 3.0);
+			if (!std::isfinite(RadiusInCells) || RadiusInCells > MaxSafeRadiusInCells)
+			{
+				// Squared 3D distances must remain representable in signed int64.
+				OutPositions.Reset();
+				return;
+			}
 			const double SpacingSquared = SafeSpacingDouble * SafeSpacingDouble;
 			MinDistanceSquared[Level] = static_cast<int64>(
 				std::ceil((InnerRadius * InnerRadius) / SpacingSquared));
 			MaxDistanceSquared[Level] = static_cast<int64>(
 				std::floor((OuterRadius * OuterRadius) / SpacingSquared));
 
-			const int32 MinCellX = FMath::FloorToInt((CenterWorld.X - OuterRadius) / SafeSpacing);
-			const int32 MaxCellX = FMath::CeilToInt((CenterWorld.X + OuterRadius) / SafeSpacing);
-			const int32 MinCellY = FMath::FloorToInt((CenterWorld.Y - OuterRadius) / SafeSpacing);
-			const int32 MaxCellY = FMath::CeilToInt((CenterWorld.Y + OuterRadius) / SafeSpacing);
-			const int32 MinCellZ = FMath::FloorToInt((CenterWorld.Z - OuterRadius) / SafeSpacing);
-			const int32 MaxCellZ = FMath::CeilToInt((CenterWorld.Z + OuterRadius) / SafeSpacing);
-			FirstX[Level] = FMath::CeilToInt(static_cast<float>(MinCellX) / LevelStep) * LevelStep;
-			LastX[Level] = FMath::FloorToInt(static_cast<float>(MaxCellX) / LevelStep) * LevelStep;
-			FirstY[Level] = FMath::CeilToInt(static_cast<float>(MinCellY) / LevelStep) * LevelStep;
-			LastY[Level] = FMath::FloorToInt(static_cast<float>(MaxCellY) / LevelStep) * LevelStep;
-			FirstZ[Level] = FMath::CeilToInt(static_cast<float>(MinCellZ) / LevelStep) * LevelStep;
-			LastZ[Level] = FMath::FloorToInt(static_cast<float>(MaxCellZ) / LevelStep) * LevelStep;
+			const int64 MinCellX = DDGISafeFloorCell(
+				static_cast<double>(CenterCell.X) - RadiusInCells);
+			const int64 MaxCellX = DDGISafeCeilCell(
+				static_cast<double>(CenterCell.X) + RadiusInCells);
+			const int64 MinCellY = DDGISafeFloorCell(
+				static_cast<double>(CenterCell.Y) - RadiusInCells);
+			const int64 MaxCellY = DDGISafeCeilCell(
+				static_cast<double>(CenterCell.Y) + RadiusInCells);
+			const int64 MinCellZ = DDGISafeFloorCell(
+				static_cast<double>(CenterCell.Z) - RadiusInCells);
+			const int64 MaxCellZ = DDGISafeCeilCell(
+				static_cast<double>(CenterCell.Z) + RadiusInCells);
+			FirstX[Level] = DDGICeilDiv(MinCellX, LevelStep) * LevelStep;
+			LastX[Level] = DDGIFloorDiv(MaxCellX, LevelStep) * LevelStep;
+			FirstY[Level] = DDGICeilDiv(MinCellY, LevelStep) * LevelStep;
+			LastY[Level] = DDGIFloorDiv(MaxCellY, LevelStep) * LevelStep;
+			FirstZ[Level] = DDGICeilDiv(MinCellZ, LevelStep) * LevelStep;
+			LastZ[Level] = DDGIFloorDiv(MaxCellZ, LevelStep) * LevelStep;
 
 			if (MinDistanceSquared[Level] > MaxDistanceSquared[Level] ||
 				FirstX[Level] > LastX[Level] ||
@@ -285,8 +319,14 @@ namespace
 						const int64 MaxXAbs = DDGIFloorSqrt(MaxQ - YZSquared);
 						const int64 MinXAbs = MinQ > YZSquared ?
 							DDGICeilSqrt(MinQ - YZSquared) : 0;
-						LevelCandidateCounts[Level] += DDGICountLatticeValuesByAbsoluteValue(
+						const int64 RowCandidateCount = DDGICountLatticeValuesByAbsoluteValue(
 							FirstDeltaX, LastDeltaX, LevelStep, MinXAbs, MaxXAbs);
+						if (RowCandidateCount > MAX_int64 - LevelCandidateCounts[Level])
+						{
+							OutPositions.Reset();
+							return;
+						}
+						LevelCandidateCounts[Level] += RowCandidateCount;
 					}
 				}
 			}
@@ -296,6 +336,11 @@ namespace
 		int32 NonEmptyLevelCount = 0;
 		for (int32 Level = 0; Level < 4; ++Level)
 		{
+			if (LevelCandidateCounts[Level] > MAX_int64 - TotalCandidateCount)
+			{
+				OutPositions.Reset();
+				return;
+			}
 			TotalCandidateCount += LevelCandidateCounts[Level];
 			if (LevelCandidateCounts[Level] > 0) ++NonEmptyLevelCount;
 		}
