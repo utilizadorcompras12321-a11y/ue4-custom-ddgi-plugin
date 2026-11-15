@@ -50,6 +50,8 @@ struct FDDGIMasterConfig
 	UPROPERTY() int64 EstimatedRadianceStorageBytes = 0;
 	UPROPERTY() float ProbeSpacing = 200.0f;
 	UPROPERTY() FVector ProbeGridOrigin = FVector::ZeroVector;
+	// Snapped world-space center of the active probe window; stable between window recenter events.
+	UPROPERTY() FVector ActiveProbeWindowCenter = FVector::ZeroVector;
 	// Fingerprint of the integer lattice; unchanged by translating the grid.
 	uint32 ProbeLayoutHash = 0;
 	UPROPERTY() TArray<FVector4> ProbePositions;
