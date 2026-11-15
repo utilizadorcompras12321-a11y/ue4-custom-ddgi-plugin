@@ -298,11 +298,8 @@ void UDDGIMasterSubsystem::RebuildSoftwareBVH(ADDGIMasterActor* InActor)
 		return;
 	}
 
-	// Force CopyConfigFromActor to build a fresh immutable snapshot. The old
-	// snapshot remains alive until the render thread releases its GPU resources.
-	Config.SoftwareBVH.Reset();
-	CachedSoftwareBVHTriangleLimit = INDEX_NONE;
-	CopyConfigFromActor(InActor);
+	// Build a replacement without discarding the last valid CPU/GPU snapshot.
+	CopyConfigFromActor(InActor, true);
 }
 
 void UDDGIMasterSubsystem::RefreshDirectionalLighting(ADDGIMasterActor* InActor)
@@ -410,7 +407,7 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 }
 
 
-void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
+void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, bool bForceSoftwareBVHRebuild)
 {
 	if (!IsValid(InActor))
 	{
@@ -439,13 +436,14 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 
 	// Build the immutable static-scene BVH once. Moving the Master Actor only
 	// moves probe origins; it must not rebuild the world geometry every tick.
-	if (!Config.SoftwareBVH.IsValid() || CachedSoftwareBVHTriangleLimit != Config.MaxSoftwareTriangles)
+	if (bForceSoftwareBVHRebuild || !Config.SoftwareBVH.IsValid() ||
+		CachedSoftwareBVHTriangleLimit != Config.MaxSoftwareTriangles)
 	{
 		TSharedPtr<FDDGISoftwareBVHData, ESPMode::ThreadSafe> NewBVH =
 			MakeShareable(new FDDGISoftwareBVHData());
 
 		FDDGISoftwareBVHBuildStats BuildStats;
-		DDGISoftwareBVH::BuildStaticWorld(
+		const bool bBuildSucceeded = DDGISoftwareBVH::BuildStaticWorld(
 			InActor->GetWorld(),
 			Config.MaxSoftwareTriangles,
 			NewBVH->PackedNodes,
@@ -453,6 +451,17 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 			NewBVH->WorldOrigin,
 			BuildStats);
 
+		if (!bBuildSucceeded)
+		{
+			UE_LOG(LogTemp, Error,
+				TEXT("DDGI: Software BVH build failed. Keeping the previous valid geometry snapshot; the new scene geometry was not published."));
+			if (!Config.SoftwareBVH.IsValid())
+			{
+				return;
+			}
+		}
+		else
+		{
 		NewBVH->IncludedComponents = BuildStats.IncludedComponents;
 		NewBVH->SkippedNoCPUAccess = BuildStats.SkippedNoCPUAccess;
 		NewBVH->SkippedMovable = BuildStats.SkippedMovable;
@@ -483,6 +492,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 		if (BuildStats.MaterialsUsingDefaultBaseColor > 0)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("DDGI: %d material slots do not expose the DDGI_BaseColor vector parameter; their GI albedo is approximated as neutral 0.18 gray. Material textures and arbitrary material graphs are not evaluated."), BuildStats.MaterialsUsingDefaultBaseColor);
+		}
 		}
 	}
 

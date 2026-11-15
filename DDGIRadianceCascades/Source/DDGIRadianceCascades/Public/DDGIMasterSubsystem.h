@@ -91,7 +91,7 @@ private:
 	bool bHasSearchedDirectionalLights = false;
 	bool UpdateDirectionalLighting(const ADDGIMasterActor* InActor);
 	void PublishConfigValuesOnly();
-	void CopyConfigFromActor(const ADDGIMasterActor* InActor);
+	void CopyConfigFromActor(const ADDGIMasterActor* InActor, bool bForceSoftwareBVHRebuild = false);
 	void PublishConfig(bool bHasConfig);
 
 	UPROPERTY(Transient)

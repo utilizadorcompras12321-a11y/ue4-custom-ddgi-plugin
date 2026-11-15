@@ -27,7 +27,7 @@ struct FDDGISoftwareBVHBuildStats
 
 namespace DDGISoftwareBVH
 {
-	void BuildStaticWorld(
+	bool BuildStaticWorld(
 		UWorld* World,
 		int32 MaxTriangleCount,
 		TResourceArray<FVector4>& OutPackedNodes,

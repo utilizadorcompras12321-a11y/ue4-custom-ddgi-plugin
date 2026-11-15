@@ -388,7 +388,7 @@ namespace
 	}
 }
 
-void DDGISoftwareBVH::BuildStaticWorld(
+bool DDGISoftwareBVH::BuildStaticWorld(
 	UWorld* World,
 	int32 MaxTriangleCount,
 	TResourceArray<FVector4>& OutPackedNodes,
@@ -403,7 +403,7 @@ void DDGISoftwareBVH::BuildStaticWorld(
 
 	if (!World || MaxTriangleCount <= 0)
 	{
-		return;
+		return false;
 	}
 
 	// Keep CPU build memory and GPU structured-buffer sizes bounded even if
@@ -663,7 +663,8 @@ void DDGISoftwareBVH::BuildStaticWorld(
 	OutStats.TriangleCount = Triangles.Num();
 	if (Triangles.Num() == 0)
 	{
-		return;
+		// A valid empty snapshot is different from a failed build.
+		return true;
 	}
 
 	TArray<FDDGISoftwareBVHNode> Nodes;
@@ -675,7 +676,7 @@ void DDGISoftwareBVH::BuildStaticWorld(
 	{
 		UE_LOG(LogTemp, Error, TEXT("DDGI: Software BVH triangle count exceeds exact float metadata range."));
 		OutStats.TriangleCount = 0;
-		return;
+		return false;
 	}
 	for (const FDDGISoftwareTriangle& Triangle : Triangles)
 	{
@@ -683,7 +684,7 @@ void DDGISoftwareBVH::BuildStaticWorld(
 		{
 			UE_LOG(LogTemp, Error, TEXT("DDGI: Software BVH contains non-finite or invalid triangle attributes; geometry upload was skipped."));
 			OutStats.TriangleCount = 0;
-			return;
+			return false;
 		}
 	}
 
@@ -692,7 +693,7 @@ void DDGISoftwareBVH::BuildStaticWorld(
 	{
 		UE_LOG(LogTemp, Error, TEXT("DDGI: Software BVH validation failed; geometry upload was skipped."));
 		OutStats.TriangleCount = 0;
-		return;
+		return false;
 	}
 
 	// Each triangle occupies four float4 entries in the shader buffer.
@@ -735,4 +736,6 @@ void DDGISoftwareBVH::BuildStaticWorld(
 	{
 		OutStats.MinLeafTriangleCount = 0;
 	}
+
+	return true;
 }
