@@ -28,6 +28,20 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
     uint PackedRayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
+    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
+
+    // Angular regions are identical for every probe. Only probe zero needs
+    // to calculate and populate the shared direction table; all probes still
+    // initialize their own per-ray history textures.
+    if (ProbeIndex != 0u)
+    {
+        RadianceUAV[Pixel] = 0.0f;
+        HitDistanceUAV[Pixel] = -1.0f;
+        RadianceScratchUAV[Pixel] = 0.0f;
+        HitTriangleIndexUAV[Pixel] = 0u;
+        return;
+    }
+
     uint CascadeIndex = 0u;
     uint CascadeOffset = 0u;
     uint CascadeRayCount = BaseRayCount;
@@ -90,14 +104,8 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     float3 Direction = DDGIRadianceCascadeRegionDirection(AngularRegion);
 
-    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
     uint2 DirectionPixel = uint2(PackedRayIndex % TextureWidth, PackedRayIndex / TextureWidth);
-    // All probes share the same deterministic angular layout. Store each
-    // direction once instead of duplicating it for every probe.
-    if (ProbeIndex == 0u)
-    {
-        DirectionsUAV[DirectionPixel] = float4(Direction, (float)CascadeIndex);
-    }
+    DirectionsUAV[DirectionPixel] = float4(Direction, (float)CascadeIndex);
     RadianceUAV[Pixel] = 0.0f;
     HitDistanceUAV[Pixel] = -1.0f;
     RadianceScratchUAV[Pixel] = 0.0f;
