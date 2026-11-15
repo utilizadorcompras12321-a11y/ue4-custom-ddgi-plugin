@@ -9,7 +9,7 @@ Texture2D<uint> HitTriangleIndexTexture;
 Texture2D<float4> DirectionsTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> BVHTriangles;
-StructuredBuffer<float4> ProbeSpatialHash;
+StructuredBuffer<int4> ProbeSpatialHash;
 StructuredBuffer<uint> ProbeNeighborIndices;
 uint UsePrecomputedProbeNeighbors;
 RWTexture2D<float4> OutputRadianceUAV;
@@ -56,12 +56,12 @@ bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
     uint Slot = DDGIHashProbeCell(Cell, Level) & (HashCapacity - 1u);
     [loop] for (uint Attempt = 0u; Attempt < HashCapacity; ++Attempt)
     {
-        float4 Entry = ProbeSpatialHash[Slot];
-        if (Entry.w < 0.0f) return false;
-        if (all(Entry.xyz == float3(Cell)) &&
-            (((uint)round(Entry.w) & 7u) == Level))
+        int4 Entry = ProbeSpatialHash[Slot];
+        if (Entry.w < 0) return false;
+        if (all(Entry.xyz == Cell) &&
+            (((uint)Entry.w & 7u) == Level))
         {
-            OutProbeIndex = (uint)round(Entry.w) >> 3u;
+            OutProbeIndex = (uint)Entry.w >> 3u;
             return OutProbeIndex < ProbeCount;
         }
         Slot = (Slot + 1u) & (HashCapacity - 1u);
