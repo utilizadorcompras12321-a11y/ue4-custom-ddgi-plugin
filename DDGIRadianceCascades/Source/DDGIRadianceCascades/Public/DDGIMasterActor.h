@@ -58,6 +58,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1.01"))
 	float CascadeScale = 2.0f;
 
+	// Base spacing for spatial probe level 0. Each higher level doubles this spacing.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", Units = "cm"))
 	float ProbeSpacing = 200.0f;
 
