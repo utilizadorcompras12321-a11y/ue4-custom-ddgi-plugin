@@ -11,6 +11,12 @@
 
 namespace
 {
+	FORCEINLINE int32 DDGIGetSpatialLevelStep(int32 Level)
+	{
+		static const int32 Steps[4] = { 1, 2, 3, 4 };
+		return Level >= 0 && Level < UE_ARRAY_COUNT(Steps) ? Steps[Level] : 0;
+	}
+
 	FORCEINLINE uint32 DDGIHashProbeCell(const FIntVector& Cell, uint32 Level)
 	{
 		uint32 Hash = static_cast<uint32>(Cell.X) * 0x8DA6B343u;
@@ -505,7 +511,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             const FVector4& Position = Config.ProbePositions[ProbeIndex];
             const int32 ProbeLevel = Config.ProbeLevels[ProbeIndex];
             const FIntVector Cell = Config.ProbeCellCoordinates[ProbeIndex];
-            if (ProbeLevel < 0 || ProbeLevel > 7 ||
+            if (ProbeLevel < 0 || ProbeLevel > 3 ||
                 !FMath::IsNearlyEqual(Position.W, static_cast<float>(ProbeLevel), 1.0e-3f))
             {
                 DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
@@ -515,7 +521,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                 return;
             }
 
-            const int32 LevelCellStep = 1 << ProbeLevel;
+            const int32 LevelCellStep = DDGIGetSpatialLevelStep(ProbeLevel);
             const FDDGIProbeCellKey ProbeKey{ Cell, static_cast<uint32>(ProbeLevel) };
             Storage.ProbeCellKeys[ProbeIndex] = ProbeKey;
             if (Storage.ProbeCellToLogicalIndex.Contains(ProbeKey))
@@ -900,7 +906,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                 const FDDGIProbeCellKey& CenterKey = ProbeCellKeys[static_cast<int32>(ProbeIndex)];
                 const FIntVector& CenterCell = CenterKey.Cell;
                 const int32 ProbeLevel = static_cast<int32>(CenterKey.Level);
-                const int32 LevelCellStep = 1 << ProbeLevel;
+                const int32 LevelCellStep = DDGIGetSpatialLevelStep(ProbeLevel);
                 uint32 Slot = 0u;
                 for (int32 Z = -1; Z <= 1; ++Z)
                 for (int32 Y = -1; Y <= 1; ++Y)
