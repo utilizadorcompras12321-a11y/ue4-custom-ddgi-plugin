@@ -536,8 +536,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.LogicalToPhysicalSlotsSRV = RHICreateShaderResourceView(Storage.LogicalToPhysicalSlots);
         }
 
-        if (!Storage.LogicalToPhysicalSlotsSRV.IsValid() ||
-            !Storage.NewlyAllocatedPhysicalSlotsSRV.IsValid())
+        if (!Storage.LogicalToPhysicalSlotsSRV.IsValid())
         {
             Storage.LogicalToPhysicalSlots.SafeRelease();
             Storage.LogicalToPhysicalSlotsSRV.SafeRelease();
