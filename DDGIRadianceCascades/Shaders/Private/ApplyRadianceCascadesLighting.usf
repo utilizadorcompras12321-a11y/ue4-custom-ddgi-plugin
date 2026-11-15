@@ -52,8 +52,10 @@ bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
     OutProbeIndex = 0u;
     if (HashCapacity == 0u || ProbeCount == 0u || Level > 7u) return false;
     uint Slot = DDGIHashProbeCell(Cell, Level) & (HashCapacity - 1u);
+    // ProbeCount is not a safe probe bound: a collision cluster can be longer
+    // than the number of entries. Search at most one complete hash-table cycle.
     [loop]
-    for (uint Attempt = 0u; Attempt < ProbeCount; ++Attempt)
+    for (uint Attempt = 0u; Attempt < HashCapacity; ++Attempt)
     {
         float4 Entry = ProbeSpatialHash[Slot];
         if (Entry.w < 0.0f) return false;
