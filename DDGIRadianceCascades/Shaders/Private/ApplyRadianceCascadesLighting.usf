@@ -104,6 +104,16 @@ float3 DDGIProbeDiffuseIrradiance(uint ProbeIndex, float3 Normal)
     return Irradiance * (4.0f / (float)SafeRayCount);
 }
 
+uint DDGIGetSpatialLevelStep(uint Level)
+{
+    // Keep in sync with DDGIGetSpatialLevelStep in DDGIRadianceCascadeResources.cpp
+    // and LevelSteps in DDGIMasterSubsystem.cpp.
+    if (Level == 0u) return 1u;
+    if (Level == 1u) return 2u;
+    if (Level == 2u) return 3u;
+    return 4u;
+}
+
 float3 DDGISampleProbeLevel(
     float3 LocalPosition,
     float3 Normal,
@@ -114,7 +124,7 @@ float3 DDGISampleProbeLevel(
     OutSpatialWeightSum = 0.0f;
     OutVisibleWeightSum = 0.0f;
     float3 Irradiance = 0.0f;
-    uint LevelStep = 1u << Level;
+    uint LevelStep = DDGIGetSpatialLevelStep(Level);
     float LevelSpacing = max(ProbeSpacing, 1.0f) * (float)LevelStep;
     float3 GridPosition = (LocalPosition - ProbeGridOrigin.xyz) / LevelSpacing;
     int3 BaseCell = int3(floor(GridPosition));
