@@ -544,7 +544,11 @@ static FScreenPassTexture DDGIReturnSceneColorForPostProcessing(
 	// populated even when DDGI is disabled or its resources are unavailable.
 	if (Inputs.OverrideOutput.IsValid() && SceneColor.IsValid())
 	{
-		AddDrawTexturePass(GraphBuilder, View, SceneColor, Inputs.OverrideOutput);
+		AddDrawTexturePass(
+			GraphBuilder,
+			View,
+			SceneColor,
+			FScreenPassTexture(Inputs.OverrideOutput.Texture, Inputs.OverrideOutput.ViewRect));
 		return FScreenPassTexture(
 			Inputs.OverrideOutput.Texture,
 			Inputs.OverrideOutput.ViewRect);
@@ -712,7 +716,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 			GraphBuilder,
 			View,
 			FScreenPassTexture(OutputTexture, SceneColor.ViewRect),
-			Inputs.OverrideOutput);
+			FScreenPassTexture(Inputs.OverrideOutput.Texture, Inputs.OverrideOutput.ViewRect));
 		return FScreenPassTexture(
 			Inputs.OverrideOutput.Texture,
 			Inputs.OverrideOutput.ViewRect);
