@@ -26,7 +26,8 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    uint PackedRayIndex = LinearIndex % TotalRaysPerProbe;
+    uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
+    uint PackedRayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
     uint CascadeIndex = 0u;
     uint CascadeOffset = 0u;
     uint CascadeRayCount = BaseRayCount;
@@ -90,7 +91,13 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 Direction = DDGIRadianceCascadeRegionDirection(AngularRegion);
 
     uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
-    DirectionsUAV[Pixel] = float4(Direction, (float)CascadeIndex);
+    uint2 DirectionPixel = uint2(PackedRayIndex % TextureWidth, PackedRayIndex / TextureWidth);
+    // All probes share the same deterministic angular layout. Store each
+    // direction once instead of duplicating it for every probe.
+    if (ProbeIndex == 0u)
+    {
+        DirectionsUAV[DirectionPixel] = float4(Direction, (float)CascadeIndex);
+    }
     RadianceUAV[Pixel] = 0.0f;
     HitDistanceUAV[Pixel] = -1.0f;
     RadianceScratchUAV[Pixel] = 0.0f;

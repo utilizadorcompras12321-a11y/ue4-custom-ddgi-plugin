@@ -86,6 +86,7 @@ namespace
 		uint32 LastRadianceUpdateFrameNumber = MAX_uint32;
 		bool bNeedsInitialization = true;
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
+		FIntPoint DirectionDimensions = FIntPoint::ZeroValue;
 		int32 TotalRaysPerProbe = 0;
 		int32 RayProbeCapacity = 0;
 		FIntPoint ProbePositionDimensions = FIntPoint::ZeroValue;
@@ -123,6 +124,7 @@ namespace
 			BVHNodeCount = 0;
 			BVHTriangleCount = 0;
 			Dimensions = FIntPoint::ZeroValue;
+			DirectionDimensions = FIntPoint::ZeroValue;
 			RayProbeCapacity = 0;
 			ProbePositionDimensions = FIntPoint::ZeroValue;
 			UploadedProbeCount = 0;
@@ -209,8 +211,11 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const int64 CapacityHeight64 = (RequiredCapacityTexels + GDDGIRadianceCascadeTextureWidth - 1) /
         GDDGIRadianceCascadeTextureWidth;
     const FIntPoint RequiredDimensions(GDDGIRadianceCascadeTextureWidth, static_cast<int32>(CapacityHeight64));
+    const int64 DirectionHeight64 = (static_cast<int64>(Config.TotalRaysPerProbe) + GDDGIRadianceCascadeTextureWidth - 1) / GDDGIRadianceCascadeTextureWidth;
+    const FIntPoint RequiredDirectionDimensions(GDDGIRadianceCascadeTextureWidth, static_cast<int32>(DirectionHeight64));
     const bool bRayStorageMatches =
         Storage.Dimensions == RequiredDimensions &&
+        Storage.DirectionDimensions == RequiredDirectionDimensions &&
         Storage.TotalRaysPerProbe == Config.TotalRaysPerProbe &&
         Storage.Directions.IsValid() &&
         Storage.Radiance.IsValid() &&
@@ -226,13 +231,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.HitDistance.SafeRelease();
         Storage.HitTriangleIndex.SafeRelease();
         Storage.Dimensions = FIntPoint::ZeroValue;
+        Storage.DirectionDimensions = FIntPoint::ZeroValue;
         Storage.TotalRaysPerProbe = 0;
         Storage.RayProbeCapacity = 0;
         Storage.bNeedsInitialization = true;
 
         // Half-float RGBA texels store direction and radiance; R32F stores hit distance.
         const FPooledRenderTargetDesc DirectionDesc = FPooledRenderTargetDesc::Create2DDesc(
-            RequiredDimensions, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_None,
+            RequiredDirectionDimensions, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_None,
             TexCreate_ShaderResource | TexCreate_UAV, false);
         const FPooledRenderTargetDesc RadianceDesc = FPooledRenderTargetDesc::Create2DDesc(
             RequiredDimensions, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_None,
@@ -262,6 +268,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         }
 
         Storage.Dimensions = RequiredDimensions;
+        Storage.DirectionDimensions = RequiredDirectionDimensions;
         Storage.TotalRaysPerProbe = Config.TotalRaysPerProbe;
         // The final texture row is fully allocated, even when the active ray
         // count does not fill it. Count every complete probe-sized range that
