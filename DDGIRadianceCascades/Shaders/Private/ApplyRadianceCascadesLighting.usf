@@ -181,7 +181,17 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 ProbePosition = ProbeGridOrigin.xyz + ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
         float3 SurfaceToProbe = ProbePosition - LocalPosition;
         float SurfaceSide = dot(Normal, SurfaceToProbe);
-        if (SurfaceSide <= max(ProbeSpacing * 0.01f, 0.5f)) continue;
+        // Fade probes across the receiver hemisphere boundary instead of
+        // abruptly removing them. This keeps interpolation continuous while
+        // still suppressing probes clearly located behind the surface.
+        float SideThreshold = max(ProbeSpacing * 0.01f, 0.5f);
+        float SideFadeDistance = max(ProbeSpacing * 0.25f, 10.0f);
+        float SideWeight = smoothstep(
+            SideThreshold,
+            SideThreshold + SideFadeDistance,
+            SurfaceSide);
+        Weight *= SideWeight;
+        if (Weight <= 0.00001f) continue;
 
         Irradiance += DDGIProbeDiffuseIrradiance(ProbeIndex, Normal) * Weight;
         ProbeWeightSum += Weight;
