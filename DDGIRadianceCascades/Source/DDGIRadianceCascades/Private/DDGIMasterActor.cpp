@@ -13,7 +13,6 @@ ADDGIMasterActor::ADDGIMasterActor()
 void ADDGIMasterActor::BeginPlay()
 {
 	Super::BeginPlay();
-	LastPublishedLocation = GetActorLocation();
 	RefreshWorldConfig();
 }
 
@@ -25,18 +24,6 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 		if (UDDGIMasterSubsystem* Subsystem = World->GetSubsystem<UDDGIMasterSubsystem>())
 		{
 			Subsystem->RefreshDirectionalLighting(this);
-		}
-	}
-	const FVector CurrentLocation = GetActorLocation();
-	if (!CurrentLocation.Equals(LastPublishedLocation, 0.5f))
-	{
-		LastPublishedLocation = CurrentLocation;
-		if (UWorld* World = GetWorld())
-		{
-			if (UDDGIMasterSubsystem* Subsystem = World->GetSubsystem<UDDGIMasterSubsystem>())
-			{
-				Subsystem->RefreshProbeGridOrigin(this);
-			}
 		}
 	}
 }
