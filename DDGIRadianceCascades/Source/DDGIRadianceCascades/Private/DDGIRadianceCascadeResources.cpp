@@ -32,6 +32,7 @@ namespace
 		int32 Z;
 		int32 EncodedProbe;
 	};
+	static_assert(sizeof(FDDGIProbeSpatialHashEntry) == 4 * sizeof(int32), "Probe spatial hash entries must match the HLSL int4 stride.");
 
 	struct FDDGIProbeCellKey
 	{
