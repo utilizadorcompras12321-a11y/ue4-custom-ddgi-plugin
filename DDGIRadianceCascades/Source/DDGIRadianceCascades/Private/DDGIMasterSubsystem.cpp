@@ -588,17 +588,24 @@ namespace
 			}
 		}
 	}
-	FIntVector DDGICountSpatialProbeLevels(const TArray<int32>& ProbeLevels)
+	void DDGICountSpatialProbeLevels(
+		const TArray<int32>& ProbeLevels,
+		int32& OutLevel0,
+		int32& OutLevel1,
+		int32& OutLevel2,
+		int32& OutLevel3)
 	{
-		FIntVector Counts = FIntVector::ZeroValue;
+		OutLevel0 = 0;
+		OutLevel1 = 0;
+		OutLevel2 = 0;
+		OutLevel3 = 0;
 		for (int32 Level : ProbeLevels)
 		{
-			if (Level >= 0 && Level < 4)
-			{
-				++Counts[Level];
-			}
+			if (Level == 0) ++OutLevel0;
+			else if (Level == 1) ++OutLevel1;
+			else if (Level == 2) ++OutLevel2;
+			else if (Level == 3) ++OutLevel3;
 		}
-		return Counts;
 	}
 
 	uint32 DDGIComputeProbeLayoutHash(
@@ -916,11 +923,12 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		Config.ProbeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
 		Config.MaxActiveProbes, Config.ProbePositions, Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
-	const FIntVector InitialSpatialLevelCounts = DDGICountSpatialProbeLevels(Config.ProbeLevels);
+	int32 InitialLevel0 = 0, InitialLevel1 = 0, InitialLevel2 = 0, InitialLevel3 = 0;
+	DDGICountSpatialProbeLevels(Config.ProbeLevels,
+		InitialLevel0, InitialLevel1, InitialLevel2, InitialLevel3);
 	UE_LOG(LogTemp, Log,
 		TEXT("DDGI spatial probe levels: L0=%d L1=%d L2=%d L3=%d (total=%d)."),
-		InitialSpatialLevelCounts.X, InitialSpatialLevelCounts.Y,
-		InitialSpatialLevelCounts.Z, InitialSpatialLevelCounts.W, Config.ProbeCount);
+		InitialLevel0, InitialLevel1, InitialLevel2, InitialLevel3, Config.ProbeCount);
 	// Estimate the actual generated lattice, not the hard safety cap.
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
@@ -977,11 +985,12 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 		Config.MaxActiveProbes, Config.ProbePositions,
 		Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
-	const FIntVector UpdatedSpatialLevelCounts = DDGICountSpatialProbeLevels(Config.ProbeLevels);
+	int32 UpdatedLevel0 = 0, UpdatedLevel1 = 0, UpdatedLevel2 = 0, UpdatedLevel3 = 0;
+	DDGICountSpatialProbeLevels(Config.ProbeLevels,
+		UpdatedLevel0, UpdatedLevel1, UpdatedLevel2, UpdatedLevel3);
 	UE_LOG(LogTemp, Log,
 		TEXT("DDGI spatial probe window recentered: L0=%d L1=%d L2=%d L3=%d (total=%d)."),
-		UpdatedSpatialLevelCounts.X, UpdatedSpatialLevelCounts.Y,
-		UpdatedSpatialLevelCounts.Z, UpdatedSpatialLevelCounts.W, Config.ProbeCount);
+		UpdatedLevel0, UpdatedLevel1, UpdatedLevel2, UpdatedLevel3, Config.ProbeCount);
 	Config.EstimatedRadianceStorageBytes =
 		Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
