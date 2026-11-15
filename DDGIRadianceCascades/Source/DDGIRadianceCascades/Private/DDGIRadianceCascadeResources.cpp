@@ -68,6 +68,15 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> HitTriangleIndex;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
+		FStructuredBufferRHIRef LogicalToPhysicalSlots;
+		FShaderResourceViewRHIRef LogicalToPhysicalSlotsSRV;
+		FStructuredBufferRHIRef NewlyAllocatedPhysicalSlots;
+		FShaderResourceViewRHIRef NewlyAllocatedPhysicalSlotsSRV;
+		TMap<FDDGIProbeCellKey, uint32> ProbeCellToPhysicalSlot;
+		TArray<uint32> LogicalToPhysicalSlotCPU;
+		TArray<uint32> NewlyAllocatedPhysicalSlotsCPU;
+		TArray<uint32> FreePhysicalSlots;
+		uint32 PhysicalSlotCapacity = 0;
 		FStructuredBufferRHIRef ProbeSpatialHash;
 		FShaderResourceViewRHIRef ProbeSpatialHashSRV;
 		FStructuredBufferRHIRef ProbeNeighborIndices;
@@ -119,6 +128,15 @@ namespace
 			HitDistance.SafeRelease();
 			HitTriangleIndex.SafeRelease();
 			ProbePositions.SafeRelease();
+			LogicalToPhysicalSlots.SafeRelease();
+			LogicalToPhysicalSlotsSRV.SafeRelease();
+			NewlyAllocatedPhysicalSlots.SafeRelease();
+			NewlyAllocatedPhysicalSlotsSRV.SafeRelease();
+			ProbeCellToPhysicalSlot.Reset();
+			LogicalToPhysicalSlotCPU.Reset();
+			NewlyAllocatedPhysicalSlotsCPU.Reset();
+			FreePhysicalSlots.Reset();
+			PhysicalSlotCapacity = 0;
 			ProbeSpatialHash.SafeRelease();
 			ProbeSpatialHashSRV.SafeRelease();
 			ProbeNeighborIndices.SafeRelease();
@@ -262,6 +280,16 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.TotalRaysPerProbe = 0;
         Storage.RayProbeCapacity = 0;
         Storage.bNeedsInitialization = true;
+        // Ray texture recreation invalidates every physical slot and its history.
+        Storage.LogicalToPhysicalSlots.SafeRelease();
+        Storage.LogicalToPhysicalSlotsSRV.SafeRelease();
+        Storage.NewlyAllocatedPhysicalSlots.SafeRelease();
+        Storage.NewlyAllocatedPhysicalSlotsSRV.SafeRelease();
+        Storage.ProbeCellToPhysicalSlot.Reset();
+        Storage.LogicalToPhysicalSlotCPU.Reset();
+        Storage.NewlyAllocatedPhysicalSlotsCPU.Reset();
+        Storage.FreePhysicalSlots.Reset();
+        Storage.PhysicalSlotCapacity = 0;
 
         // Half-float RGBA texels store direction and radiance; R32F stores hit distance.
         const FPooledRenderTargetDesc DirectionDesc = FPooledRenderTargetDesc::Create2DDesc(
@@ -304,6 +332,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             static_cast<int64>(Storage.Dimensions.X) * Storage.Dimensions.Y;
         Storage.RayProbeCapacity = static_cast<int32>(
             AllocatedRayTexels / Config.TotalRaysPerProbe);
+        Storage.PhysicalSlotCapacity = FMath::Min<uint32>(
+            static_cast<uint32>(Storage.RayProbeCapacity),
+            static_cast<uint32>(Config.MaxActiveProbes));
+        // Push in reverse order so the first new probe receives physical slot zero.
+        for (uint32 Slot = Storage.PhysicalSlotCapacity; Slot > 0u; --Slot)
+        {
+            Storage.FreePhysicalSlots.Add(Slot - 1u);
+        }
     }
 
     // Keep grid-relative probe offsets in a separate float4 texture. A pure
@@ -421,6 +457,104 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         return;
     }
     const TArray<FDDGIProbeCellKey>& ProbeCellKeys = Storage.ProbeCellKeys;
+
+    // Preserve physical ray history by global cell identity while compact logical
+    // indices are free to change with the active window.
+    if (Storage.PhysicalSlotCapacity == 0 ||
+        Storage.PhysicalSlotCapacity < static_cast<uint32>(ActiveProbeCount))
+    {
+        Storage.Release();
+        UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: physical slot capacity is smaller than the active probe set."));
+        return;
+    }
+    if (bProbeLayoutChanged)
+    {
+        TSet<FDDGIProbeCellKey> ActiveKeys;
+        ActiveKeys.Reserve(ActiveProbeCount);
+        for (const FDDGIProbeCellKey& Key : ProbeCellKeys)
+        {
+            ActiveKeys.Add(Key);
+        }
+
+        for (auto It = Storage.ProbeCellToPhysicalSlot.CreateIterator(); It; ++It)
+        {
+            if (!ActiveKeys.Contains(It.Key()))
+            {
+                Storage.FreePhysicalSlots.Add(It.Value());
+                It.RemoveCurrent();
+            }
+        }
+
+        Storage.LogicalToPhysicalSlotCPU.SetNumUninitialized(ActiveProbeCount);
+        Storage.NewlyAllocatedPhysicalSlotsCPU.Reset();
+        for (int32 LogicalIndex = 0; LogicalIndex < ActiveProbeCount; ++LogicalIndex)
+        {
+            const FDDGIProbeCellKey& Key = ProbeCellKeys[LogicalIndex];
+            if (const uint32* ExistingSlot = Storage.ProbeCellToPhysicalSlot.Find(Key))
+            {
+                Storage.LogicalToPhysicalSlotCPU[LogicalIndex] = *ExistingSlot;
+                continue;
+            }
+            if (Storage.FreePhysicalSlots.Num() == 0)
+            {
+                Storage.Release();
+                UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: active probes exhausted the physical slot pool."));
+                return;
+            }
+
+            const uint32 NewPhysicalSlot = Storage.FreePhysicalSlots.Pop(false);
+            Storage.ProbeCellToPhysicalSlot.Add(Key, NewPhysicalSlot);
+            Storage.LogicalToPhysicalSlotCPU[LogicalIndex] = NewPhysicalSlot;
+            Storage.NewlyAllocatedPhysicalSlotsCPU.Add(NewPhysicalSlot);
+        }
+
+        TResourceArray<uint32> LogicalToPhysicalData;
+        LogicalToPhysicalData.Append(Storage.LogicalToPhysicalSlotCPU);
+        FRHIResourceCreateInfo LogicalToPhysicalInfo(TEXT("DDGIRadianceCascade_LogicalToPhysicalSlots"));
+        LogicalToPhysicalInfo.ResourceArray = &LogicalToPhysicalData;
+        Storage.LogicalToPhysicalSlots.SafeRelease();
+        Storage.LogicalToPhysicalSlotsSRV.SafeRelease();
+        Storage.LogicalToPhysicalSlots = RHICreateStructuredBuffer(
+            sizeof(uint32), static_cast<uint32>(LogicalToPhysicalData.GetResourceDataSize()),
+            BUF_ShaderResource, LogicalToPhysicalInfo);
+        if (Storage.LogicalToPhysicalSlots.IsValid())
+        {
+            Storage.LogicalToPhysicalSlotsSRV = RHICreateShaderResourceView(Storage.LogicalToPhysicalSlots);
+        }
+
+        TResourceArray<uint32> NewPhysicalSlotData;
+        if (Storage.NewlyAllocatedPhysicalSlotsCPU.Num() > 0)
+        {
+            NewPhysicalSlotData.Append(Storage.NewlyAllocatedPhysicalSlotsCPU);
+        }
+        else
+        {
+            NewPhysicalSlotData.Add(0u);
+        }
+        FRHIResourceCreateInfo NewPhysicalSlotsInfo(TEXT("DDGIRadianceCascade_NewPhysicalSlots"));
+        NewPhysicalSlotsInfo.ResourceArray = &NewPhysicalSlotData;
+        Storage.NewlyAllocatedPhysicalSlots.SafeRelease();
+        Storage.NewlyAllocatedPhysicalSlotsSRV.SafeRelease();
+        Storage.NewlyAllocatedPhysicalSlots = RHICreateStructuredBuffer(
+            sizeof(uint32), static_cast<uint32>(NewPhysicalSlotData.GetResourceDataSize()),
+            BUF_ShaderResource, NewPhysicalSlotsInfo);
+        if (Storage.NewlyAllocatedPhysicalSlots.IsValid())
+        {
+            Storage.NewlyAllocatedPhysicalSlotsSRV =
+                RHICreateShaderResourceView(Storage.NewlyAllocatedPhysicalSlots);
+        }
+        if (!Storage.LogicalToPhysicalSlotsSRV.IsValid() ||
+            !Storage.NewlyAllocatedPhysicalSlotsSRV.IsValid())
+        {
+            Storage.LogicalToPhysicalSlots.SafeRelease();
+            Storage.LogicalToPhysicalSlotsSRV.SafeRelease();
+            Storage.NewlyAllocatedPhysicalSlots.SafeRelease();
+            Storage.NewlyAllocatedPhysicalSlotsSRV.SafeRelease();
+            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to upload physical probe-slot mapping buffers."));
+            return;
+        }
+    }
+
     // Hash allocation success/failure is deliberately not part of layout identity.
     if (!bProbePositionsMatch)
     {
@@ -1004,6 +1138,35 @@ bool DDGIGetSoftwareBVHResources_RenderThread(
 	OutNodeCount = Storage->BVHNodeCount;
 	OutTriangleCount = Storage->BVHTriangleCount;
 	return true;
+}
+
+bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
+    const FSceneInterface* Scene,
+    FShaderResourceViewRHIRef& OutLogicalToPhysicalSRV,
+    FShaderResourceViewRHIRef& OutNewPhysicalSlotsSRV,
+    uint32& OutNewPhysicalSlotCount,
+    uint32& OutPhysicalSlotCapacity)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutLogicalToPhysicalSRV.SafeRelease();
+    OutNewPhysicalSlotsSRV.SafeRelease();
+    OutNewPhysicalSlotCount = 0;
+    OutPhysicalSlotCapacity = 0;
+
+    const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || !Storage->LogicalToPhysicalSlotsSRV.IsValid() ||
+        !Storage->NewlyAllocatedPhysicalSlotsSRV.IsValid() ||
+        Storage->LogicalToPhysicalSlotCPU.Num() != Storage->UploadedProbeCount ||
+        Storage->PhysicalSlotCapacity == 0)
+    {
+        return false;
+    }
+
+    OutLogicalToPhysicalSRV = Storage->LogicalToPhysicalSlotsSRV;
+    OutNewPhysicalSlotsSRV = Storage->NewlyAllocatedPhysicalSlotsSRV;
+    OutNewPhysicalSlotCount = static_cast<uint32>(Storage->NewlyAllocatedPhysicalSlotsCPU.Num());
+    OutPhysicalSlotCapacity = Storage->PhysicalSlotCapacity;
+    return true;
 }
 
 bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
