@@ -8,7 +8,6 @@
 #include "DDGISoftwareBVH.h"
 #include "Components/DirectionalLightComponent.h"
 #include "GameFramework/PlayerController.h"
-#include "GameFramework/Pawn.h"
 
 namespace
 {
