@@ -505,7 +505,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbePositionsTexture)
-		SHADER_PARAMETER_SRV(StructuredBuffer<float4>, ProbeSpatialHash)
+		SHADER_PARAMETER_SRV(StructuredBuffer<int4>, ProbeSpatialHash)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, SceneColorOutputUAV)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
 		SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
