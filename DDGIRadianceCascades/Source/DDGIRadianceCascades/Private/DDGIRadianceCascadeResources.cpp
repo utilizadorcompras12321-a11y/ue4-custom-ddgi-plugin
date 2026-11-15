@@ -494,6 +494,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             if (!ActiveKeys.Contains(It.Key()))
             {
                 Storage.FreePhysicalSlots.Add(It.Value());
+                Storage.NewlyAllocatedPhysicalSlotsCPU.Remove(It.Value());
                 It.RemoveCurrent();
             }
         }
