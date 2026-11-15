@@ -588,6 +588,19 @@ namespace
 			}
 		}
 	}
+	FIntVector DDGICountSpatialProbeLevels(const TArray<int32>& ProbeLevels)
+	{
+		FIntVector Counts = FIntVector::ZeroValue;
+		for (int32 Level : ProbeLevels)
+		{
+			if (Level >= 0 && Level < 4)
+			{
+				++Counts[Level];
+			}
+		}
+		return Counts;
+	}
+
 	uint32 DDGIComputeProbeLayoutHash(
 		const TArray<FIntVector>& CellCoordinates,
 		const TArray<int32>& ProbeLevels)
@@ -903,6 +916,11 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		Config.ProbeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
 		Config.MaxActiveProbes, Config.ProbePositions, Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
+	const FIntVector InitialSpatialLevelCounts = DDGICountSpatialProbeLevels(Config.ProbeLevels);
+	UE_LOG(LogTemp, Log,
+		TEXT("DDGI spatial probe levels: L0=%d L1=%d L2=%d L3=%d (total=%d)."),
+		InitialSpatialLevelCounts.X, InitialSpatialLevelCounts.Y,
+		InitialSpatialLevelCounts.Z, InitialSpatialLevelCounts.W, Config.ProbeCount);
 	// Estimate the actual generated lattice, not the hard safety cap.
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
@@ -959,6 +977,11 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 		Config.MaxActiveProbes, Config.ProbePositions,
 		Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
+	const FIntVector UpdatedSpatialLevelCounts = DDGICountSpatialProbeLevels(Config.ProbeLevels);
+	UE_LOG(LogTemp, Log,
+		TEXT("DDGI spatial probe window recentered: L0=%d L1=%d L2=%d L3=%d (total=%d)."),
+		UpdatedSpatialLevelCounts.X, UpdatedSpatialLevelCounts.Y,
+		UpdatedSpatialLevelCounts.Z, UpdatedSpatialLevelCounts.W, Config.ProbeCount);
 	Config.EstimatedRadianceStorageBytes =
 		Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
