@@ -16,6 +16,21 @@ void ADDGIMasterActor::BeginPlay()
 	RefreshWorldConfig();
 }
 
+void ADDGIMasterActor::PostRegisterAllComponents()
+{
+	Super::PostRegisterAllComponents();
+
+#if WITH_EDITOR
+	if (UWorld* World = GetWorld())
+	{
+		if (World->WorldType == EWorldType::Editor)
+		{
+			RefreshWorldConfig();
+		}
+	}
+#endif
+}
+
 void ADDGIMasterActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
