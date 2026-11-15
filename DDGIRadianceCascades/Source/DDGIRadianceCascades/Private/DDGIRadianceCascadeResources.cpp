@@ -1204,6 +1204,7 @@ bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
 
     const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || Storage->bPendingPhysicalSlotsUpload || Storage->bInvalidateAllPhysicalSlots ||
+        (Storage->bNeedsInitialization && Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0) ||
         !Storage->LogicalToPhysicalSlotsSRV.IsValid() ||
         !Storage->NewlyAllocatedPhysicalSlotsSRV.IsValid() ||
         Storage->LogicalToPhysicalSlotCPU.Num() != Storage->UploadedProbeCount ||
