@@ -7,194 +7,139 @@
 #include "DDGIRadianceCascadeResources.h"
 #include "DDGISoftwareBVH.h"
 #include "Components/DirectionalLightComponent.h"
+#include "Camera/PlayerCameraManager.h"
+#include "GameFramework/PlayerController.h"
 
 namespace
 {
-	void DDGIBuildMultiResolutionProbePositionsAtSpacing(
-		float Spacing,
-		float Radius,
-		TArray<FVector4>& OutPositions)
+	struct FDDGIProbeCandidate
 	{
-		OutPositions.Reset();
-		const float SafeSpacing = FMath::Max(1.0f, Spacing);
-		const float SafeRadius = FMath::Max(0.0f, Radius);
-		const int32 MaxCell = FMath::CeilToInt(SafeRadius / SafeSpacing);
-		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
-		const float TransitionWidth = FMath::Max(SafeSpacing * 2.0f, SafeRadius * 0.05f);
+		FVector4 Position;
+		double DistanceSquared;
+	};
 
-		// Four spatial levels: each level doubles the lattice stride.
-		// Adjacent radial support bands overlap around their blend boundary.
-		for (int32 Level = 0; Level < 4; ++Level)
+	FVector DDGIGetCameraWorldLocation(const ADDGIMasterActor* InActor)
+	{
+		if (!InActor) return FVector::ZeroVector;
+		UWorld* World = InActor->GetWorld();
+		if (World)
 		{
-			const int32 LevelStep = 1 << Level;
-			const float BoundaryBefore = SafeRadius * (static_cast<float>(Level) / 4.0f);
-			const float BoundaryAfter = SafeRadius * (static_cast<float>(Level + 1) / 4.0f);
-			const float InnerRadius = Level == 0 ? 0.0f :
-				FMath::Max(0.0f, BoundaryBefore - TransitionWidth);
-			const float OuterRadius = Level == 3 ? SafeRadius :
-				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
-			const double InnerRadiusSquared = static_cast<double>(InnerRadius) * InnerRadius;
-			const double OuterRadiusSquared = static_cast<double>(OuterRadius) * OuterRadius;
-			// Bound each nested loop by the outer sphere before visiting cells.
-			// Keep one extra lattice step as a precision guard; the exact annulus
-			// test below remains authoritative and preserves the generated layout.
-			const int32 MaxAlignedCell = (MaxCell / LevelStep) * LevelStep;
-			const int32 ZExtent = FMath::Min(
-				MaxAlignedCell,
-				(FMath::FloorToInt(OuterRadius / (SafeSpacing * LevelStep)) + 1) * LevelStep);
-			const int32 FirstCell = -ZExtent;
-
-			for (int32 Z = FirstCell; Z <= ZExtent; Z += LevelStep)
+			if (APlayerController* PlayerController = World->GetFirstPlayerController())
 			{
-				const double DZ = static_cast<double>(Z) * SafeSpacing;
-				const double ZSquared = DZ * DZ;
-				const double RemainingAfterZ = FMath::Max(0.0, OuterRadiusSquared - ZSquared);
-				const int32 YExtent = FMath::Min(
-					MaxAlignedCell,
-					(FMath::FloorToInt(FMath::Sqrt(RemainingAfterZ) / (SafeSpacing * LevelStep)) + 1) * LevelStep);
-				for (int32 Y = -YExtent; Y <= YExtent; Y += LevelStep)
+				if (PlayerController->PlayerCameraManager)
 				{
-					const double DY = static_cast<double>(Y) * SafeSpacing;
-					const double YSquared = DY * DY;
-					const double RemainingAfterY = FMath::Max(0.0, OuterRadiusSquared - ZSquared - YSquared);
-					const int32 XExtent = FMath::Min(
-						MaxAlignedCell,
-						(FMath::FloorToInt(FMath::Sqrt(RemainingAfterY) / (SafeSpacing * LevelStep)) + 1) * LevelStep);
-					for (int32 X = -XExtent; X <= XExtent; X += LevelStep)
-					{
-						const double DX = static_cast<double>(X) * SafeSpacing;
-						const double DistanceSquared = DX * DX + YSquared + ZSquared;
-						if (DistanceSquared < InnerRadiusSquared ||
-							DistanceSquared > OuterRadiusSquared)
-						{
-							continue;
-						}
-
-						OutPositions.Add(FVector4(
-							static_cast<float>(DX),
-							static_cast<float>(DY),
-							static_cast<float>(DZ),
-							static_cast<float>(Level)));
-					}
+					return PlayerController->PlayerCameraManager->GetCameraLocation();
+				}
+				if (APawn* Pawn = PlayerController->GetPawn())
+				{
+					return Pawn->GetActorLocation();
 				}
 			}
 		}
+		return InActor->GetActorLocation();
 	}
 
-	// Count candidates without allocating/writing a temporary FVector4 array.
-	// The spacing search only needs to know whether the configured cap is exceeded;
-	// stop as soon as that answer is known.
-	int32 DDGICountMultiResolutionProbePositionsAtSpacing(
-		float Spacing,
-		float Radius,
-		int32 StopAfter)
+	FIntVector DDGIQuantizeWindowCenter(const FVector& WorldLocation, float Spacing)
 	{
 		const float SafeSpacing = FMath::Max(1.0f, Spacing);
-		const float SafeRadius = FMath::Max(0.0f, Radius);
-		const int32 MaxCell = FMath::CeilToInt(SafeRadius / SafeSpacing);
-		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
-		const float TransitionWidth = FMath::Max(SafeSpacing * 2.0f, SafeRadius * 0.05f);
-		int32 Count = 0;
-
-		for (int32 Level = 0; Level < 4; ++Level)
-		{
-			const int32 LevelStep = 1 << Level;
-			const float BoundaryBefore = SafeRadius * (static_cast<float>(Level) / 4.0f);
-			const float BoundaryAfter = SafeRadius * (static_cast<float>(Level + 1) / 4.0f);
-			const float InnerRadius = Level == 0 ? 0.0f :
-				FMath::Max(0.0f, BoundaryBefore - TransitionWidth);
-			const float OuterRadius = Level == 3 ? SafeRadius :
-				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
-			const double InnerRadiusSquared = static_cast<double>(InnerRadius) * InnerRadius;
-			const double OuterRadiusSquared = static_cast<double>(OuterRadius) * OuterRadius;
-			// Bound each nested loop by the outer sphere before visiting cells.
-			// Keep one extra lattice step as a precision guard; the exact annulus
-			// test below remains authoritative and preserves the generated layout.
-			const int32 MaxAlignedCell = (MaxCell / LevelStep) * LevelStep;
-			const int32 ZExtent = FMath::Min(
-				MaxAlignedCell,
-				(FMath::FloorToInt(OuterRadius / (SafeSpacing * LevelStep)) + 1) * LevelStep);
-			const int32 FirstCell = -ZExtent;
-
-			for (int32 Z = FirstCell; Z <= ZExtent; Z += LevelStep)
-			{
-				const double DZ = static_cast<double>(Z) * SafeSpacing;
-				const double ZSquared = DZ * DZ;
-				const double RemainingAfterZ = FMath::Max(0.0, OuterRadiusSquared - ZSquared);
-				const int32 YExtent = FMath::Min(
-					MaxAlignedCell,
-					(FMath::FloorToInt(FMath::Sqrt(RemainingAfterZ) / (SafeSpacing * LevelStep)) + 1) * LevelStep);
-				for (int32 Y = -YExtent; Y <= YExtent; Y += LevelStep)
-				{
-					const double DY = static_cast<double>(Y) * SafeSpacing;
-					const double YSquared = DY * DY;
-					const double RemainingAfterY = FMath::Max(0.0, OuterRadiusSquared - ZSquared - YSquared);
-					const int32 XExtent = FMath::Min(
-						MaxAlignedCell,
-						(FMath::FloorToInt(FMath::Sqrt(RemainingAfterY) / (SafeSpacing * LevelStep)) + 1) * LevelStep);
-					for (int32 X = -XExtent; X <= XExtent; X += LevelStep)
-					{
-						const double DX = static_cast<double>(X) * SafeSpacing;
-						const double DistanceSquared = DX * DX + YSquared + ZSquared;
-						if (DistanceSquared < InnerRadiusSquared ||
-							DistanceSquared > OuterRadiusSquared)
-						{
-							continue;
-						}
-
-						if (++Count > StopAfter)
-						{
-							return Count;
-						}
-					}
-				}
-			}
-		}
-		return Count;
+		return FIntVector(
+			FMath::RoundToInt(WorldLocation.X / SafeSpacing),
+			FMath::RoundToInt(WorldLocation.Y / SafeSpacing),
+			FMath::RoundToInt(WorldLocation.Z / SafeSpacing));
 	}
 
-	float DDGIBuildSparseProbePositions(
-		float RequestedSpacing,
+	void DDGIBuildActiveProbePositions(
+		float Spacing,
 		float Radius,
+		const FIntVector& CenterCell,
 		int32 MaxProbeCount,
 		TArray<FVector4>& OutPositions)
 	{
 		OutPositions.Reset();
-		const int32 SafeMaxProbeCount = FMath::Max(0, MaxProbeCount);
+		const float SafeSpacing = FMath::Max(1.0f, Spacing);
 		const float SafeRadius = FMath::Max(0.0f, Radius);
-		float EffectiveSpacing = FMath::Max(1.0f, RequestedSpacing);
-		if (SafeMaxProbeCount == 0)
-		{
-			return EffectiveSpacing;
-		}
+		const int32 SafeMaxProbeCount = FMath::Max(0, MaxProbeCount);
+		if (SafeMaxProbeCount == 0) return;
 
-		DDGIBuildMultiResolutionProbePositionsAtSpacing(
-			EffectiveSpacing, SafeRadius, OutPositions);
-		if (OutPositions.Num() > SafeMaxProbeCount)
+		const FVector CenterWorld(
+			static_cast<double>(CenterCell.X) * SafeSpacing,
+			static_cast<double>(CenterCell.Y) * SafeSpacing,
+			static_cast<double>(CenterCell.Z) * SafeSpacing);
+		const float TransitionWidth = FMath::Max(SafeSpacing * 2.0f, SafeRadius * 0.05f);
+		TArray<FDDGIProbeCandidate> Candidates;
+
+		// All coordinates remain on the immutable world-origin lattice. The
+		// camera only selects which globally aligned cells are active.
+		for (int32 Level = 0; Level < 4; ++Level)
 		{
-			float LowerSpacing = EffectiveSpacing;
-			float UpperSpacing = FMath::Max(
-				EffectiveSpacing, SafeRadius * 2.0f + EffectiveSpacing);
-			for (int32 Iteration = 0; Iteration < 24; ++Iteration)
+			const int32 LevelStep = 1 << Level;
+			const float BoundaryBefore = SafeRadius * (static_cast<float>(Level) / 4.0f);
+			const float BoundaryAfter = SafeRadius * (static_cast<float>(Level + 1) / 4.0f);
+			const float InnerRadius = Level == 0 ? 0.0f :
+				FMath::Max(0.0f, BoundaryBefore - TransitionWidth);
+			const float OuterRadius = Level == 3 ? SafeRadius :
+				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
+			const double InnerRadiusSquared = static_cast<double>(InnerRadius) * InnerRadius;
+			const double OuterRadiusSquared = static_cast<double>(OuterRadius) * OuterRadius;
+
+			const int32 MinCellX = FMath::FloorToInt((CenterWorld.X - OuterRadius) / SafeSpacing);
+			const int32 MaxCellX = FMath::CeilToInt((CenterWorld.X + OuterRadius) / SafeSpacing);
+			const int32 MinCellY = FMath::FloorToInt((CenterWorld.Y - OuterRadius) / SafeSpacing);
+			const int32 MaxCellY = FMath::CeilToInt((CenterWorld.Y + OuterRadius) / SafeSpacing);
+			const int32 MinCellZ = FMath::FloorToInt((CenterWorld.Z - OuterRadius) / SafeSpacing);
+			const int32 MaxCellZ = FMath::CeilToInt((CenterWorld.Z + OuterRadius) / SafeSpacing);
+			const int32 FirstX = FMath::CeilToInt(static_cast<float>(MinCellX) / LevelStep) * LevelStep;
+			const int32 LastX = FMath::FloorToInt(static_cast<float>(MaxCellX) / LevelStep) * LevelStep;
+			const int32 FirstY = FMath::CeilToInt(static_cast<float>(MinCellY) / LevelStep) * LevelStep;
+			const int32 LastY = FMath::FloorToInt(static_cast<float>(MaxCellY) / LevelStep) * LevelStep;
+			const int32 FirstZ = FMath::CeilToInt(static_cast<float>(MinCellZ) / LevelStep) * LevelStep;
+			const int32 LastZ = FMath::FloorToInt(static_cast<float>(MaxCellZ) / LevelStep) * LevelStep;
+
+			for (int32 CellZ = FirstZ; CellZ <= LastZ; CellZ += LevelStep)
 			{
-				const float CandidateSpacing =
-					LowerSpacing + (UpperSpacing - LowerSpacing) * 0.5f;
-				const int32 CandidateCount = DDGICountMultiResolutionProbePositionsAtSpacing(
-					CandidateSpacing, SafeRadius, SafeMaxProbeCount);
-				if (CandidateCount > SafeMaxProbeCount)
+				const double DZ = (static_cast<double>(CellZ) - CenterCell.Z) * SafeSpacing;
+				const double ZSquared = DZ * DZ;
+				if (ZSquared > OuterRadiusSquared) continue;
+				for (int32 CellY = FirstY; CellY <= LastY; CellY += LevelStep)
 				{
-					LowerSpacing = CandidateSpacing;
-				}
-				else
-				{
-					UpperSpacing = CandidateSpacing;
+					const double DY = (static_cast<double>(CellY) - CenterCell.Y) * SafeSpacing;
+					const double YZSquared = DY * DY + ZSquared;
+					if (YZSquared > OuterRadiusSquared) continue;
+					for (int32 CellX = FirstX; CellX <= LastX; CellX += LevelStep)
+					{
+						const double DX = (static_cast<double>(CellX) - CenterCell.X) * SafeSpacing;
+						const double DistanceSquared = DX * DX + YZSquared;
+						if (DistanceSquared < InnerRadiusSquared || DistanceSquared > OuterRadiusSquared) continue;
+						FDDGIProbeCandidate& Candidate = Candidates.AddDefaulted_GetRef();
+						Candidate.Position = FVector4(
+							static_cast<float>(CellX) * SafeSpacing,
+							static_cast<float>(CellY) * SafeSpacing,
+							static_cast<float>(CellZ) * SafeSpacing,
+							static_cast<float>(Level));
+						Candidate.DistanceSquared = DistanceSquared;
+					}
 				}
 			}
-			EffectiveSpacing = UpperSpacing;
-			DDGIBuildMultiResolutionProbePositionsAtSpacing(
-				EffectiveSpacing, SafeRadius, OutPositions);
 		}
-		return EffectiveSpacing;
+
+		Candidates.Sort([](const FDDGIProbeCandidate& A, const FDDGIProbeCandidate& B)
+		{
+			if (!FMath::IsNearlyEqual(A.DistanceSquared, B.DistanceSquared, 1.0e-6))
+			{
+				return A.DistanceSquared < B.DistanceSquared;
+			}
+			if (A.Position.W != B.Position.W) return A.Position.W < B.Position.W;
+			if (A.Position.Z != B.Position.Z) return A.Position.Z < B.Position.Z;
+			if (A.Position.Y != B.Position.Y) return A.Position.Y < B.Position.Y;
+			return A.Position.X < B.Position.X;
+		});
+
+		const int32 SelectedCount = FMath::Min(SafeMaxProbeCount, Candidates.Num());
+		OutPositions.Reserve(SelectedCount);
+		for (int32 Index = 0; Index < SelectedCount; ++Index)
+		{
+			OutPositions.Add(Candidates[Index].Position);
+		}
 	}
 	uint32 DDGIComputeProbeLayoutHash(
 		const TArray<FVector4>& ProbePositions,
@@ -496,16 +441,15 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		}
 	}
 
-	// The probe lattice is anchored to world origin (0,0,0), never to the
-	// Master Actor or the active camera. Probe positions remain world-stable.
-	// Coordinates are stored relative to the BVH origin for shader precision.
+	// The lattice remains anchored at world origin. The snapped camera cell
+	// selects an active subset; it never changes the lattice spacing.
 	Config.ProbeGridOrigin = -Config.SoftwareBVH->WorldOrigin;
-	const float RequestedProbeSpacing = Config.ProbeSpacing;
-	Config.ProbeSpacing = DDGIBuildSparseProbePositions(
-		RequestedProbeSpacing,
-		Config.ProbeGridDistance,
-		Config.MaxActiveProbes,
-		Config.ProbePositions);
+	const FVector InitialCameraLocation = DDGIGetCameraWorldLocation(InActor);
+	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(InitialCameraLocation, Config.ProbeSpacing);
+	bHasActiveWindowCenterCell = true;
+	DDGIBuildActiveProbePositions(
+		Config.ProbeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
+		Config.MaxActiveProbes, Config.ProbePositions);
 	Config.ProbeCount = Config.ProbePositions.Num();
 	// Estimate the actual generated lattice, not the hard safety cap.
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
@@ -525,6 +469,44 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	Config.StaticBackgroundIntensity = FMath::Max(0.0f, InActor->StaticBackgroundIntensity);
 	Config.BackgroundTransitionStart = FMath::Max(0.0f, InActor->BackgroundTransitionStart);
 	Config.BackgroundTransitionEnd = FMath::Max(Config.BackgroundTransitionStart, InActor->BackgroundTransitionEnd);
+	PublishConfig(true);
+}
+
+void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InActor)
+{
+	if (!IsValid(InActor) || ActiveMasterActor.Get() != InActor || !Config.SoftwareBVH.IsValid())
+	{
+		return;
+	}
+
+	const FVector CameraLocation = DDGIGetCameraWorldLocation(InActor);
+	const float SafeSpacing = FMath::Max(1.0f, Config.ProbeSpacing);
+	const FVector CurrentCenter(
+		static_cast<double>(ActiveWindowCenterCell.X) * SafeSpacing,
+		static_cast<double>(ActiveWindowCenterCell.Y) * SafeSpacing,
+		static_cast<double>(ActiveWindowCenterCell.Z) * SafeSpacing);
+	const float RecenterThreshold = SafeSpacing * 0.75f;
+	const FVector Delta = CameraLocation - CurrentCenter;
+
+	if (bHasActiveWindowCenterCell &&
+		FMath::Abs(Delta.X) <= RecenterThreshold &&
+		FMath::Abs(Delta.Y) <= RecenterThreshold &&
+		FMath::Abs(Delta.Z) <= RecenterThreshold)
+	{
+		return;
+	}
+
+	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(CameraLocation, SafeSpacing);
+	bHasActiveWindowCenterCell = true;
+	DDGIBuildActiveProbePositions(
+		SafeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
+		Config.MaxActiveProbes, Config.ProbePositions);
+	Config.ProbeCount = Config.ProbePositions.Num();
+	Config.EstimatedRadianceStorageBytes =
+		Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
+	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
+		Config.ProbePositions, Config.ProbeSpacing);
+
 	PublishConfig(true);
 }
 
