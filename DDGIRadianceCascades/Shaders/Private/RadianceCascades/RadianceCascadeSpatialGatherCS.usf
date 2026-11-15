@@ -38,30 +38,30 @@ float3 ComputeGatherTriangleNormal(float3 A, float3 B, float3 C)
     return ScaledCross * rsqrt(NormalLengthSquared);
 }
 
-uint DDGIHashProbeCell(int3 Cell)
+uint DDGIHashProbeCell(int3 Cell, uint Level)
 {
     uint Hash = asuint(Cell.x) * 0x8DA6B343u;
     Hash ^= asuint(Cell.y) * 0xD8163841u;
     Hash ^= asuint(Cell.z) * 0xCB1AB31Fu;
+    Hash ^= (Level + 1u) * 0x9E3779B9u;
     Hash ^= Hash >> 16; Hash *= 0x7FEB352Du;
     Hash ^= Hash >> 15; Hash *= 0x846CA68Bu;
     Hash ^= Hash >> 16;
     return Hash;
 }
-bool DDGIFindProbeInCell(int3 Cell, out uint OutProbeIndex)
+bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
 {
     OutProbeIndex = 0u;
-    if (HashCapacity == 0u || ProbeCount == 0u) return false;
-    uint Slot = DDGIHashProbeCell(Cell) & (HashCapacity - 1u);
-    // The table contains at most one entry per active probe, so no lookup
-    // can require more than ProbeCount occupied slots before finding a match.
+    if (HashCapacity == 0u || ProbeCount == 0u || Level > 7u) return false;
+    uint Slot = DDGIHashProbeCell(Cell, Level) & (HashCapacity - 1u);
     [loop] for (uint Attempt = 0u; Attempt < ProbeCount; ++Attempt)
     {
         float4 Entry = ProbeSpatialHash[Slot];
         if (Entry.w < 0.0f) return false;
-        if (all(Entry.xyz == float3(Cell)))
+        if (all(Entry.xyz == float3(Cell)) &&
+            (((uint)round(Entry.w) & 7u) == Level))
         {
-            OutProbeIndex = (uint)Entry.w;
+            OutProbeIndex = (uint)round(Entry.w) >> 3u;
             return OutProbeIndex < ProbeCount;
         }
         Slot = (Slot + 1u) & (HashCapacity - 1u);
@@ -152,7 +152,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         }
         else
         {
-            if (!DDGIFindProbeInCell(NeighborCell, NeighborIndex))
+            if (!DDGIFindProbeInCell(NeighborCell, CenterLevel, NeighborIndex))
             {
                 ++NeighborSlot;
                 continue;
