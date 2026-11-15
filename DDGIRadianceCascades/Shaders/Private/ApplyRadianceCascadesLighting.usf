@@ -1,0 +1,266 @@
+/*
+ * Deferred diffuse-lighting application for the software Radiance Cascades backend.
+ * The first cascade stores integrated directional radiance; sparse probes are
+ * interpolated trilinearly through the deterministic spatial hash.
+ */
+#include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/DeferredShadingCommon.ush"
+
+Texture2D<float4> NormalTexture;
+Texture2D<float> DepthTexture;
+Texture2D<float4> BaseColorTexture;
+Texture2D<float4> MetallicTexture;
+Texture2D<float4> DirectionsTexture;
+Texture2D<float4> RadianceTexture;
+Texture2D<float4> ProbePositionsTexture;
+StructuredBuffer<float4> ProbeSpatialHash;
+Texture2D<float4> SceneColorTexture;
+RWTexture2D<float4> SceneColorOutputUAV;
+SamplerState PointClampSampler;
+
+float4 ScaledViewSizeAndInvSize;
+float2 ViewRectMin;
+uint ProbeCount;
+uint TotalRaysPerProbe;
+uint BaseRayCount;
+uint HashCapacity;
+float ProbeSpacing;
+float ProbeGridDistance;
+float4 ProbeGridOrigin;
+float4 BVHWorldOrigin;
+uint ShouldUsePreExposure;
+uint DebugMode;
+
+#define DDGI_RC_TEXTURE_WIDTH 4096u
+
+uint DDGIHashProbeCell(int3 Cell, uint Level)
+{
+    uint Hash = asuint(Cell.x) * 0x8DA6B343u;
+    Hash ^= asuint(Cell.y) * 0xD8163841u;
+    Hash ^= asuint(Cell.z) * 0xCB1AB31Fu;
+    Hash ^= (Level + 1u) * 0x9E3779B9u;
+    Hash ^= Hash >> 16;
+    Hash *= 0x7FEB352Du;
+    Hash ^= Hash >> 15;
+    Hash *= 0x846CA68Bu;
+    Hash ^= Hash >> 16;
+    return Hash;
+}
+
+bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
+{
+    OutProbeIndex = 0u;
+    if (HashCapacity == 0u || ProbeCount == 0u || Level > 7u) return false;
+    uint Slot = DDGIHashProbeCell(Cell, Level) & (HashCapacity - 1u);
+    [loop]
+    for (uint Attempt = 0u; Attempt < ProbeCount; ++Attempt)
+    {
+        float4 Entry = ProbeSpatialHash[Slot];
+        if (Entry.w < 0.0f) return false;
+        if (all(Entry.xyz == float3(Cell)) &&
+            (((uint)round(Entry.w) & 7u) == Level))
+        {
+            OutProbeIndex = (uint)round(Entry.w) >> 3u;
+            return OutProbeIndex < ProbeCount;
+        }
+        Slot = (Slot + 1u) & (HashCapacity - 1u);
+    }
+    return false;
+}
+
+float3 DDGIProbeDiffuseIrradiance(uint ProbeIndex, float3 Normal)
+{
+    float3 Irradiance = 0.0f;
+    const uint SafeRayCount = min(BaseRayCount, min(TotalRaysPerProbe, 64u));
+    if (SafeRayCount == 0u) return Irradiance;
+
+    [loop]
+    for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
+    {
+        uint2 DirectionPixel = uint2(
+            RayIndex % DDGI_RC_TEXTURE_WIDTH,
+            RayIndex / DDGI_RC_TEXTURE_WIDTH);
+        float3 Direction = normalize(
+            DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
+        float Cosine = saturate(dot(Normal, Direction));
+        if (Cosine <= 0.0f) continue;
+
+        uint LinearIndex = ProbeIndex * TotalRaysPerProbe + RayIndex;
+        uint2 RadiancePixel = uint2(
+            LinearIndex % DDGI_RC_TEXTURE_WIDTH,
+            LinearIndex / DDGI_RC_TEXTURE_WIDTH);
+        Irradiance += RadianceTexture.Load(int3(RadiancePixel, 0)).rgb * Cosine;
+    }
+
+    // Equal-solid-angle base directions: each represents 4*PI/N steradians.
+    // Dividing irradiance by PI yields the Lambertian diffuse response.
+    return Irradiance * (4.0f / (float)SafeRayCount);
+}
+
+float3 DDGISampleProbeLevel(
+    float3 LocalPosition,
+    float3 Normal,
+    uint Level,
+    out float OutWeightSum)
+{
+    OutWeightSum = 0.0f;
+    float3 Irradiance = 0.0f;
+    uint LevelStep = 1u << Level;
+    float LevelSpacing = max(ProbeSpacing, 1.0f) * (float)LevelStep;
+    float3 GridPosition = (LocalPosition - ProbeGridOrigin.xyz) / LevelSpacing;
+    int3 BaseCell = int3(floor(GridPosition));
+    float3 CellFraction = frac(GridPosition);
+
+    [unroll]
+    for (int Z = 0; Z <= 1; ++Z)
+    [unroll]
+    for (int Y = 0; Y <= 1; ++Y)
+    [unroll]
+    for (int X = 0; X <= 1; ++X)
+    {
+        int3 Cell = (BaseCell + int3(X, Y, Z)) * (int)LevelStep;
+        float3 AxisWeight = lerp(
+            1.0f - CellFraction, CellFraction, float3(X, Y, Z));
+        float Weight = AxisWeight.x * AxisWeight.y * AxisWeight.z;
+        if (Weight <= 0.00001f) continue;
+
+        uint ProbeIndex;
+        if (!DDGIFindProbeInCell(Cell, Level, ProbeIndex)) continue;
+
+        uint2 ProbePixel = uint2(
+            ProbeIndex % DDGI_RC_TEXTURE_WIDTH,
+            ProbeIndex / DDGI_RC_TEXTURE_WIDTH);
+        float3 ProbePosition = ProbeGridOrigin.xyz +
+            ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
+        float3 SurfaceToProbe = ProbePosition - LocalPosition;
+        float SurfaceSide = dot(Normal, SurfaceToProbe);
+        float SideThreshold = max(LevelSpacing * 0.01f, 0.5f);
+        float SideFadeDistance = max(LevelSpacing * 0.25f, 10.0f);
+        Weight *= smoothstep(
+            SideThreshold,
+            SideThreshold + SideFadeDistance,
+            SurfaceSide);
+        if (Weight <= 0.00001f) continue;
+
+        Irradiance += DDGIProbeDiffuseIrradiance(ProbeIndex, Normal) * Weight;
+        OutWeightSum += Weight;
+    }
+
+    return Irradiance / max(OutWeightSum, 0.00001f);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    int2 PixelIndex = int2(DispatchThreadID.xy);
+    if (PixelIndex.x >= (int)ScaledViewSizeAndInvSize.x ||
+        PixelIndex.y >= (int)ScaledViewSizeAndInvSize.y) return;
+
+    int2 BufferPixelIndex = PixelIndex + int2(ViewRectMin);
+
+    // Isolate the post-process output path from all DDGI inputs. If this mode
+    // is visible, the callback's output is reaching the final scene image.
+    if (DebugMode == 3u)
+    {
+        SceneColorOutputUAV[BufferPixelIndex] = float4(1.0f, 0.0f, 1.0f, 1.0f);
+        return;
+    }
+
+    float2 ScreenUV = (float2(PixelIndex) + 0.5f) * ScaledViewSizeAndInvSize.zw;
+    int2 GBufferPixel = int2(ScreenUV * View.ViewSizeAndInvSize.xy);
+    float2 GBufferUV = (float2(GBufferPixel) + 0.5f) * View.ViewSizeAndInvSize.zw;
+    float4 ScreenPosition = float4(
+        GBufferUV * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f),
+        0.0f, 1.0f);
+    float3 InScreenVector = mul(
+        float4(ScreenPosition.xy, 1.0f, 0.0f),
+        View.ScreenToTranslatedWorld).xyz;
+
+    float2 BufferUV = (ScreenUV * View.ViewSizeAndInvSize.xy + ViewRectMin) *
+        View.BufferSizeAndInvSize.zw;
+    float DeviceZ = DepthTexture.SampleLevel(PointClampSampler, BufferUV, 0).r;
+    if (DeviceZ <= 0.000001f)
+    {
+        if (DebugMode == 1u)
+        {
+            SceneColorOutputUAV[BufferPixelIndex] = float4(0.0f, 0.0f, 0.25f, 1.0f);
+        }
+        else
+        {
+            SceneColorOutputUAV[BufferPixelIndex] = SceneColorTexture.Load(int3(BufferPixelIndex, 0));
+        }
+        return;
+    }
+
+    float SceneDepth = ConvertFromDeviceZ(DeviceZ);
+    float3 WorldPosition = InScreenVector * SceneDepth + View.WorldCameraOrigin;
+    float3 LocalPosition = WorldPosition - BVHWorldOrigin.xyz;
+    float3 Normal = normalize(DecodeNormal(
+        NormalTexture.SampleLevel(PointClampSampler, BufferUV, 0).xyz));
+    float3 BaseColor = DecodeBaseColor(
+        BaseColorTexture.SampleLevel(PointClampSampler, BufferUV, 0).rgb);
+    float Metallic = MetallicTexture.SampleLevel(PointClampSampler, BufferUV, 0).r;
+    float3 Albedo = BaseColor * (1.0f - Metallic);
+
+    float GridRadius = max(ProbeGridDistance, 1.0f);
+    float GridDistance = length(LocalPosition - ProbeGridOrigin.xyz);
+    float TransitionWidth = max(ProbeSpacing * 2.0f, GridRadius * 0.05f);
+    float Boundary0 = GridRadius * 0.25f;
+    float Boundary1 = GridRadius * 0.50f;
+    float Boundary2 = GridRadius * 0.75f;
+    float Blend0 = 1.0f - smoothstep(Boundary0 - TransitionWidth, Boundary0 + TransitionWidth, GridDistance);
+    float Blend1 = smoothstep(Boundary0 - TransitionWidth, Boundary0 + TransitionWidth, GridDistance) *
+        (1.0f - smoothstep(Boundary1 - TransitionWidth, Boundary1 + TransitionWidth, GridDistance));
+    float Blend2 = smoothstep(Boundary1 - TransitionWidth, Boundary1 + TransitionWidth, GridDistance) *
+        (1.0f - smoothstep(Boundary2 - TransitionWidth, Boundary2 + TransitionWidth, GridDistance));
+    float Blend3 = smoothstep(Boundary2 - TransitionWidth, Boundary2 + TransitionWidth, GridDistance);
+
+    float3 Irradiance = 0.0f;
+    float ProbeWeightSum = 0.0f;
+    [unroll]
+    for (uint Level = 0u; Level < 4u; ++Level)
+    {
+        float BlendWeight = Level == 0u ? Blend0 :
+            (Level == 1u ? Blend1 : (Level == 2u ? Blend2 : Blend3));
+        if (BlendWeight <= 0.00001f) continue;
+
+        float LevelWeightSum = 0.0f;
+        float3 LevelIrradiance = DDGISampleProbeLevel(
+            LocalPosition, Normal, Level, LevelWeightSum);
+        if (LevelWeightSum <= 0.00001f) continue;
+
+        Irradiance += LevelIrradiance * BlendWeight;
+        ProbeWeightSum += BlendWeight;
+    }
+
+    if (ProbeWeightSum <= 0.00001f)
+    {
+        if (DebugMode == 1u)
+        {
+            SceneColorOutputUAV[BufferPixelIndex] = float4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+        else
+        {
+            SceneColorOutputUAV[BufferPixelIndex] = SceneColorTexture.Load(int3(BufferPixelIndex, 0));
+        }
+        return;
+    }
+    Irradiance /= ProbeWeightSum;
+
+    if (DebugMode == 1u)
+    {
+        SceneColorOutputUAV[BufferPixelIndex] = float4(0.0f, 0.8f, 0.0f, 1.0f);
+        return;
+    }
+    if (DebugMode == 2u)
+    {
+        SceneColorOutputUAV[BufferPixelIndex] = float4(saturate(Irradiance * 4.0f), 1.0f);
+        return;
+    }
+
+    float PreExposure = ShouldUsePreExposure != 0u ? View.PreExposure : 1.0f;
+    // Every in-bounds pixel is written exactly once. The UAV is not assumed
+    // to contain initialized data from a previous frame or allocation.
+    float4 SceneColor = SceneColorTexture.Load(int3(BufferPixelIndex, 0));
+    SceneColorOutputUAV[BufferPixelIndex] = SceneColor + float4(Irradiance * Albedo * PreExposure, 0.0f);
+}
