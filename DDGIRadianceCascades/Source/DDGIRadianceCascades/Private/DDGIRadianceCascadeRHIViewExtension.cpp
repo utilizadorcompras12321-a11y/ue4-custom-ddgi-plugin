@@ -532,9 +532,21 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	const FSceneView& View,
 	const FPostProcessMaterialInputs& Inputs)
 {
+	static bool bLoggedApplyCallback = false;
+	if (!bLoggedApplyCallback)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: post-process apply callback executed."));
+		bLoggedApplyCallback = true;
+	}
 	const FScreenPassTexture SceneColor = Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
 	if (!SceneColor.IsValid() || !View.Family || !View.Family->Scene)
 	{
+		static bool bLoggedInvalidView = false;
+		if (!bLoggedInvalidView)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback has invalid SceneColor, ViewFamily, or Scene."));
+			bLoggedInvalidView = true;
+		}
 		return SceneColor;
 	}
 
@@ -542,6 +554,12 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
 	if (!Config || !Config->bEnableDynamicGI || !Config->SoftwareBVH.IsValid())
 	{
+		static bool bLoggedMissingConfig = false;
+		if (!bLoggedMissingConfig)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback has no enabled master config or valid software BVH."));
+			bLoggedMissingConfig = true;
+		}
 		return SceneColor;
 	}
 
@@ -556,6 +574,12 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		GraphBuilder, Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture,
 		HitTriangleIndexTexture, ProbePositionsTexture, ProbeCount, TotalRaysPerProbe))
 	{
+		static bool bLoggedMissingLightingTextures = false;
+		if (!bLoggedMissingLightingTextures)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback cannot acquire completed radiance/probe textures."));
+			bLoggedMissingLightingTextures = true;
+		}
 		return SceneColor;
 	}
 
@@ -566,11 +590,23 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		Scene, ProbeSpatialHashSRV, HashCapacity, ProbeSpacing) ||
 		!ProbeSpatialHashSRV.IsValid() || HashCapacity == 0)
 	{
+		static bool bLoggedMissingHash = false;
+		if (!bLoggedMissingHash)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback cannot acquire a valid probe spatial hash."));
+			bLoggedMissingHash = true;
+		}
 		return SceneColor;
 	}
 
 	if (!Inputs.SceneTextures.SceneTextures)
 	{
+		static bool bLoggedMissingSceneTextures = false;
+		if (!bLoggedMissingSceneTextures)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: post-process inputs do not contain SceneTextures."));
+			bLoggedMissingSceneTextures = true;
+		}
 		return SceneColor;
 	}
 
@@ -631,6 +667,13 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 			FMath::DivideAndRoundUp(ViewSize.Y, 8),
 			1));
 
+	static bool bLoggedApplyScheduled = false;
+	if (!bLoggedApplyScheduled)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply compute pass scheduled. Probes=%u RaysPerProbe=%u HashCapacity=%u View=%dx%d."),
+			ProbeCount, TotalRaysPerProbe, HashCapacity, ViewSize.X, ViewSize.Y);
+		bLoggedApplyScheduled = true;
+	}
 	return FScreenPassTexture(OutputTexture, SceneColor.ViewRect);
 }
 
@@ -653,6 +696,12 @@ void FDDGIRadianceCascadeRHIViewExtension::SubscribeToPostProcessingPass(
 	{
 		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateStatic(
 			&DDGIApplyRadianceCascadesAfterMotionBlur));
+		static bool bLoggedSubscription = false;
+		if (!bLoggedSubscription)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: subscribed to MotionBlur post-process pass (enabled=%d)."), bIsPassEnabled ? 1 : 0);
+			bLoggedSubscription = true;
+		}
 	}
 }
 
@@ -661,6 +710,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FSceneView& InView)
 {
 	check(IsInRenderingThread());
+	static bool bLoggedPreRenderEntry = false;
+	if (!bLoggedPreRenderEntry)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: PreRenderView_RenderThread executed."));
+		bLoggedPreRenderEntry = true;
+	}
 
 	if (!InView.Family || !InView.Family->Scene)
 	{
@@ -671,6 +726,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
 	if (!Config || !Config->bEnableDynamicGI)
 	{
+		static bool bLoggedPreRenderNoConfig = false;
+		if (!bLoggedPreRenderNoConfig)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: PreRenderView has no enabled master config for this scene."));
+			bLoggedPreRenderNoConfig = true;
+		}
 		return;
 	}
 
@@ -692,7 +753,20 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture, HitTriangleIndexTexture, ProbePositionsTexture,
 		ProbeCount, TotalRaysPerProbe))
 	{
+		static bool bLoggedPreRenderNoResources = false;
+		if (!bLoggedPreRenderNoResources)
+		{
+			UE_LOG(LogTemp, Error, TEXT("DDGI DIAG: PreRenderView cannot acquire tracing GPU resources."));
+			bLoggedPreRenderNoResources = true;
+		}
 		return;
+	}
+
+	static bool bLoggedTraceStart = false;
+	if (!bLoggedTraceStart)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: tracing resources acquired. Probes=%u RaysPerProbe=%u."), ProbeCount, TotalRaysPerProbe);
+		bLoggedTraceStart = true;
 	}
 
 	const uint32 TotalTexels = ProbeCount * TotalRaysPerProbe;
