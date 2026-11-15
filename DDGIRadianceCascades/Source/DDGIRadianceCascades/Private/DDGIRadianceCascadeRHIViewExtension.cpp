@@ -406,16 +406,15 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		TextureWidth.Bind(Initializer.ParameterMap, TEXT("TextureWidth"));
-		TotalTexels.Bind(Initializer.ParameterMap, TEXT("TotalTexels"));
+		TotalIntegrationTexels.Bind(Initializer.ParameterMap, TEXT("TotalIntegrationTexels"));
 		DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
 		CascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("CascadeStorageOffset"));
 		CascadeRayCount.Bind(Initializer.ParameterMap, TEXT("CascadeRayCount"));
 		NextCascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("NextCascadeStorageOffset"));
 		EffectiveSplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
-		InputRadianceTexture.Bind(Initializer.ParameterMap, TEXT("InputRadianceTexture"));
+		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		HitDistanceTexture.Bind(Initializer.ParameterMap, TEXT("HitDistanceTexture"));
-		OutputRadianceUAV.Bind(Initializer.ParameterMap, TEXT("OutputRadianceUAV"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -427,10 +426,9 @@ public:
 	void SetParameters(
 		FRHICommandList& RHICmdList,
 		const TShaderRHIParamRef ShaderRHI,
-		FShaderResourceViewRHIRef InputRadianceSRV,
+		FUnorderedAccessViewRHIRef InRadianceUAV,
 		FShaderResourceViewRHIRef HitDistanceSRV,
-		FUnorderedAccessViewRHIRef OutputRadianceView,
-		uint32 InTotalTexels,
+		uint32 InTotalIntegrationTexels,
 		uint32 InDispatchGroupsX,
 		uint32 InTotalRaysPerProbe,
 		uint32 InCascadeStorageOffset,
@@ -440,56 +438,47 @@ public:
 	{
 		const uint32 InTextureWidth = 4096u;
 		SetShaderValue(RHICmdList, ShaderRHI, TextureWidth, InTextureWidth);
-		SetShaderValue(RHICmdList, ShaderRHI, TotalTexels, InTotalTexels);
+		SetShaderValue(RHICmdList, ShaderRHI, TotalIntegrationTexels, InTotalIntegrationTexels);
 		SetShaderValue(RHICmdList, ShaderRHI, DispatchGroupsX, InDispatchGroupsX);
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeStorageOffset, InCascadeStorageOffset);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeRayCount, InCascadeRayCount);
 		SetShaderValue(RHICmdList, ShaderRHI, NextCascadeStorageOffset, InNextCascadeStorageOffset);
 		SetShaderValue(RHICmdList, ShaderRHI, EffectiveSplitFactor, InEffectiveSplitFactor);
-		if (InputRadianceTexture.IsBound())
+		if (RadianceUAV.IsBound())
 		{
-			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, InputRadianceTexture.GetBaseIndex(), InputRadianceSRV);
+			RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), InRadianceUAV);
 		}
 		if (HitDistanceTexture.IsBound())
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitDistanceTexture.GetBaseIndex(), HitDistanceSRV);
-		}
-		if (OutputRadianceUAV.IsBound())
-		{
-			RHICmdList.SetUAVParameter(ShaderRHI, OutputRadianceUAV.GetBaseIndex(), OutputRadianceView);
 		}
 	}
 
 	template<typename TShaderRHIParamRef>
 	void UnbindResources(FRHICommandList& RHICmdList, const TShaderRHIParamRef ShaderRHI)
 	{
-		if (InputRadianceTexture.IsBound())
+		if (RadianceUAV.IsBound())
 		{
-			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, InputRadianceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+			RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 		}
 		if (HitDistanceTexture.IsBound())
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitDistanceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
 		}
-		if (OutputRadianceUAV.IsBound())
-		{
-			RHICmdList.SetUAVParameter(ShaderRHI, OutputRadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
-		}
 	}
 
 private:
 	LAYOUT_FIELD(FShaderParameter, TextureWidth);
-	LAYOUT_FIELD(FShaderParameter, TotalTexels);
+	LAYOUT_FIELD(FShaderParameter, TotalIntegrationTexels);
 	LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
 	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
 	LAYOUT_FIELD(FShaderParameter, CascadeStorageOffset);
 	LAYOUT_FIELD(FShaderParameter, CascadeRayCount);
 	LAYOUT_FIELD(FShaderParameter, NextCascadeStorageOffset);
 	LAYOUT_FIELD(FShaderParameter, EffectiveSplitFactor);
-	LAYOUT_FIELD(FShaderResourceParameter, InputRadianceTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, OutputRadianceUAV);
 };
 
 IMPLEMENT_SHADER_TYPE(
@@ -1043,55 +1032,60 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	GatherShader->UnbindResources(RHICmdList,GatherShader.GetComputeShader());
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,RadianceScratchTexture);
 
-	// Cascade integration consumes the gathered radiance and ping-pongs separately.
+	// Integrate directly in the gather output. Parent and child cascades occupy
+	// disjoint texel ranges, so one UAV can safely read child rays and write parents.
 	{
-		FTexture2DRHIRef CurrentInputRadiance = RadianceScratchTexture;
-		FTexture2DRHIRef CurrentOutputRadiance = RadianceTexture;
 		const uint32 CascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
 		const uint32 TotalRays = static_cast<uint32>(Config->TotalRaysPerProbe);
-		const uint32 TotalProbeTexels = ProbeCount * TotalRays;
-		const uint32 IntegrationGroups = FMath::Min(FMath::DivideAndRoundUp(TotalProbeTexels, 64u), 65535u);
-		const uint32 IntegrationGroupsY = FMath::DivideAndRoundUp(TotalProbeTexels, IntegrationGroups * 64u);
-		bool bResultIsInScratch = true;
+		FUnorderedAccessViewRHIRef IntegrationRadianceUAV = RHICreateUnorderedAccessView(RadianceScratchTexture);
+		FShaderResourceViewRHIRef IntegrationHitDistanceSRV = RHICreateShaderResourceView(HitDistanceTexture, 0);
+		if (!IntegrationRadianceUAV.IsValid() || !IntegrationHitDistanceSRV.IsValid())
+		{
+			UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create in-place integration UAV/SRV views."));
+			return;
+		}
 
+		TShaderMapRef<FDDGIRadianceCascadeIntegrateRHI> IntegrateShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 		for (int32 CascadeIndex = static_cast<int32>(CascadeCount) - 2; CascadeIndex >= 0; --CascadeIndex)
 		{
-			FShaderResourceViewRHIRef InputRadianceSRV = RHICreateShaderResourceView(CurrentInputRadiance, 0);
-			FShaderResourceViewRHIRef HitDistanceSRV = RHICreateShaderResourceView(HitDistanceTexture, 0);
-			FUnorderedAccessViewRHIRef OutputRadianceUAV = RHICreateUnorderedAccessView(CurrentOutputRadiance);
-			if (!InputRadianceSRV.IsValid() || !HitDistanceSRV.IsValid() || !OutputRadianceUAV.IsValid())
+			const uint32 CurrentCascadeRayCount = static_cast<uint32>(
+				Config->RadianceCascades.GetRayCount(CascadeIndex));
+			const uint32 IntegrationTexels = ProbeCount * CurrentCascadeRayCount;
+			if (IntegrationTexels == 0u)
 			{
-				UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create cascade integration SRV/UAV views."));
-				break;
+				continue;
 			}
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, CurrentInputRadiance);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, CurrentOutputRadiance);
+			const uint32 IntegrationGroups = FMath::Min(
+				FMath::DivideAndRoundUp(IntegrationTexels, 64u), 65535u);
+			const uint32 IntegrationGroupsY = FMath::DivideAndRoundUp(
+				IntegrationTexels, IntegrationGroups * 64u);
 
-			TShaderMapRef<FDDGIRadianceCascadeIntegrateRHI> IntegrateShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RadianceScratchTexture);
+
 			RHICmdList.SetComputeShader(IntegrateShader.GetComputeShader());
 			IntegrateShader->SetParameters(
-				RHICmdList, IntegrateShader.GetComputeShader(), InputRadianceSRV, HitDistanceSRV, OutputRadianceUAV,
-				TotalProbeTexels, IntegrationGroups, TotalRays,
+				RHICmdList, IntegrateShader.GetComputeShader(),
+				IntegrationRadianceUAV, IntegrationHitDistanceSRV,
+				IntegrationTexels, IntegrationGroups, TotalRays,
 				static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
-				static_cast<uint32>(Config->RadianceCascades.GetRayCount(CascadeIndex)),
+				CurrentCascadeRayCount,
 				static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex + 1)),
 				static_cast<uint32>(FMath::Max(1,
 					Config->RadianceCascades.GetRayCount(CascadeIndex + 1) /
 					FMath::Max(1, Config->RadianceCascades.GetRayCount(CascadeIndex)))));
 			DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), IntegrationGroups, IntegrationGroupsY, 1);
 			IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, CurrentOutputRadiance);
 
-			Swap(CurrentInputRadiance, CurrentOutputRadiance);
-			bResultIsInScratch = !bResultIsInScratch;
+			// Force visibility of this cascade's writes before the next cascade
+			// reads them as child radiance through the same UAV.
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceScratchTexture);
 		}
 
-		if (bResultIsInScratch)
-		{
-			DDGISwapRadianceCascadeRadianceBuffers_RenderThread(Scene);
-		}
+		// Apply consumes Storage.Radiance. Swap once, including the one-cascade
+		// case where gather output is already the complete radiance result.
+		DDGISwapRadianceCascadeRadianceBuffers_RenderThread(Scene);
 	}
 
 }
