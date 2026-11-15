@@ -19,6 +19,7 @@ namespace
 		FVector EmissiveRadiance = FVector::ZeroVector;
 		FVector BaseColor = FVector(0.18f, 0.18f, 0.18f);
 		bool bUsesDefaultBaseColor = true;
+		bool bBlocksDDGI = true;
 	};
 
 	struct FDDGISoftwareTriangle
@@ -523,6 +524,11 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 			// Materials without an explicit DDGI_BaseColor parameter use a neutral 18% diffuse fallback.
 			// Arbitrary material graphs and texture samples are not evaluated by this CPU BVH.
 			MaterialBaseColor.Init(FVector(0.18f, 0.18f, 0.18f), Component->GetNumMaterials());
+			// The software BVH has no transmittance representation. Only opaque and
+			// masked materials may conservatively occlude; transparent blend modes must
+			// not become fully opaque blockers.
+			TArray<uint8> MaterialBlocksDDGI;
+			MaterialBlocksDDGI.Init(1, Component->GetNumMaterials());
 			const FMaterialParameterInfo BaseColorParameterInfo(FName(TEXT("DDGI_BaseColor")));
 			const FMaterialParameterInfo EmissiveParameterInfo(FName(TEXT("DDGI_EmissiveRadiance")));
 			for (int32 MaterialIndex = 0; MaterialIndex < Component->GetNumMaterials(); ++MaterialIndex)
@@ -537,6 +543,8 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				if (!CachedData)
 				{
 					FDDGISoftwareMaterialData NewData;
+					const EBlendMode BlendMode = Material->GetBlendMode();
+					NewData.bBlocksDDGI = BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked;
 					FLinearColor EmissiveColor = FLinearColor::Black;
 					if (Material->GetVectorParameterValue(EmissiveParameterInfo, EmissiveColor))
 					{
@@ -560,6 +568,7 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 
 				MaterialEmissiveRadiance[MaterialIndex] = CachedData->EmissiveRadiance;
 				MaterialBaseColor[MaterialIndex] = CachedData->BaseColor;
+				MaterialBlocksDDGI[MaterialIndex] = CachedData->bBlocksDDGI ? 1 : 0;
 				if (CachedData->bUsesDefaultBaseColor)
 				{
 					// Count fallback material slots, not unique material objects.
@@ -569,6 +578,14 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 
 			for (int32 TriangleIndex = 0; TriangleIndex < TrianglesToProcess; ++TriangleIndex)
 			{
+				const int32 MaterialIndex = TriangleMaterialIndices.IsValidIndex(TriangleIndex)
+					? TriangleMaterialIndices[TriangleIndex]
+					: INDEX_NONE;
+				if (MaterialBlocksDDGI.IsValidIndex(MaterialIndex) &&
+					MaterialBlocksDDGI[MaterialIndex] == 0)
+				{
+					continue;
+				}
 
 				const uint32 I0 = LOD.IndexBuffer.GetIndex(TriangleIndex * 3 + 0);
 				const uint32 I1 = LOD.IndexBuffer.GetIndex(TriangleIndex * 3 + 1);
@@ -631,9 +648,6 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				// Divide before adding so the centroid does not overflow merely because
 				// the intermediate sum of three finite world positions exceeds float range.
 				Triangle.Centroid = A / 3.0f + B / 3.0f + C / 3.0f;
-				const int32 MaterialIndex = TriangleMaterialIndices.IsValidIndex(TriangleIndex)
-					? TriangleMaterialIndices[TriangleIndex]
-					: INDEX_NONE;
 				if (MaterialEmissiveRadiance.IsValidIndex(MaterialIndex))
 				{
 					Triangle.EmissiveRadiance = MaterialEmissiveRadiance[MaterialIndex];
