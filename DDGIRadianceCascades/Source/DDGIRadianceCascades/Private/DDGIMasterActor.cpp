@@ -39,6 +39,7 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 		if (UDDGIMasterSubsystem* Subsystem = World->GetSubsystem<UDDGIMasterSubsystem>())
 		{
 			Subsystem->RefreshDirectionalLighting(this);
+			Subsystem->UpdateActiveProbeWindow(this);
 		}
 	}
 }
