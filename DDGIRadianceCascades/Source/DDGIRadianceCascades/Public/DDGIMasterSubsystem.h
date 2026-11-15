@@ -80,6 +80,7 @@ public:
 	void RefreshConfig(ADDGIMasterActor* InActor);
 	void RebuildSoftwareBVH(ADDGIMasterActor* InActor);
 	void RefreshDirectionalLighting(ADDGIMasterActor* InActor);
+	void UpdateActiveProbeWindow(const ADDGIMasterActor* InActor);
 
 	const FDDGIMasterConfig& GetConfig() const { return Config; }
 	ADDGIMasterActor* GetMasterActor() const { return ActiveMasterActor.Get(); }
@@ -87,6 +88,8 @@ public:
 
 private:
 	int32 CachedSoftwareBVHTriangleLimit = INDEX_NONE;
+	FIntVector ActiveWindowCenterCell = FIntVector::ZeroValue;
+	bool bHasActiveWindowCenterCell = false;
 	TWeakObjectPtr<UDirectionalLightComponent> ActiveDirectionalLight;
 	bool bHasSearchedDirectionalLights = false;
 	bool UpdateDirectionalLighting(const ADDGIMasterActor* InActor);
