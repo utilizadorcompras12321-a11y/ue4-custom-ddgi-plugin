@@ -180,7 +180,7 @@ public:
 		GIIntensity.Bind(Initializer.ParameterMap, TEXT("GIIntensity"));
 		ProbeGridOrigin.Bind(Initializer.ParameterMap, TEXT("ProbeGridOrigin"));
 		ActiveWindowCenter.Bind(Initializer.ParameterMap, TEXT("ActiveWindowCenter"));
-		BackgroundTransitionStart(Initializer.ParameterMap, TEXT("BackgroundTransitionStart"));
+		BackgroundTransitionStart.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionStart"));
 		BackgroundTransitionEnd.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionEnd"));
 		bEnableStaticBackground.Bind(Initializer.ParameterMap, TEXT("bEnableStaticBackground"));
 
