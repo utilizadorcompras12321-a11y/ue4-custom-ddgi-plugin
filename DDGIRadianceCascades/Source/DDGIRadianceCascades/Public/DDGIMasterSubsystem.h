@@ -84,7 +84,6 @@ public:
 	void UnregisterMasterActor(ADDGIMasterActor* InActor);
 	void RefreshConfig(ADDGIMasterActor* InActor);
 	void RebuildSoftwareBVH(ADDGIMasterActor* InActor);
-	void RefreshProbeGridOrigin(ADDGIMasterActor* InActor);
 	void RefreshDirectionalLighting(ADDGIMasterActor* InActor);
 
 	const FDDGIMasterConfig& GetConfig() const { return Config; }
@@ -97,7 +96,6 @@ private:
 	bool bHasSearchedDirectionalLights = false;
 	bool UpdateDirectionalLighting(const ADDGIMasterActor* InActor);
 	void PublishConfigValuesOnly();
-	void PublishProbeGridOriginOnly();
 	void CopyConfigFromActor(const ADDGIMasterActor* InActor);
 	void PublishConfig(bool bHasConfig);
 
