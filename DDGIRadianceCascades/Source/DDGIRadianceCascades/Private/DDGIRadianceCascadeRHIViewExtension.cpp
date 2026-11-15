@@ -843,8 +843,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const uint32 GroupsX = FMath::Min(TotalGroups, 65535u);
 	const uint32 GroupsY = FMath::DivideAndRoundUp(TotalGroups, GroupsX);
 
-	// Initialize ray directions and origins only when the Master Actor publishes
-	// new probe positions or the GPU storage is recreated.
+	// Initialize ray directions and clear radiance when the probe layout or snapped
+	// camera-centered grid changes, or when GPU storage is recreated.
 	// Keep initialization outputs separate from the tracing resources.
 	// The initialization getter SafeReleases its output references when no
 	// initialization is pending; sharing the tracing references would null them.
