@@ -276,14 +276,12 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Master Actor translation changes only ProbeGridOrigin and does not require
     // rewriting this texture.
     const int32 ProbeTextureWidth = 4096;
-    const int32 RequiredProbeTextureHeight = FMath::Max(1, FMath::DivideAndRoundUp(ActiveProbeCount, ProbeTextureWidth));
-    // Keep probe-position capacity when the active window contracts. Growing
-    // the window may reallocate this small metadata texture; shrinking never does.
+    // Probe positions are metadata, not ray history. Reserve the configured
+    // maximum active-probe capacity up front so ordinary window growth does
+    // not recreate this texture and invalidate the uploaded-layout snapshot.
+    // At the hard limit of 32768 probes this is only an 8-row RGBA32F texture.
     const int32 ProbeTextureHeight = FMath::Max(
-        RequiredProbeTextureHeight,
-        Storage.ProbePositionDimensions.X == ProbeTextureWidth
-            ? Storage.ProbePositionDimensions.Y
-            : 1);
+        1, FMath::DivideAndRoundUp(Config.MaxActiveProbes, ProbeTextureWidth));
     const FIntPoint ProbePositionDimensions(ProbeTextureWidth, ProbeTextureHeight);
     if (Storage.ProbePositionDimensions != ProbePositionDimensions || !Storage.ProbePositions.IsValid())
     {
