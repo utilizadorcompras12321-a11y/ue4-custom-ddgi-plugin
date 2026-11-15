@@ -95,6 +95,9 @@ namespace
 		// Cache validated lattice identities across scene updates. Re-quantizing every
 		// probe every frame is unnecessary while the published layout is unchanged.
 		TArray<FDDGIProbeCellKey> ProbeCellKeys;
+		// Persistent logical lookup reused by neighbor construction and the future
+		// logical-to-physical slot allocator. Keys are global lattice identities.
+		TMap<FDDGIProbeCellKey, uint32> ProbeCellToLogicalIndex;
 		int32 UploadedProbeCount = 0;
 		uint32 UploadedProbeLayoutHash = 0;
 		float UploadedProbeSpacing = 0.0f;
@@ -133,6 +136,7 @@ namespace
 			RayProbeCapacity = 0;
 			ProbePositionDimensions = FIntPoint::ZeroValue;
 			ProbeCellKeys.Reset();
+			ProbeCellToLogicalIndex.Reset();
 			UploadedProbeCount = 0;
 			UploadedProbeLayoutHash = 0;
 			UploadedProbeSpacing = 0.0f;
@@ -347,6 +351,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     {
         const float LatticeTolerance = FMath::Max(0.01f, SafeProbeSpacing * 1.0e-4f);
         Storage.ProbeCellKeys.SetNumUninitialized(ActiveProbeCount);
+        Storage.ProbeCellToLogicalIndex.Reset();
+        Storage.ProbeCellToLogicalIndex.Reserve(ActiveProbeCount);
         for (int32 ProbeIndex = 0; ProbeIndex < ActiveProbeCount; ++ProbeIndex)
         {
             const FVector4& Position = Config.ProbePositions[ProbeIndex];
@@ -366,8 +372,17 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                 FMath::RoundToInt(Position.X / SafeProbeSpacing),
                 FMath::RoundToInt(Position.Y / SafeProbeSpacing),
                 FMath::RoundToInt(Position.Z / SafeProbeSpacing));
-            Storage.ProbeCellKeys[ProbeIndex] = FDDGIProbeCellKey{
-                Cell, static_cast<uint32>(ProbeLevel) };
+            const FDDGIProbeCellKey ProbeKey{ Cell, static_cast<uint32>(ProbeLevel) };
+            Storage.ProbeCellKeys[ProbeIndex] = ProbeKey;
+            if (Storage.ProbeCellToLogicalIndex.Contains(ProbeKey))
+            {
+                DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+                UE_LOG(LogTemp, Error,
+                    TEXT("Radiance Cascades: duplicate probe-cell identity at logical index %d (cell %d, %d, %d, level %d)."),
+                    ProbeIndex, Cell.X, Cell.Y, Cell.Z, ProbeLevel);
+                return;
+            }
+            Storage.ProbeCellToLogicalIndex.Add(ProbeKey, static_cast<uint32>(ProbeIndex));
             const bool bOnBaseLattice =
                 FMath::IsNearlyEqual(Position.X, static_cast<float>(Cell.X) * SafeProbeSpacing, LatticeTolerance) &&
                 FMath::IsNearlyEqual(Position.Y, static_cast<float>(Cell.Y) * SafeProbeSpacing, LatticeTolerance) &&
@@ -386,7 +401,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             }
         }
     }
-    else if (Storage.ProbeCellKeys.Num() != ActiveProbeCount)
+    else if (Storage.ProbeCellKeys.Num() != ActiveProbeCount ||
+        Storage.ProbeCellToLogicalIndex.Num() != ActiveProbeCount)
     {
         // A matching uploaded snapshot without its CPU identity cache is an
         // inconsistent state; fail closed rather than building lookup data
@@ -591,19 +607,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbeNeighborLayoutHash = 0;
         Storage.ProbeNeighborSpacing = 0.0f;
 
-        TMap<FDDGIProbeCellKey, uint32> ProbeCellToIndex;
-        ProbeCellToIndex.Reserve(static_cast<int32>(ProbeCountForHash));
-        bool bBuildSucceeded = true;
-        for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
-        {
-            const FDDGIProbeCellKey& Key = ProbeCellKeys[static_cast<int32>(ProbeIndex)];
-            if (ProbeCellToIndex.Contains(Key))
-            {
-                bBuildSucceeded = false;
-                break;
-            }
-            ProbeCellToIndex.Add(Key, ProbeIndex);
-        }
+        const TMap<FDDGIProbeCellKey, uint32>& ProbeCellToIndex = Storage.ProbeCellToLogicalIndex;
+        bool bBuildSucceeded = ProbeCellToIndex.Num() == static_cast<int32>(ProbeCountForHash);
 
         TResourceArray<uint32> NeighborEntries;
         const uint32 NeighborEntryCount = ProbeCountForHash * 26u;
