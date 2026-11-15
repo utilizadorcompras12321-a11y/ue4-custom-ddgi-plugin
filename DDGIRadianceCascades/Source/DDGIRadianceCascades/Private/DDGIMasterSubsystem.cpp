@@ -325,7 +325,7 @@ namespace
 						for (int64 Index = FirstIndex; Index <= LastIndex; ++Index)
 						{
 							const int64 DX = FirstDeltaX + Index * LevelStep;
-						AddSelectedProbe(DX, DY, DZ);
+							AddSelectedProbe(DX, DY, DZ);
 						}
 					};
 					if (MinXAbs == 0)
