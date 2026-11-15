@@ -15,7 +15,8 @@ RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<float4> RadianceScratchUAV;
 RWTexture2D<uint> HitTriangleIndexUAV;
-StructuredBuffer<uint> LogicalToPhysicalSlots;
+StructuredBuffer<uint> NewPhysicalSlots;
+uint bInitializeDirections;
 
 
 [numthreads(64, 1, 1)]
@@ -29,14 +30,14 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
     uint PackedRayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
-    uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+    uint PhysicalProbeIndex = NewPhysicalSlots[ProbeIndex];
     uint PhysicalLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
     uint2 Pixel = uint2(PhysicalLinearIndex % TextureWidth, PhysicalLinearIndex / TextureWidth);
 
     // Angular regions are identical for every probe. Only probe zero needs
     // to calculate and populate the shared direction table; all probes still
     // initialize their own per-ray history textures.
-    if (ProbeIndex != 0u)
+    if (bInitializeDirections == 0u || ProbeIndex != 0u)
     {
         RadianceUAV[Pixel] = 0.0f;
         HitDistanceUAV[Pixel] = -1.0f;
