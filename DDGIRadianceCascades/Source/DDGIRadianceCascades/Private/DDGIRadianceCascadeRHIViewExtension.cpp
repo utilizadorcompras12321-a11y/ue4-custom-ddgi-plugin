@@ -968,8 +968,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const uint32 GroupsX = FMath::Min(TotalGroups, 65535u);
 	const uint32 GroupsY = FMath::DivideAndRoundUp(TotalGroups, GroupsX);
 
-	// Initialize ray directions and clear radiance when the fixed world-space
-	// probe layout changes or when GPU storage is recreated.
+	// Initialize shared ray directions when their texture is created, and clear
+	// history only for newly allocated or explicitly invalidated physical slots.
 	// Keep initialization outputs separate from the tracing resources.
 	// The initialization getter SafeReleases its output references when no
 	// initialization is pending; sharing the tracing references would null them.
