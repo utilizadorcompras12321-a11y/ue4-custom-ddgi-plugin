@@ -39,14 +39,16 @@ namespace
 
 			for (int32 Z = FirstCell; Z <= MaxCell; Z += LevelStep)
 			{
+				const double DZ = static_cast<double>(Z) * SafeSpacing;
+				const double ZSquared = DZ * DZ;
 				for (int32 Y = FirstCell; Y <= MaxCell; Y += LevelStep)
 				{
+					const double DY = static_cast<double>(Y) * SafeSpacing;
+					const double YSquared = DY * DY;
 					for (int32 X = FirstCell; X <= MaxCell; X += LevelStep)
 					{
 						const double DX = static_cast<double>(X) * SafeSpacing;
-						const double DY = static_cast<double>(Y) * SafeSpacing;
-						const double DZ = static_cast<double>(Z) * SafeSpacing;
-						const double DistanceSquared = DX * DX + DY * DY + DZ * DZ;
+						const double DistanceSquared = DX * DX + YSquared + ZSquared;
 						if (DistanceSquared < InnerRadiusSquared ||
 							DistanceSquared > OuterRadiusSquared)
 						{
@@ -94,14 +96,16 @@ namespace
 
 			for (int32 Z = FirstCell; Z <= MaxCell; Z += LevelStep)
 			{
+				const double DZ = static_cast<double>(Z) * SafeSpacing;
+				const double ZSquared = DZ * DZ;
 				for (int32 Y = FirstCell; Y <= MaxCell; Y += LevelStep)
 				{
+					const double DY = static_cast<double>(Y) * SafeSpacing;
+					const double YSquared = DY * DY;
 					for (int32 X = FirstCell; X <= MaxCell; X += LevelStep)
 					{
 						const double DX = static_cast<double>(X) * SafeSpacing;
-						const double DY = static_cast<double>(Y) * SafeSpacing;
-						const double DZ = static_cast<double>(Z) * SafeSpacing;
-						const double DistanceSquared = DX * DX + DY * DY + DZ * DZ;
+						const double DistanceSquared = DX * DX + YSquared + ZSquared;
 						if (DistanceSquared < InnerRadiusSquared ||
 							DistanceSquared > OuterRadiusSquared)
 						{
