@@ -503,9 +503,12 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 		Config.ProbePositions, Config.ProbeSpacing);
 
 	UE_LOG(LogTemp, Log,
-		TEXT("DDGI probe grid: radius %.1f cm, requested spacing %.1f cm, effective spacing %.1f cm, probes %d / %d; ray trace distance %.1f cm."),
+		TEXT("DDGI probe grid: radius %.1f cm, requested spacing %.1f cm, effective spacing %.1f cm, probes %d / %d; ray trace distance %.1f cm; cascades %d / %d active; rays per probe %d."),
 		Config.ProbeGridDistance, RequestedProbeSpacing, Config.ProbeSpacing,
-		Config.ProbeCount, Config.MaxActiveProbes, Config.DynamicGIDistance);
+		Config.ProbeCount, Config.MaxActiveProbes, Config.DynamicGIDistance,
+		Config.RadianceCascades.GetSafeCascadeCount(),
+		Config.RadianceCascades.GetConfiguredCascadeCount(),
+		Config.TotalRaysPerProbe);
 
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;
