@@ -840,6 +840,68 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
+	// Prepare every resource required by Trace, Gather and Integrate before
+	// dispatching anything. A late allocation failure must not leave Radiance
+	// partially overwritten by Trace while Apply still reads the previous frame.
+	FTexture2DRHIRef RadianceScratchTexture;
+	FShaderResourceViewRHIRef SpatialHashSRV, NeighborListSRV;
+	uint32 HashCapacity = 0, SpatialProbeCount = 0, NeighborListProbeCount = 0;
+	float ProbeSpacing = 0.0f;
+	const bool bRequestNeighborList = CVarDDGIUsePrecomputedProbeNeighbors.GetValueOnRenderThread() != 0;
+	uint32 bUseNeighborList = 0u;
+	if (bRequestNeighborList)
+	{
+		bUseNeighborList =
+			DDGIGetRadianceCascadeProbeNeighborList_RenderThread(Scene, NeighborListSRV, NeighborListProbeCount) &&
+			NeighborListSRV.IsValid() && NeighborListProbeCount == ProbeCount
+			? 1u : 0u;
+	}
+	if (!DDGIGetRadianceCascadeScratchTexture_RenderThread(Scene, RadianceScratchTexture) ||
+		!DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(Scene, ProbePositionsTexture, SpatialProbeCount) ||
+		SpatialProbeCount != ProbeCount)
+	{
+		return;
+	}
+	if (bUseNeighborList)
+	{
+		ProbeSpacing = FMath::Max(1.0f, Config->ProbeSpacing);
+	}
+	else
+	{
+		const bool bHasSpatialHash = DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
+			Scene, SpatialHashSRV, HashCapacity, ProbeSpacing);
+		if (!bHasSpatialHash || !SpatialHashSRV.IsValid() || HashCapacity == 0)
+		{
+			return;
+		}
+	}
+	FShaderResourceViewRHIRef GatherRadianceSRV = RHICreateShaderResourceView(RadianceTexture, 0);
+	FShaderResourceViewRHIRef GatherHitSRV = RHICreateShaderResourceView(HitDistanceTexture, 0);
+	FShaderResourceViewRHIRef GatherHitIndicesSRV = RHICreateShaderResourceView(HitTriangleIndexTexture, 0);
+	FShaderResourceViewRHIRef GatherDirectionsSRV = RHICreateShaderResourceView(DirectionsTexture, 0);
+	FShaderResourceViewRHIRef GatherPositionsSRV = RHICreateShaderResourceView(ProbePositionsTexture, 0);
+	FUnorderedAccessViewRHIRef GatherOutputUAV = RHICreateUnorderedAccessView(RadianceScratchTexture);
+	FUnorderedAccessViewRHIRef IntegrationRadianceUAV = RHICreateUnorderedAccessView(RadianceScratchTexture);
+	FShaderResourceViewRHIRef IntegrationHitDistanceSRV = RHICreateShaderResourceView(HitDistanceTexture, 0);
+	if (!GatherRadianceSRV.IsValid() || !GatherHitSRV.IsValid() || !GatherHitIndicesSRV.IsValid() ||
+		!GatherDirectionsSRV.IsValid() || !GatherPositionsSRV.IsValid() || !TrianglesSRV.IsValid() ||
+		!GatherOutputUAV.IsValid() || !IntegrationRadianceUAV.IsValid() || !IntegrationHitDistanceSRV.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to prepare Gather/Integrate SRV/UAV views."));
+		return;
+	}
+
+	FShaderResourceViewRHIRef DirectionsSRV = RHICreateShaderResourceView(DirectionsTexture, 0);
+	FShaderResourceViewRHIRef ProbePositionsSRV = RHICreateShaderResourceView(ProbePositionsTexture, 0);
+	FUnorderedAccessViewRHIRef RadianceUAV = RHICreateUnorderedAccessView(RadianceTexture);
+	FUnorderedAccessViewRHIRef HitDistanceUAV = RHICreateUnorderedAccessView(HitDistanceTexture);
+	FUnorderedAccessViewRHIRef HitTriangleIndexUAV = RHICreateUnorderedAccessView(HitTriangleIndexTexture);
+	if (!DirectionsSRV.IsValid() || !ProbePositionsSRV.IsValid() || !RadianceUAV.IsValid() || !HitDistanceUAV.IsValid() || !HitTriangleIndexUAV.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create tracing SRV/UAV views."));
+		return;
+	}
+
 	// Reserve the frame immediately before the first GPU dispatch. If initialization
 	// is pending, its UAVs must be valid first; otherwise tracing views are checked
 	// before the frame is claimed.
@@ -922,16 +984,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		}
 	}
 
-	FShaderResourceViewRHIRef DirectionsSRV = RHICreateShaderResourceView(DirectionsTexture, 0);
-	FShaderResourceViewRHIRef ProbePositionsSRV = RHICreateShaderResourceView(ProbePositionsTexture, 0);
-	FUnorderedAccessViewRHIRef RadianceUAV = RHICreateUnorderedAccessView(RadianceTexture);
-	FUnorderedAccessViewRHIRef HitDistanceUAV = RHICreateUnorderedAccessView(HitDistanceTexture);
-	FUnorderedAccessViewRHIRef HitTriangleIndexUAV = RHICreateUnorderedAccessView(HitTriangleIndexTexture);
-	if (!DirectionsSRV.IsValid() || !ProbePositionsSRV.IsValid() || !RadianceUAV.IsValid() || !HitDistanceUAV.IsValid() || !HitTriangleIndexUAV.IsValid())
-	{
-		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create tracing SRV/UAV views."));
-		return;
-	}
 
 	// With no initialization dispatch this is the first GPU operation, so only
 	// claim after all tracing SRV/UAV views have been created successfully.
@@ -990,48 +1042,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitTriangleIndexTexture);
 
-	FTexture2DRHIRef RadianceScratchTexture;
-	FShaderResourceViewRHIRef SpatialHashSRV, NeighborListSRV;
-	uint32 HashCapacity=0, SpatialProbeCount=0, NeighborListProbeCount=0;
-	float ProbeSpacing=0.0f;
-	const bool bRequestNeighborList = CVarDDGIUsePrecomputedProbeNeighbors.GetValueOnRenderThread()!=0;
-	uint32 bUseNeighborList = 0u;
-	if (bRequestNeighborList)
-	{
-		bUseNeighborList =
-			DDGIGetRadianceCascadeProbeNeighborList_RenderThread(Scene,NeighborListSRV,NeighborListProbeCount) &&
-			NeighborListSRV.IsValid() && NeighborListProbeCount==ProbeCount
-			? 1u : 0u;
-	}
-	if (!DDGIGetRadianceCascadeScratchTexture_RenderThread(Scene,RadianceScratchTexture) ||
-		!DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(Scene,ProbePositionsTexture,SpatialProbeCount) ||
-		SpatialProbeCount!=ProbeCount) return;
-
-	// The precomputed list is a complete neighbor lookup on its own.
-	// Avoid even querying the spatial hash on this path.
-	if (bUseNeighborList)
-	{
-		if (!NeighborListSRV.IsValid()) return;
-		ProbeSpacing = FMath::Max(1.0f,Config->ProbeSpacing);
-	}
-	else
-	{
-		const bool bHasSpatialHash = DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
-			Scene,SpatialHashSRV,HashCapacity,ProbeSpacing);
-		if (!bHasSpatialHash || !SpatialHashSRV.IsValid() || HashCapacity==0)
-		{
-			return;
-		}
-	}
-
-	FShaderResourceViewRHIRef GatherRadianceSRV=RHICreateShaderResourceView(RadianceTexture,0);
-	FShaderResourceViewRHIRef GatherHitSRV=RHICreateShaderResourceView(HitDistanceTexture,0);
-	FShaderResourceViewRHIRef GatherHitIndicesSRV=RHICreateShaderResourceView(HitTriangleIndexTexture,0);
-	FShaderResourceViewRHIRef GatherDirectionsSRV=RHICreateShaderResourceView(DirectionsTexture,0);
-	FShaderResourceViewRHIRef GatherPositionsSRV=RHICreateShaderResourceView(ProbePositionsTexture,0);
-	FUnorderedAccessViewRHIRef GatherOutputUAV=RHICreateUnorderedAccessView(RadianceScratchTexture);
-	if(!GatherRadianceSRV.IsValid()||!GatherHitSRV.IsValid()||!GatherHitIndicesSRV.IsValid()||!GatherDirectionsSRV.IsValid()||
-		!GatherPositionsSRV.IsValid()||!TrianglesSRV.IsValid()||!GatherOutputUAV.IsValid()) return;
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,ProbePositionsTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,RadianceTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,HitDistanceTexture);
@@ -1052,14 +1062,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	{
 		const uint32 CascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
 		const uint32 TotalRays = static_cast<uint32>(Config->TotalRaysPerProbe);
-		FUnorderedAccessViewRHIRef IntegrationRadianceUAV = RHICreateUnorderedAccessView(RadianceScratchTexture);
-		FShaderResourceViewRHIRef IntegrationHitDistanceSRV = RHICreateShaderResourceView(HitDistanceTexture, 0);
-		if (!IntegrationRadianceUAV.IsValid() || !IntegrationHitDistanceSRV.IsValid())
-		{
-			UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create in-place integration UAV/SRV views."));
-			return;
-		}
-
 		TShaderMapRef<FDDGIRadianceCascadeIntegrateRHI> IntegrateShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 		for (int32 CascadeIndex = static_cast<int32>(CascadeCount) - 2; CascadeIndex >= 0; --CascadeIndex)
 		{
