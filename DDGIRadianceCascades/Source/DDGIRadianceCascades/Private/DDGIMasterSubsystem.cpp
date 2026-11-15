@@ -10,55 +10,6 @@
 
 namespace
 {
-	/**
-	 * Counts lattice points inside the spherical probe domain. Stops as soon as
-	 * the budget is exceeded; this is used only to select a spacing, not to
-	 * construct the final (complete) lattice.
-	 */
-	int32 DDGICountSparseProbePositions(
-		float Spacing,
-		float Radius,
-		int32 StopAfter)
-	{
-		const float SafeSpacing = FMath::Max(1.0f, Spacing);
-		const float SafeRadius = FMath::Max(0.0f, Radius);
-		const int32 MaxShell = FMath::CeilToInt(SafeRadius / SafeSpacing);
-		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
-		int32 Count = 1; // Origin.
-		for (int32 Shell = 1; Shell <= MaxShell; ++Shell)
-		{
-			for (int32 Z = -Shell; Z <= Shell; ++Z)
-			{
-				for (int32 Y = -Shell; Y <= Shell; ++Y)
-				{
-					for (int32 X = -Shell; X <= Shell; ++X)
-					{
-						if (FMath::Max3(FMath::Abs(X), FMath::Abs(Y), FMath::Abs(Z)) != Shell)
-						{
-							continue;
-						}
-					const double DX = static_cast<double>(X) * SafeSpacing;
-					const double DY = static_cast<double>(Y) * SafeSpacing;
-					const double DZ = static_cast<double>(Z) * SafeSpacing;
-					if (DX * DX + DY * DY + DZ * DZ > RadiusSquared)
-					{
-						continue;
-					}
-					if (++Count > StopAfter)
-					{
-						return Count;
-					}
-				}
-				}
-			}
-		}
-		return Count;
-	}
-	/**
-	 * Builds a complete, deterministic 3D lattice inside the configured sphere.
-	 * If the requested spacing exceeds the probe budget, spacing is increased
-	 * uniformly until the whole spherical domain fits. No partial shell is kept.
-	 */
 	void DDGIBuildMultiResolutionProbePositionsAtSpacing(
 		float Spacing,
 		float Radius,
