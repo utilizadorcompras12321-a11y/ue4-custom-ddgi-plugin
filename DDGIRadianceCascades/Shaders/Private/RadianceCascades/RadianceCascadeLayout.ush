@@ -18,14 +18,12 @@ float DDGIRadianceCascadeStartDistance(
 	float BaseSegmentLength,
 	float CascadeScale)
 {
-	float StartDistance = 0.0;
-	[loop]
-	for (int Index = 0; Index < CascadeIndex; ++Index)
-	{
-		StartDistance += DDGIRadianceCascadeSegmentLength(
-			Index, BaseSegmentLength, CascadeScale);
-	}
-	return StartDistance;
+	// Segment lengths form a geometric series. Evaluate its closed form
+	// instead of looping over every preceding cascade for every traced ray.
+	float SafeScale = max(CascadeScale, 1.01f);
+	float SafeBaseLength = max(BaseSegmentLength, 1.0f);
+	float CascadePower = pow(SafeScale, (float)max(CascadeIndex, 0));
+	return SafeBaseLength * (CascadePower - 1.0f) / (SafeScale - 1.0f);
 }
 
 float2 DDGIRadianceCascadeDistanceInterval(
