@@ -163,6 +163,38 @@ float3 DDGISampleProbeLevel(
     return Irradiance / max(OutVisibleWeightSum, 0.00001f);
 }
 
+float3 DDGISampleLevelValue(
+    float3 LocalPosition,
+    float3 Normal,
+    uint Level,
+    out bool OutValid)
+{
+    float SpatialWeightSum = 0.0f;
+    float VisibleWeightSum = 0.0f;
+    float3 Value = DDGISampleProbeLevel(
+        LocalPosition, Normal, Level, SpatialWeightSum, VisibleWeightSum);
+    OutValid = SpatialWeightSum > 0.00001f && VisibleWeightSum > 0.00001f;
+    return Value * saturate(VisibleWeightSum / max(SpatialWeightSum, 0.00001f));
+}
+
+float3 DDGIInterpolateLevelPair(
+    float3 LocalPosition,
+    float3 Normal,
+    uint LevelA,
+    uint LevelB,
+    float T,
+    out bool OutValid)
+{
+    bool bValidA = false;
+    bool bValidB = false;
+    float3 ValueA = DDGISampleLevelValue(LocalPosition, Normal, LevelA, bValidA);
+    float3 ValueB = DDGISampleLevelValue(LocalPosition, Normal, LevelB, bValidB);
+    OutValid = bValidA || bValidB;
+    if (bValidA && bValidB) return lerp(ValueA, ValueB, saturate(T));
+    if (bValidA) return ValueA;
+    return ValueB;
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
@@ -222,91 +254,49 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float Boundary0 = GridRadius * 0.25f;
     float Boundary1 = GridRadius * 0.50f;
     float Boundary2 = GridRadius * 0.75f;
-    // Sample each spatial level once. The transition below is an actual
-    // interpolation between adjacent level results, not a weighted sum that
-    // is renormalized when one level has missing probes.
-    float LevelSpatialWeightSum0 = 0.0f;
-    float LevelVisibleWeightSum0 = 0.0f;
-    float3 LevelIrradiance0 = DDGISampleProbeLevel(
-        LocalPosition, Normal, 0u,
-        LevelSpatialWeightSum0, LevelVisibleWeightSum0);
-    float LevelSpatialWeightSum1 = 0.0f;
-    float LevelVisibleWeightSum1 = 0.0f;
-    float3 LevelIrradiance1 = DDGISampleProbeLevel(
-        LocalPosition, Normal, 1u,
-        LevelSpatialWeightSum1, LevelVisibleWeightSum1);
-    float LevelSpatialWeightSum2 = 0.0f;
-    float LevelVisibleWeightSum2 = 0.0f;
-    float3 LevelIrradiance2 = DDGISampleProbeLevel(
-        LocalPosition, Normal, 2u,
-        LevelSpatialWeightSum2, LevelVisibleWeightSum2);
-    float LevelSpatialWeightSum3 = 0.0f;
-    float LevelVisibleWeightSum3 = 0.0f;
-    float3 LevelIrradiance3 = DDGISampleProbeLevel(
-        LocalPosition, Normal, 3u,
-        LevelSpatialWeightSum3, LevelVisibleWeightSum3);
-
-    const bool bLevel0Valid = LevelSpatialWeightSum0 > 0.00001f && LevelVisibleWeightSum0 > 0.00001f;
-    const bool bLevel1Valid = LevelSpatialWeightSum1 > 0.00001f && LevelVisibleWeightSum1 > 0.00001f;
-    const bool bLevel2Valid = LevelSpatialWeightSum2 > 0.00001f && LevelVisibleWeightSum2 > 0.00001f;
-    const bool bLevel3Valid = LevelSpatialWeightSum3 > 0.00001f && LevelVisibleWeightSum3 > 0.00001f;
-
-    const float3 Value0 = LevelIrradiance0 * saturate(LevelVisibleWeightSum0 / max(LevelSpatialWeightSum0, 0.00001f));
-    const float3 Value1 = LevelIrradiance1 * saturate(LevelVisibleWeightSum1 / max(LevelSpatialWeightSum1, 0.00001f));
-    const float3 Value2 = LevelIrradiance2 * saturate(LevelVisibleWeightSum2 / max(LevelSpatialWeightSum2, 0.00001f));
-    const float3 Value3 = LevelIrradiance3 * saturate(LevelVisibleWeightSum3 / max(LevelSpatialWeightSum3, 0.00001f));
-
+    // Only evaluate the active level, or the two adjacent levels while
+    // crossing a transition. This keeps the interpolation smooth without
+    // paying for all four spatial levels on every shaded pixel.
     float3 Irradiance = 0.0f;
     bool bHasIrradiance = false;
     if (GridDistance < Boundary0 - TransitionWidth)
     {
-        Irradiance = bLevel0Valid ? Value0 : (bLevel1Valid ? Value1 : (bLevel2Valid ? Value2 : Value3));
-        bHasIrradiance = bLevel0Valid || bLevel1Valid || bLevel2Valid || bLevel3Valid;
+        Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 0u, bHasIrradiance);
+        if (!bHasIrradiance)
+            Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 1u, bHasIrradiance);
     }
     else if (GridDistance < Boundary0 + TransitionWidth)
     {
         const float T = smoothstep(Boundary0 - TransitionWidth, Boundary0 + TransitionWidth, GridDistance);
-        if (bLevel0Valid && bLevel1Valid) Irradiance = lerp(Value0, Value1, T);
-        else if (bLevel0Valid) Irradiance = Value0;
-        else if (bLevel1Valid) Irradiance = Value1;
-        else if (bLevel2Valid) Irradiance = Value2;
-        else Irradiance = Value3;
-        bHasIrradiance = bLevel0Valid || bLevel1Valid || bLevel2Valid || bLevel3Valid;
+        Irradiance = DDGIInterpolateLevelPair(LocalPosition, Normal, 0u, 1u, T, bHasIrradiance);
     }
     else if (GridDistance < Boundary1 - TransitionWidth)
     {
-        Irradiance = bLevel1Valid ? Value1 : (bLevel0Valid ? Value0 : (bLevel2Valid ? Value2 : Value3));
-        bHasIrradiance = bLevel0Valid || bLevel1Valid || bLevel2Valid || bLevel3Valid;
+        Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 1u, bHasIrradiance);
+        if (!bHasIrradiance)
+            Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 0u, bHasIrradiance);
     }
     else if (GridDistance < Boundary1 + TransitionWidth)
     {
         const float T = smoothstep(Boundary1 - TransitionWidth, Boundary1 + TransitionWidth, GridDistance);
-        if (bLevel1Valid && bLevel2Valid) Irradiance = lerp(Value1, Value2, T);
-        else if (bLevel1Valid) Irradiance = Value1;
-        else if (bLevel2Valid) Irradiance = Value2;
-        else if (bLevel0Valid) Irradiance = Value0;
-        else Irradiance = Value3;
-        bHasIrradiance = bLevel0Valid || bLevel1Valid || bLevel2Valid || bLevel3Valid;
+        Irradiance = DDGIInterpolateLevelPair(LocalPosition, Normal, 1u, 2u, T, bHasIrradiance);
     }
     else if (GridDistance < Boundary2 - TransitionWidth)
     {
-        Irradiance = bLevel2Valid ? Value2 : (bLevel1Valid ? Value1 : (bLevel3Valid ? Value3 : Value0));
-        bHasIrradiance = bLevel0Valid || bLevel1Valid || bLevel2Valid || bLevel3Valid;
+        Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 2u, bHasIrradiance);
+        if (!bHasIrradiance)
+            Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 1u, bHasIrradiance);
     }
     else if (GridDistance < Boundary2 + TransitionWidth)
     {
         const float T = smoothstep(Boundary2 - TransitionWidth, Boundary2 + TransitionWidth, GridDistance);
-        if (bLevel2Valid && bLevel3Valid) Irradiance = lerp(Value2, Value3, T);
-        else if (bLevel2Valid) Irradiance = Value2;
-        else if (bLevel3Valid) Irradiance = Value3;
-        else if (bLevel1Valid) Irradiance = Value1;
-        else Irradiance = Value0;
-        bHasIrradiance = bLevel0Valid || bLevel1Valid || bLevel2Valid || bLevel3Valid;
+        Irradiance = DDGIInterpolateLevelPair(LocalPosition, Normal, 2u, 3u, T, bHasIrradiance);
     }
     else
     {
-        Irradiance = bLevel3Valid ? Value3 : (bLevel2Valid ? Value2 : (bLevel1Valid ? Value1 : Value0));
-        bHasIrradiance = bLevel0Valid || bLevel1Valid || bLevel2Valid || bLevel3Valid;
+        Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 3u, bHasIrradiance);
+        if (!bHasIrradiance)
+            Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 2u, bHasIrradiance);
     }
 
     if (!bHasIrradiance)
