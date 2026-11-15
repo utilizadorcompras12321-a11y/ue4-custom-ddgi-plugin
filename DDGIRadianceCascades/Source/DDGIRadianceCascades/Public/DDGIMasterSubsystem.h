@@ -68,6 +68,11 @@ struct FDDGIMasterConfig
 DDGIRADIANCECASCADES_API const FDDGIMasterConfig* DDGIGetMasterConfig_RenderThread(
 	const FSceneInterface* Scene);
 
+/** Moves the spatial probe lattice to the snapped active-view camera position. Render-thread only. */
+DDGIRADIANCECASCADES_API void DDGIUpdateCameraProbeGridOrigin_RenderThread(
+	const FSceneInterface* Scene,
+	const FVector& CameraWorldPosition);
+
 UCLASS()
 class DDGIRADIANCECASCADES_API UDDGIMasterSubsystem : public UWorldSubsystem
 {
