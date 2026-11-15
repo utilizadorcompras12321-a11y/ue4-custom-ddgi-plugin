@@ -866,6 +866,10 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	const FVector InitialCameraLocation = DDGIGetCameraWorldLocation(InActor);
 	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(InitialCameraLocation, Config.ProbeSpacing);
 	bHasActiveWindowCenterCell = true;
+	Config.ActiveProbeWindowCenter = FVector(
+		static_cast<double>(ActiveWindowCenterCell.X) * Config.ProbeSpacing,
+		static_cast<double>(ActiveWindowCenterCell.Y) * Config.ProbeSpacing,
+		static_cast<double>(ActiveWindowCenterCell.Z) * Config.ProbeSpacing);
 	DDGIBuildActiveProbePositions(
 		Config.ProbeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
 		Config.MaxActiveProbes, Config.ProbePositions, Config.ProbeCellCoordinates, Config.ProbeLevels);
@@ -917,6 +921,10 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 
 	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(CameraLocation, SafeSpacing);
 	bHasActiveWindowCenterCell = true;
+	Config.ActiveProbeWindowCenter = FVector(
+		static_cast<double>(ActiveWindowCenterCell.X) * SafeSpacing,
+		static_cast<double>(ActiveWindowCenterCell.Y) * SafeSpacing,
+		static_cast<double>(ActiveWindowCenterCell.Z) * SafeSpacing);
 	DDGIBuildActiveProbePositions(
 		SafeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
 		Config.MaxActiveProbes, Config.ProbePositions,
