@@ -355,12 +355,16 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Master Actor translation changes only ProbeGridOrigin and does not require
     // rewriting this texture.
     const int32 ProbeTextureWidth = 4096;
-    // Probe positions are metadata, not ray history. Reserve the configured
-    // maximum active-probe capacity up front so ordinary window growth does
-    // not recreate this texture and invalidate the uploaded-layout snapshot.
-    // At the hard limit of 32768 probes this is only an 8-row RGBA32F texture.
+    // Probe positions are metadata, not ray history. Grow this texture only
+    // when the active window exceeds its previous high-water mark; never reserve
+    // MaxActiveProbes up front and never shrink it as the camera moves.
+    const int32 ExistingProbePositionCapacity = Storage.ProbePositions.IsValid()
+        ? Storage.ProbePositionDimensions.X * Storage.ProbePositionDimensions.Y
+        : 0;
+    const int32 RequiredProbePositionCapacity =
+        FMath::Max(ActiveProbeCount, ExistingProbePositionCapacity);
     const int32 ProbeTextureHeight = FMath::Max(
-        1, FMath::DivideAndRoundUp(Config.MaxActiveProbes, ProbeTextureWidth));
+        1, FMath::DivideAndRoundUp(RequiredProbePositionCapacity, ProbeTextureWidth));
     const FIntPoint ProbePositionDimensions(ProbeTextureWidth, ProbeTextureHeight);
     if (Storage.ProbePositionDimensions != ProbePositionDimensions || !Storage.ProbePositions.IsValid())
     {
@@ -650,13 +654,11 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Build a deterministic open-addressed spatial hash for sparse probe cells.
     // Probe offsets are integer-lattice-relative and remain stable on translation.
 
-    // Probe positions currently describe a fixed world-origin lattice. They are not
-    // recentered around the camera, and changing ProbeGridOrigin alone would only
-    // translate their world-space locations. A future camera-selected active window
-    // must preserve stable cell identity and initialize only newly assigned slots.
-    // Ray storage recreation also sets this flag.
-    // The change flag was captured before the upload, so a failed hash
-    // allocation cannot trigger repeated initialization on an unchanged layout.
+    // The active window is camera-selected, but every probe remains on the
+    // immutable world-origin lattice. Rebuild logical lookup data when its
+    // identity hash changes while retaining physical slots for surviving keys.
+    // Ray storage recreation also sets this flag. The change flag was captured
+    // before the upload so hash allocation retries do not reinitialize history.
     if (bProbeLayoutChanged)
     {
         Storage.bNeedsInitialization =
