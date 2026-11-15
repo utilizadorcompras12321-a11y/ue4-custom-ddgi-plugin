@@ -61,6 +61,22 @@ namespace
 		return -DDGIFloorDiv(-Numerator, Denominator);
 	}
 
+	bool DDGIGetLatticeRangeWithinAbs(
+		int64 FirstValue, int64 LastValue, int64 Step, int64 MaxAbs,
+		int64& OutFirst, int64& OutLast)
+	{
+		if (MaxAbs < 0) return false;
+		const int64 ClampedMin = FMath::Max(FirstValue, -MaxAbs);
+		const int64 ClampedMax = FMath::Min(LastValue, MaxAbs);
+		if (ClampedMin > ClampedMax) return false;
+		const int64 FirstIndex = DDGICeilDiv(ClampedMin - FirstValue, Step);
+		const int64 LastIndex = DDGIFloorDiv(ClampedMax - FirstValue, Step);
+		if (LastIndex < FirstIndex) return false;
+		OutFirst = FirstValue + FirstIndex * Step;
+		OutLast = FirstValue + LastIndex * Step;
+		return true;
+	}
+
 	int64 DDGICountLatticeValuesInRange(
 		int64 FirstValue, int64 LastValue, int64 Step, int64 MinValue, int64 MaxValue)
 	{
@@ -182,19 +198,26 @@ namespace
 			const int64 MinQ = MinDistanceSquared[Level];
 			const int64 MaxQ = MaxDistanceSquared[Level];
 
-			for (int64 DZ = FirstDeltaZ; DZ <= LastDeltaZ; DZ += LevelStep)
+			int64 ZStart = 0, ZEnd = -1;
+			if (DDGIGetLatticeRangeWithinAbs(
+				FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(MaxQ), ZStart, ZEnd))
 			{
-				const int64 ZSquared = DZ * DZ;
-				if (ZSquared > MaxQ) continue;
-				for (int64 DY = FirstDeltaY; DY <= LastDeltaY; DY += LevelStep)
+				for (int64 DZ = ZStart; DZ <= ZEnd; DZ += LevelStep)
 				{
-					const int64 YZSquared = DY * DY + ZSquared;
-					if (YZSquared > MaxQ) continue;
-					const int64 MaxXAbs = DDGIFloorSqrt(MaxQ - YZSquared);
-					const int64 MinXAbs = MinQ > YZSquared ?
-						DDGICeilSqrt(MinQ - YZSquared) : 0;
-					LevelCandidateCounts[Level] += DDGICountLatticeValuesByAbsoluteValue(
-						FirstDeltaX, LastDeltaX, LevelStep, MinXAbs, MaxXAbs);
+					const int64 ZSquared = DZ * DZ;
+					int64 YStart = 0, YEnd = -1;
+					if (!DDGIGetLatticeRangeWithinAbs(
+						FirstDeltaY, LastDeltaY, LevelStep,
+						DDGIFloorSqrt(MaxQ - ZSquared), YStart, YEnd)) continue;
+					for (int64 DY = YStart; DY <= YEnd; DY += LevelStep)
+					{
+						const int64 YZSquared = DY * DY + ZSquared;
+						const int64 MaxXAbs = DDGIFloorSqrt(MaxQ - YZSquared);
+						const int64 MinXAbs = MinQ > YZSquared ?
+							DDGICeilSqrt(MinQ - YZSquared) : 0;
+						LevelCandidateCounts[Level] += DDGICountLatticeValuesByAbsoluteValue(
+							FirstDeltaX, LastDeltaX, LevelStep, MinXAbs, MaxXAbs);
+					}
 				}
 			}
 		}
@@ -266,19 +289,26 @@ namespace
 			{
 				const int64 MidQ = LowQ + (HighQ - LowQ) / 2;
 				int64 CountAtOrBelow = 0;
-				for (int64 DZ = FirstDeltaZ; DZ <= LastDeltaZ; DZ += LevelStep)
+				int64 ZStart = 0, ZEnd = -1;
+				if (DDGIGetLatticeRangeWithinAbs(
+					FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(MidQ), ZStart, ZEnd))
 				{
-					const int64 ZSquared = DZ * DZ;
-					if (ZSquared > MidQ) continue;
-					for (int64 DY = FirstDeltaY; DY <= LastDeltaY; DY += LevelStep)
+					for (int64 DZ = ZStart; DZ <= ZEnd; DZ += LevelStep)
 					{
-						const int64 YZSquared = DY * DY + ZSquared;
-						if (YZSquared > MidQ) continue;
-						const int64 MaxXAbs = DDGIFloorSqrt(FMath::Min(MaxQ, MidQ) - YZSquared);
-					const int64 MinXAbs = MinQ > YZSquared ?
-						DDGICeilSqrt(MinQ - YZSquared) : 0;
-						CountAtOrBelow += DDGICountLatticeValuesByAbsoluteValue(
-							FirstDeltaX, LastDeltaX, LevelStep, MinXAbs, MaxXAbs);
+						const int64 ZSquared = DZ * DZ;
+						int64 YStart = 0, YEnd = -1;
+						if (!DDGIGetLatticeRangeWithinAbs(
+							FirstDeltaY, LastDeltaY, LevelStep,
+							DDGIFloorSqrt(MidQ - ZSquared), YStart, YEnd)) continue;
+						for (int64 DY = YStart; DY <= YEnd; DY += LevelStep)
+						{
+							const int64 YZSquared = DY * DY + ZSquared;
+							const int64 MaxXAbs = DDGIFloorSqrt(MidQ - YZSquared);
+						const int64 MinXAbs = MinQ > YZSquared ?
+							DDGICeilSqrt(MinQ - YZSquared) : 0;
+							CountAtOrBelow += DDGICountLatticeValuesByAbsoluteValue(
+								FirstDeltaX, LastDeltaX, LevelStep, MinXAbs, MaxXAbs);
+						}
 					}
 				}
 				if (CountAtOrBelow >= Quota) HighQ = MidQ;
