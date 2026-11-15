@@ -112,12 +112,10 @@ struct FDDGIRadianceCascadeConfig
 	FORCEINLINE float GetCascadeStartDistance(int32 CascadeIndex) const
 	{
 		const int32 SafeIndex = FMath::Clamp(CascadeIndex, 0, GetSafeCascadeCount() - 1);
-		float Distance = 0.0f;
-
-		for (int32 Index = 0; Index < SafeIndex; ++Index)
-		{
-			Distance += GetCascadeSegmentLength(Index);
-		}
+		const float SafeScale = FMath::Max(1.01f, CascadeScale);
+		const float SafeBaseLength = FMath::Max(1.0f, BaseSegmentLength);
+		const float CascadePower = FMath::Pow(SafeScale, static_cast<float>(SafeIndex));
+		const float Distance = SafeBaseLength * (CascadePower - 1.0f) / (SafeScale - 1.0f);
 		return FMath::Min(Distance, FMath::Max(1.0f, MaxTraceDistance));
 	}
 
