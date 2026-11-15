@@ -55,9 +55,36 @@ struct FDDGIRadianceCascadeConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radiance Cascades", meta = (ClampMin = "1.0"))
 	float MaxTraceDistance = 7750.0f;
 
-	FORCEINLINE int32 GetSafeCascadeCount() const
+	FORCEINLINE int32 GetConfiguredCascadeCount() const
 	{
 		return FMath::Clamp(CascadeCount, 1, 8);
+	}
+
+	// Trailing cascades that begin outside MaxTraceDistance have no valid
+	// ray interval. Exclude them from the packed layout, not just from tracing,
+	// so direction, radiance, hit and integration textures all shrink together.
+	FORCEINLINE int32 GetSafeCascadeCount() const
+	{
+		const int32 ConfiguredCount = GetConfiguredCascadeCount();
+		const float SafeScale = FMath::Max(1.01f, CascadeScale);
+		const float SafeBaseLength = FMath::Max(1.0f, BaseSegmentLength);
+		const float SafeMaxDistance = FMath::Max(1.0f, MaxTraceDistance);
+
+		int32 ActiveCount = 0;
+		for (int32 Index = 0; Index < ConfiguredCount; ++Index)
+		{
+			const float CascadePower = FMath::Pow(SafeScale, static_cast<float>(Index));
+			const float StartDistance =
+				SafeBaseLength * (CascadePower - 1.0f) / (SafeScale - 1.0f);
+			if (StartDistance >= SafeMaxDistance)
+			{
+				break;
+			}
+			++ActiveCount;
+		}
+		// Cascade zero starts at distance zero and is always active for a
+		// sanitized positive trace distance.
+		return FMath::Max(1, ActiveCount);
 	}
 
 	FORCEINLINE int32 GetRayCount(int32 CascadeIndex) const
@@ -111,7 +138,7 @@ struct FDDGIRadianceCascadeConfig
 
 	FORCEINLINE float GetCascadeStartDistance(int32 CascadeIndex) const
 	{
-		const int32 SafeIndex = FMath::Clamp(CascadeIndex, 0, GetSafeCascadeCount() - 1);
+		const int32 SafeIndex = FMath::Clamp(CascadeIndex, 0, GetConfiguredCascadeCount() - 1);
 		const float SafeScale = FMath::Max(1.01f, CascadeScale);
 		const float SafeBaseLength = FMath::Max(1.0f, BaseSegmentLength);
 		const float CascadePower = FMath::Pow(SafeScale, static_cast<float>(SafeIndex));
@@ -121,7 +148,7 @@ struct FDDGIRadianceCascadeConfig
 
 	FORCEINLINE float GetCascadeEndDistance(int32 CascadeIndex) const
 	{
-		const int32 SafeIndex = FMath::Clamp(CascadeIndex, 0, GetSafeCascadeCount() - 1);
+		const int32 SafeIndex = FMath::Clamp(CascadeIndex, 0, GetConfiguredCascadeCount() - 1);
 		const float Start = GetCascadeStartDistance(SafeIndex);
 		return FMath::Min(
 			Start + GetCascadeSegmentLength(SafeIndex),
