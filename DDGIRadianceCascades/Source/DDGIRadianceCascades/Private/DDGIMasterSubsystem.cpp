@@ -17,6 +17,61 @@ namespace
 		double DistanceSquared;
 	};
 
+	bool DDGIProbeCandidateLess(const FDDGIProbeCandidate& A, const FDDGIProbeCandidate& B)
+	{
+		if (A.DistanceSquared != B.DistanceSquared)
+		{
+			return A.DistanceSquared < B.DistanceSquared;
+		}
+		if (A.Position.Z != B.Position.Z) return A.Position.Z < B.Position.Z;
+		if (A.Position.Y != B.Position.Y) return A.Position.Y < B.Position.Y;
+		return A.Position.X < B.Position.X;
+	}
+
+	// Keep a bounded max-heap whose root is the least desirable retained
+	// candidate (largest distance, deterministic coordinate tie-break).
+	void DDGIInsertBoundedProbeCandidate(
+		TArray<FDDGIProbeCandidate>& Heap,
+		const FDDGIProbeCandidate& Candidate,
+		int32 Capacity)
+	{
+		if (Capacity <= 0) return;
+
+		if (Heap.Num() < Capacity)
+		{
+			const int32 InsertedIndex = Heap.Add(Candidate);
+			int32 ChildIndex = InsertedIndex;
+			while (ChildIndex > 0)
+			{
+				const int32 ParentIndex = (ChildIndex - 1) / 2;
+				if (!DDGIProbeCandidateLess(Heap[ParentIndex], Heap[ChildIndex])) break;
+				Heap.Swap(ParentIndex, ChildIndex);
+				ChildIndex = ParentIndex;
+			}
+			return;
+		}
+
+		if (!DDGIProbeCandidateLess(Candidate, Heap[0])) return;
+		Heap[0] = Candidate;
+
+		int32 ParentIndex = 0;
+		for (;;)
+		{
+			const int32 LeftIndex = ParentIndex * 2 + 1;
+			if (LeftIndex >= Heap.Num()) break;
+			const int32 RightIndex = LeftIndex + 1;
+			int32 WorseChildIndex = LeftIndex;
+			if (RightIndex < Heap.Num() &&
+				DDGIProbeCandidateLess(Heap[LeftIndex], Heap[RightIndex]))
+			{
+				WorseChildIndex = RightIndex;
+			}
+			if (!DDGIProbeCandidateLess(Heap[ParentIndex], Heap[WorseChildIndex])) break;
+			Heap.Swap(ParentIndex, WorseChildIndex);
+			ParentIndex = WorseChildIndex;
+		}
+	}
+
 	FVector DDGIGetCameraWorldLocation(const ADDGIMasterActor* InActor)
 	{
 		if (!InActor) return FVector::ZeroVector;
@@ -62,7 +117,12 @@ namespace
 			static_cast<double>(CenterCell.Z) * SafeSpacing);
 		const float TransitionWidth = FMath::Max(SafeSpacing * 2.0f, SafeRadius * 0.05f);
 		TArray<FDDGIProbeCandidate> LevelCandidates[4];
-		int32 TotalCandidateCount = 0;
+		int64 LevelCandidateCounts[4] = { 0, 0, 0, 0 };
+		int64 TotalCandidateCount = 0;
+		for (int32 Level = 0; Level < 4; ++Level)
+		{
+			LevelCandidates[Level].Reserve(SafeMaxProbeCount);
+		}
 
 		// All coordinates remain on the immutable world-origin lattice. The
 		// camera only selects which globally aligned cells are active.
@@ -106,17 +166,20 @@ namespace
 						const double DX = (static_cast<double>(CellX) - CenterCell.X) * SafeSpacing;
 						const double DistanceSquared = DX * DX + YZSquared;
 						if (DistanceSquared < InnerRadiusSquared || DistanceSquared > OuterRadiusSquared) continue;
-						FDDGIProbeCandidate& Candidate = LevelCandidates[Level].AddDefaulted_GetRef();
+						FDDGIProbeCandidate Candidate;
 						Candidate.Position = FVector4(
 							static_cast<float>(CellX) * SafeSpacing,
 							static_cast<float>(CellY) * SafeSpacing,
 							static_cast<float>(CellZ) * SafeSpacing,
 							static_cast<float>(Level));
 						Candidate.DistanceSquared = DistanceSquared;
+						++LevelCandidateCounts[Level];
+						++TotalCandidateCount;
+						DDGIInsertBoundedProbeCandidate(
+							LevelCandidates[Level], Candidate, SafeMaxProbeCount);
 					}
 				}
 			}
-			TotalCandidateCount += LevelCandidates[Level].Num();
 		}
 
 		if (TotalCandidateCount == 0) return;
@@ -128,14 +191,14 @@ namespace
 		int32 NonEmptyLevelCount = 0;
 		for (int32 Level = 0; Level < 4; ++Level)
 		{
-			if (LevelCandidates[Level].Num() > 0) ++NonEmptyLevelCount;
+			if (LevelCandidateCounts[Level] > 0) ++NonEmptyLevelCount;
 		}
 		int32 RemainingBudget = SafeMaxProbeCount;
 		if (SafeMaxProbeCount >= NonEmptyLevelCount)
 		{
 			for (int32 Level = 0; Level < 4; ++Level)
 			{
-				if (LevelCandidates[Level].Num() > 0)
+				if (LevelCandidateCounts[Level] > 0)
 				{
 					Quotas[Level] = 1;
 					--RemainingBudget;
@@ -149,8 +212,8 @@ namespace
 			double BestScore = -1.0;
 			for (int32 Level = 0; Level < 4; ++Level)
 			{
-				const int32 CandidateCount = LevelCandidates[Level].Num();
-				if (Quotas[Level] >= CandidateCount) continue;
+				const int64 CandidateCount = LevelCandidateCounts[Level];
+				if (static_cast<int64>(Quotas[Level]) >= CandidateCount) continue;
 				const double Score = static_cast<double>(CandidateCount) /
 					static_cast<double>(Quotas[Level] + 1);
 				if (Score > BestScore)
@@ -164,22 +227,12 @@ namespace
 			--RemainingBudget;
 		}
 
-		const auto CandidateLess = [](const FDDGIProbeCandidate& A, const FDDGIProbeCandidate& B)
-		{
-			if (A.DistanceSquared != B.DistanceSquared)
-			{
-				return A.DistanceSquared < B.DistanceSquared;
-			}
-			if (A.Position.Z != B.Position.Z) return A.Position.Z < B.Position.Z;
-			if (A.Position.Y != B.Position.Y) return A.Position.Y < B.Position.Y;
-			return A.Position.X < B.Position.X;
-		};
-
-		OutPositions.Reserve(FMath::Min(SafeMaxProbeCount, TotalCandidateCount));
+		OutPositions.Reserve(static_cast<int32>(
+			FMath::Min<int64>(SafeMaxProbeCount, TotalCandidateCount)));
 		for (int32 Level = 0; Level < 4; ++Level)
 		{
 			if (Quotas[Level] <= 0) continue;
-			LevelCandidates[Level].Sort(CandidateLess);
+			LevelCandidates[Level].Sort(DDGIProbeCandidateLess);
 			const int32 SelectedCount = FMath::Min(Quotas[Level], LevelCandidates[Level].Num());
 			for (int32 Index = 0; Index < SelectedCount; ++Index)
 			{
