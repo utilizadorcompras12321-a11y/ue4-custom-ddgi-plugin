@@ -317,7 +317,10 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 	{
 		Config.DirectionalLightDirection = -Light->GetComponentTransform().GetUnitAxis(EAxis::X).GetSafeNormal();
 		Config.DirectionalLightColor = Light->LightColor.ReinterpretAsLinear();
-		Config.DirectionalLightIntensity = FMath::Min(Light->Intensity * 1.0e-5f, 100.0f);
+		// Keep the scene light untouched; apply a separate scale only to DDGI radiance.
+		Config.DirectionalLightIntensity = FMath::Min(
+			Light->Intensity * 1.0e-5f * FMath::Max(0.0f, InActor->DirectionalLightGIIntensityScale),
+			100.0f);
 		Config.bHasDirectionalLight = true;
 	}
 	else
