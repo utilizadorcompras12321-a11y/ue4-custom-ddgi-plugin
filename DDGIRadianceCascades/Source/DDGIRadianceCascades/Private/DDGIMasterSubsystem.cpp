@@ -212,8 +212,27 @@ namespace
 				FVector CameraLocation = FVector::ZeroVector;
 				FRotator CameraRotation = FRotator::ZeroRotator;
 				PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
+				static bool bLoggedPlayerCamera = false;
+				if (!bLoggedPlayerCamera)
+				{
+					UE_LOG(LogTemp, Warning,
+						TEXT("DDGI DIAG: probe window camera source=PlayerController, camera=(%.1f, %.1f, %.1f), master-root=(%.1f, %.1f, %.1f), world=%s."),
+						CameraLocation.X, CameraLocation.Y, CameraLocation.Z,
+						InActor->GetActorLocation().X, InActor->GetActorLocation().Y, InActor->GetActorLocation().Z,
+						*GetNameSafe(World));
+					bLoggedPlayerCamera = true;
+				}
 				return CameraLocation;
 			}
+		}
+		static bool bLoggedRootFallback = false;
+		if (!bLoggedRootFallback)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("DDGI DIAG: NO PlayerController; probe window is falling back to master ROOT=(%.1f, %.1f, %.1f), world=%s, world-type=%d. In this state probes will follow the actor, not the active editor viewport camera."),
+				InActor->GetActorLocation().X, InActor->GetActorLocation().Y, InActor->GetActorLocation().Z,
+				*GetNameSafe(World), World ? static_cast<int32>(World->WorldType) : -1);
+			bLoggedRootFallback = true;
 		}
 		return InActor->GetActorLocation();
 	}
