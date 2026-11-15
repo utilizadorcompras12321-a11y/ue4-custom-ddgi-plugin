@@ -124,7 +124,7 @@ namespace
 
 		Candidates.Sort([](const FDDGIProbeCandidate& A, const FDDGIProbeCandidate& B)
 		{
-			if (!FMath::IsNearlyEqual(A.DistanceSquared, B.DistanceSquared, 1.0e-6))
+			if (A.DistanceSquared != B.DistanceSquared)
 			{
 				return A.DistanceSquared < B.DistanceSquared;
 			}
@@ -192,6 +192,8 @@ void UDDGIMasterSubsystem::Deinitialize()
 	ActiveDirectionalLight.Reset();
 	Config = FDDGIMasterConfig();
 	CachedSoftwareBVHTriangleLimit = INDEX_NONE;
+	ActiveWindowCenterCell = FIntVector::ZeroValue;
+	bHasActiveWindowCenterCell = false;
 	bHasSearchedDirectionalLights = false;
 
 	Super::Deinitialize();
@@ -225,6 +227,8 @@ void UDDGIMasterSubsystem::UnregisterMasterActor(ADDGIMasterActor* InActor)
 	ActiveMasterActor.Reset();
 	Config = FDDGIMasterConfig();
 	CachedSoftwareBVHTriangleLimit = INDEX_NONE;
+	ActiveWindowCenterCell = FIntVector::ZeroValue;
+	bHasActiveWindowCenterCell = false;
 	PublishConfig(false);
 }
 
@@ -444,6 +448,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	// The lattice remains anchored at world origin. The snapped camera cell
 	// selects an active subset; it never changes the lattice spacing.
 	Config.ProbeGridOrigin = -Config.SoftwareBVH->WorldOrigin;
+	const float RequestedProbeSpacing = Config.ProbeSpacing;
 	const FVector InitialCameraLocation = DDGIGetCameraWorldLocation(InActor);
 	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(InitialCameraLocation, Config.ProbeSpacing);
 	bHasActiveWindowCenterCell = true;
