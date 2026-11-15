@@ -145,7 +145,7 @@ IMPLEMENT_SHADER_TYPE(
 	SF_Compute);
 
 
-class FDDGIRadianceCascadeTraceRHIclass FDDGIRadianceCascadeTraceRHI : public FGlobalShader
+class FDDGIRadianceCascadeTraceRHI : public FGlobalShader
 {
 	DECLARE_SHADER_TYPE(FDDGIRadianceCascadeTraceRHI, Global);
 
