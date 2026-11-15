@@ -765,7 +765,8 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->ProbeGridDistance = Config->ProbeGridDistance;
 	PassParameters->ProbeGridOrigin = FVector4(
 		Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f);
-	const FVector ActiveWindowCenterLocal = View.ViewMatrices.GetViewOrigin() - Config->SoftwareBVH->WorldOrigin;
+	// Use the snapped active-window center, not the live camera origin. This keeps cascade blend weights stable while the camera moves inside the current probe window.
+	const FVector ActiveWindowCenterLocal = Config->ActiveProbeWindowCenter - Config->SoftwareBVH->WorldOrigin;
 	PassParameters->ActiveWindowCenter = FVector4(
 		ActiveWindowCenterLocal.X, ActiveWindowCenterLocal.Y, ActiveWindowCenterLocal.Z, 0.0f);
 	PassParameters->BVHWorldOrigin = FVector4(
