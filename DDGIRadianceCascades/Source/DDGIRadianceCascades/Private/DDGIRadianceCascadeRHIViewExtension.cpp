@@ -170,7 +170,8 @@ public:
 		StaticBackgroundIntensity.Bind(Initializer.ParameterMap, TEXT("StaticBackgroundIntensity"));
 		GIIntensity.Bind(Initializer.ParameterMap, TEXT("GIIntensity"));
 		ProbeGridOrigin.Bind(Initializer.ParameterMap, TEXT("ProbeGridOrigin"));
-		BackgroundTransitionStart.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionStart"));
+		ActiveWindowCenter.Bind(Initializer.ParameterMap, TEXT("ActiveWindowCenter"));
+		BackgroundTransitionStart(Initializer.ParameterMap, TEXT("BackgroundTransitionStart"));
 		BackgroundTransitionEnd.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionEnd"));
 		bEnableStaticBackground.Bind(Initializer.ParameterMap, TEXT("bEnableStaticBackground"));
 
@@ -217,6 +218,7 @@ public:
 		float InStaticBackgroundIntensity,
 		float InGIIntensity,
 		const FVector4& InProbeGridOrigin,
+		const FVector4& InActiveWindowCenter,
 		float InBackgroundTransitionStart,
 		float InBackgroundTransitionEnd,
 		uint32 bInEnableStaticBackground,
@@ -241,6 +243,7 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, StaticBackgroundIntensity, InStaticBackgroundIntensity);
 		SetShaderValue(RHICmdList, ShaderRHI, GIIntensity, InGIIntensity);
 		SetShaderValue(RHICmdList, ShaderRHI, ProbeGridOrigin, InProbeGridOrigin);
+		SetShaderValue(RHICmdList, ShaderRHI, ActiveWindowCenter, InActiveWindowCenter);
 		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionStart, InBackgroundTransitionStart);
 		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionEnd, InBackgroundTransitionEnd);
 		SetShaderValue(RHICmdList, ShaderRHI, bEnableStaticBackground, bInEnableStaticBackground);
@@ -287,6 +290,7 @@ private:
 	LAYOUT_FIELD(FShaderParameter, StaticBackgroundIntensity);
 	LAYOUT_FIELD(FShaderParameter, GIIntensity);
 	LAYOUT_FIELD(FShaderParameter, ProbeGridOrigin);
+	LAYOUT_FIELD(FShaderParameter, ActiveWindowCenter);
 	LAYOUT_FIELD(FShaderParameter, BackgroundTransitionStart);
 	LAYOUT_FIELD(FShaderParameter, BackgroundTransitionEnd);
 	LAYOUT_FIELD(FShaderParameter, bEnableStaticBackground);
@@ -517,6 +521,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(float, ProbeSpacing)
 		SHADER_PARAMETER(float, ProbeGridDistance)
 		SHADER_PARAMETER(FVector4, ProbeGridOrigin)
+		SHADER_PARAMETER(FVector4, ActiveWindowCenter)
 		SHADER_PARAMETER(FVector4, BVHWorldOrigin)
 		SHADER_PARAMETER(uint32, ShouldUsePreExposure)
 		SHADER_PARAMETER(uint32, DebugMode)
@@ -682,6 +687,9 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->ProbeGridDistance = Config->ProbeGridDistance;
 	PassParameters->ProbeGridOrigin = FVector4(
 		Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f);
+	const FVector ActiveWindowCenterLocal = View.ViewMatrices.GetViewOrigin() - Config->SoftwareBVH->WorldOrigin;
+	PassParameters->ActiveWindowCenter = FVector4(
+		ActiveWindowCenterLocal.X, ActiveWindowCenterLocal.Y, ActiveWindowCenterLocal.Z, 0.0f);
 	PassParameters->BVHWorldOrigin = FVector4(
 		Config->SoftwareBVH->WorldOrigin.X,
 		Config->SoftwareBVH->WorldOrigin.Y,
@@ -1029,6 +1037,10 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		FVector4(Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G, Config->StaticBackgroundColor.B, Config->StaticBackgroundColor.A),
 		Config->StaticBackgroundIntensity, Config->GIIntensity,
 		FVector4(Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f),
+		FVector4(
+			InView.ViewMatrices.GetViewOrigin().X - Config->SoftwareBVH->WorldOrigin.X,
+			InView.ViewMatrices.GetViewOrigin().Y - Config->SoftwareBVH->WorldOrigin.Y,
+			InView.ViewMatrices.GetViewOrigin().Z - Config->SoftwareBVH->WorldOrigin.Z, 0.0f),
 		Config->BackgroundTransitionStart, Config->BackgroundTransitionEnd,
 		Config->bEnableStaticBackground ? 1u : 0u,
 		FVector4(Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z, 0.0f),
