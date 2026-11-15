@@ -342,10 +342,19 @@ namespace
 				(static_cast<double>(Level) / 4.0);
 			const double BoundaryAfter = static_cast<double>(SafeRadius) *
 				(static_cast<double>(Level + 1) / 4.0);
+			// Trilinear sampling needs all eight lattice corners around every
+			// query point. At most one full level-spacing per axis separates a
+			// query point from a corner, so sqrt(3) * LevelSpacing is a
+			// conservative radial support margin. Expand both sides of each
+			// level's blend region; otherwise the shell boundary loses corners
+			// and the interpolated cascade collapses to zero near its edge.
+			const double LevelSpacing = SafeSpacingDouble * static_cast<double>(LevelStep);
+			const double SupportMargin = std::sqrt(3.0) * LevelSpacing;
 			const double InnerRadius = Level == 0 ? 0.0 :
-				FMath::Max(0.0, BoundaryBefore - TransitionWidth);
-			const double OuterRadius = Level == 3 ? static_cast<double>(SafeRadius) :
-				FMath::Min(static_cast<double>(SafeRadius), BoundaryAfter + TransitionWidth);
+				FMath::Max(0.0, BoundaryBefore - TransitionWidth - SupportMargin);
+			const double OuterRadius = (Level == 3 ? static_cast<double>(SafeRadius) :
+				FMath::Min(static_cast<double>(SafeRadius), BoundaryAfter + TransitionWidth)) +
+				SupportMargin;
 			const double RadiusInCells = OuterRadius / SafeSpacingDouble;
 			const double MaxSafeRadiusInCells =
 				std::sqrt(static_cast<double>(MAX_int64) / 3.0);
