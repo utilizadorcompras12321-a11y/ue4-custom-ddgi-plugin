@@ -1089,6 +1089,15 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
         OutProbePositions != nullptr;
 }
 
+void DDGIInvalidateRadianceCascadeHistory_RenderThread(const FSceneInterface* Scene)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    if (FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene))
+    {
+        Storage->bNeedsInitialization = true;
+    }
+}
+
 void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInterface* Scene)
 {
     check(IsInRenderingThread() || IsInParallelRenderingThread());
