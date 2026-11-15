@@ -9,9 +9,11 @@ uint CascadeRayCount;
 uint NextCascadeStorageOffset;
 uint EffectiveSplitFactor;
 
-RWTexture2D<float4> RadianceUAV;
+Texture2D<float4> GatheredRadianceTexture;
+Texture2D<float4> ChildRadianceTexture;
 Texture2D<float> HitDistanceTexture;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
+RWTexture2D<float4> RadianceUAV;
 
 [numthreads(64, 1, 1)]
 void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -36,6 +38,7 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // The gathered radiance is already valid, so leave the texel untouched.
     if (HitDistanceTexture.Load(int3(Pixel, 0)) >= 0.0f)
     {
+        RadianceUAV[Pixel] = GatheredRadianceTexture.Load(int3(Pixel, 0));
         return;
     }
 
@@ -50,12 +53,12 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ChildLinearIndexBase / TextureWidth);
     float3 IntegratedRadiance = 0.0f;
 
-    // Child rays are in a disjoint cascade range. This dispatch writes only
-    // the parent range, allowing in-place integration without texture copies.
+    // Child radiance comes from the previous cascade result. GatheredRadianceTexture
+    // remains immutable so hit parents can preserve their spatially filtered value.
     [loop]
     for (uint ChildIndex = 0u; ChildIndex < SafeSplitFactor; ++ChildIndex)
     {
-        IntegratedRadiance += RadianceUAV[ChildPixel].rgb;
+        IntegratedRadiance += ChildRadianceTexture.Load(int3(ChildPixel, 0)).rgb;
         ++ChildPixel.x;
         if (ChildPixel.x >= TextureWidth)
         {
