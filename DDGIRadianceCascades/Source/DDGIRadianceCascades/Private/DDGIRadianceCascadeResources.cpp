@@ -1517,8 +1517,8 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
         return false;
     }
 
-    // The integration loop swaps the persistent Radiance/RadianceScratch
-    // references when necessary, so Radiance always identifies the completed result.
+    // The integration loop promotes whichever ping-pong output contains the
+    // completed first-cascade result, so Radiance always identifies that result.
     OutDirections = GraphBuilder.RegisterExternalTexture(Storage->Directions);
     OutRadiance = GraphBuilder.RegisterExternalTexture(Storage->Radiance);
     OutHitDistance = GraphBuilder.RegisterExternalTexture(Storage->HitDistance);
