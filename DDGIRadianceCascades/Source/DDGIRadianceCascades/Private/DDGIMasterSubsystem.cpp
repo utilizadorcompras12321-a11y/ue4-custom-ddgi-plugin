@@ -12,6 +12,27 @@
 
 namespace
 {
+	struct FDDGISelectedProbeCandidate
+	{
+		FVector4 Position;
+		int64 DistanceSquared;
+		int32 CellX;
+		int32 CellY;
+		int32 CellZ;
+	};
+
+	bool DDGISelectedProbeCandidateLess(
+		const FDDGISelectedProbeCandidate& A, const FDDGISelectedProbeCandidate& B)
+	{
+		if (A.DistanceSquared != B.DistanceSquared)
+		{
+			return A.DistanceSquared < B.DistanceSquared;
+		}
+		if (A.CellZ != B.CellZ) return A.CellZ < B.CellZ;
+		if (A.CellY != B.CellY) return A.CellY < B.CellY;
+		return A.CellX < B.CellX;
+	}
+
 	int64 DDGIFloorSqrt(int64 Value)
 	{
 		if (Value <= 0) return 0;
@@ -264,10 +285,25 @@ namespace
 				else LowQ = MidQ + 1;
 			}
 			const int64 ThresholdQ = LowQ;
-			const int32 OutputStart = OutPositions.Num();
+			TArray<FDDGISelectedProbeCandidate> SelectedCandidates;
+			SelectedCandidates.Reserve(Quota);
+			auto AddSelectedProbe = [&](int64 DX, int64 DY, int64 DZ)
+			{
+				FDDGISelectedProbeCandidate Candidate;
+				Candidate.CellX = static_cast<int32>(static_cast<int64>(CenterCell.X) + DX);
+				Candidate.CellY = static_cast<int32>(static_cast<int64>(CenterCell.Y) + DY);
+				Candidate.CellZ = static_cast<int32>(static_cast<int64>(CenterCell.Z) + DZ);
+				Candidate.Position = FVector4(
+					static_cast<float>(Candidate.CellX) * SafeSpacing,
+					static_cast<float>(Candidate.CellY) * SafeSpacing,
+					static_cast<float>(Candidate.CellZ) * SafeSpacing,
+					static_cast<float>(Level));
+				Candidate.DistanceSquared = DX * DX + DY * DY + DZ * DZ;
+				SelectedCandidates.Add(Candidate);
+			};
 
-			// Every point strictly below the threshold belongs in the result;
-			// there are fewer than Quota of them. Emit X in ascending order.
+			// Generate all candidates strictly nearer than the threshold. The
+			// count is guaranteed to be smaller than Quota.
 			for (int64 DZ = FirstDeltaZ; DZ <= LastDeltaZ; DZ += LevelStep)
 			{
 				const int64 ZSquared = DZ * DZ;
@@ -285,19 +321,12 @@ namespace
 						const int64 ClampedMax = FMath::Min(LastDeltaX, MaxX);
 						if (ClampedMin > ClampedMax) return;
 						const int64 FirstIndex = DDGICeilDiv(ClampedMin - FirstDeltaX, LevelStep);
-					const int64 LastIndex = DDGIFloorDiv(ClampedMax - FirstDeltaX, LevelStep);
-					for (int64 Index = FirstIndex; Index <= LastIndex; ++Index)
-					{
-						const int64 DX = FirstDeltaX + Index * LevelStep;
-						const int32 CellX = static_cast<int32>(static_cast<int64>(CenterCell.X) + DX);
-						const int32 CellY = static_cast<int32>(static_cast<int64>(CenterCell.Y) + DY);
-						const int32 CellZ = static_cast<int32>(static_cast<int64>(CenterCell.Z) + DZ);
-						OutPositions.Add(FVector4(
-							static_cast<float>(CellX) * SafeSpacing,
-							static_cast<float>(CellY) * SafeSpacing,
-							static_cast<float>(CellZ) * SafeSpacing,
-							static_cast<float>(Level)));
-					}
+						const int64 LastIndex = DDGIFloorDiv(ClampedMax - FirstDeltaX, LevelStep);
+						for (int64 Index = FirstIndex; Index <= LastIndex; ++Index)
+						{
+							const int64 DX = FirstDeltaX + Index * LevelStep;
+						AddSelectedProbe(DX, DY, DZ);
+						}
 					};
 					if (MinXAbs == 0)
 					{
@@ -313,13 +342,12 @@ namespace
 			}
 
 			// At the threshold, X can only be +/-sqrt(ThresholdQ - YZ).
-			// Visit rows in Z/Y order and X ascending to preserve the original
-			// deterministic tie-break without storing a potentially large tie set.
-			for (int64 DZ = FirstDeltaZ; DZ <= LastDeltaZ && OutPositions.Num() - OutputStart < Quota; DZ += LevelStep)
+			// Z/Y/X traversal gives the deterministic tie-break order.
+			for (int64 DZ = FirstDeltaZ; DZ <= LastDeltaZ && SelectedCandidates.Num() < Quota; DZ += LevelStep)
 			{
 				const int64 ZSquared = DZ * DZ;
 				if (ZSquared > ThresholdQ) continue;
-				for (int64 DY = FirstDeltaY; DY <= LastDeltaY && OutPositions.Num() - OutputStart < Quota; DY += LevelStep)
+				for (int64 DY = FirstDeltaY; DY <= LastDeltaY && SelectedCandidates.Num() < Quota; DY += LevelStep)
 				{
 					const int64 Remainder = ThresholdQ - (DY * DY + ZSquared);
 					if (Remainder < 0) continue;
@@ -327,21 +355,20 @@ namespace
 					if (Root * Root != Remainder) continue;
 					const int64 CandidateDX[2] = { -Root, Root };
 					for (int32 SignIndex = 0; SignIndex < (Root == 0 ? 1 : 2) &&
-						OutPositions.Num() - OutputStart < Quota; ++SignIndex)
+						SelectedCandidates.Num() < Quota; ++SignIndex)
 					{
 						const int64 DX = CandidateDX[SignIndex];
 						if (DX < FirstDeltaX || DX > LastDeltaX ||
 							(DX - FirstDeltaX) % LevelStep != 0) continue;
-						const int32 CellX = static_cast<int32>(static_cast<int64>(CenterCell.X) + DX);
-						const int32 CellY = static_cast<int32>(static_cast<int64>(CenterCell.Y) + DY);
-						const int32 CellZ = static_cast<int32>(static_cast<int64>(CenterCell.Z) + DZ);
-						OutPositions.Add(FVector4(
-							static_cast<float>(CellX) * SafeSpacing,
-							static_cast<float>(CellY) * SafeSpacing,
-							static_cast<float>(CellZ) * SafeSpacing,
-							static_cast<float>(Level)));
+						AddSelectedProbe(DX, DY, DZ);
 					}
 				}
+			}
+
+			SelectedCandidates.Sort(DDGISelectedProbeCandidateLess);
+			for (const FDDGISelectedProbeCandidate& Candidate : SelectedCandidates)
+			{
+				OutPositions.Add(Candidate.Position);
 			}
 		}
 	}
