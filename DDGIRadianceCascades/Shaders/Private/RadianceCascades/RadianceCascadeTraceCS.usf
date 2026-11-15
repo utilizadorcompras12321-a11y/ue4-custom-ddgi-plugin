@@ -16,6 +16,7 @@ float4 StaticBackgroundColor;
 float StaticBackgroundIntensity;
 float GIIntensity;
 float4 ProbeGridOrigin;
+float4 ActiveWindowCenter;
 float BackgroundTransitionStart;
 float BackgroundTransitionEnd;
 uint bEnableStaticBackground;
@@ -743,7 +744,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     if (bEnableStaticBackground != 0u && bIsLastActiveCascade &&
         !bHitInThisInterval && !bBlockedByEarlierSurface)
     {
-        float ProbeDistance = distance(Origin, ProbeGridOrigin.xyz);
+        float ProbeDistance = distance(Origin, ActiveWindowCenter.xyz);
         float TransitionWidth = max(BackgroundTransitionEnd - BackgroundTransitionStart, 1.0e-3f);
         BackgroundFade = smoothstep(BackgroundTransitionStart, BackgroundTransitionStart + TransitionWidth, ProbeDistance);
     }
