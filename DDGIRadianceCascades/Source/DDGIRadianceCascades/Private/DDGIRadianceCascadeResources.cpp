@@ -1051,6 +1051,7 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     bOutInitializeDirections = false;
     FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || !Storage->bNeedsInitialization ||
+        Storage->bPendingPhysicalSlotsUpload || Storage->bInvalidateAllPhysicalSlots ||
         (Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0 && !Storage->bNeedsDirectionInitialization) ||
         !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() ||
         !Storage->HitDistance.IsValid() || !Storage->RadianceScratch.IsValid() ||
