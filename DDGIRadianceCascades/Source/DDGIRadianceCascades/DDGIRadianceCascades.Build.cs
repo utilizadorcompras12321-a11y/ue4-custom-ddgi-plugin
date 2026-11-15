@@ -44,6 +44,12 @@ public class DDGIRadianceCascades : ModuleRules
 			"Projects"
 		});
 
+		// Editor viewport access is isolated to editor targets.
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
+
 		PublicIncludePaths.AddRange(new string[]
 		{
 			"../Shaders/Shared"
