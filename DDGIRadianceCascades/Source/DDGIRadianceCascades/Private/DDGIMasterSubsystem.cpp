@@ -924,10 +924,10 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	const FVector InitialCameraLocation = DDGIGetCameraWorldLocation(InActor);
 	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(InitialCameraLocation, Config.ProbeSpacing);
 	bHasActiveWindowCenterCell = true;
-	Config.ActiveProbeWindowCenter = FVector(
-		static_cast<double>(ActiveWindowCenterCell.X) * Config.ProbeSpacing,
-		static_cast<double>(ActiveWindowCenterCell.Y) * Config.ProbeSpacing,
-		static_cast<double>(ActiveWindowCenterCell.Z) * Config.ProbeSpacing);
+	// Keep the blend origin continuous with the camera. The snapped cell
+	// remains the deterministic lattice-selection anchor, but must not drive
+	// shader blend distance or the cascade boundaries will jump by ProbeSpacing.
+	Config.ActiveProbeWindowCenter = InitialCameraLocation;
 	DDGIBuildActiveProbePositions(
 		Config.ProbeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
 		Config.MaxActiveProbes, Config.ProbePositions, Config.ProbeCellCoordinates, Config.ProbeLevels);
@@ -985,10 +985,9 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 
 	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(CameraLocation, SafeSpacing);
 	bHasActiveWindowCenterCell = true;
-	Config.ActiveProbeWindowCenter = FVector(
-		static_cast<double>(ActiveWindowCenterCell.X) * SafeSpacing,
-		static_cast<double>(ActiveWindowCenterCell.Y) * SafeSpacing,
-		static_cast<double>(ActiveWindowCenterCell.Z) * SafeSpacing);
+	// Probe membership is selected on the snapped lattice; cascade blending
+	// follows the unsnapped camera position to avoid visible stepping.
+	Config.ActiveProbeWindowCenter = CameraLocation;
 	DDGIBuildActiveProbePositions(
 		SafeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
 		Config.MaxActiveProbes, Config.ProbePositions,
