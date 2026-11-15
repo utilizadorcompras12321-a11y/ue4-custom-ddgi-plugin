@@ -51,6 +51,7 @@ public:
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
 		RadianceScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
 		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
+		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -67,6 +68,7 @@ public:
 		FUnorderedAccessViewRHIRef HitDistanceView,
 		FUnorderedAccessViewRHIRef RadianceScratchView,
 		FUnorderedAccessViewRHIRef HitTriangleIndexView,
+		FShaderResourceViewRHIRef InLogicalToPhysicalSRV,
 		uint32 InTotalRaysPerProbe,
 		uint32 InCascadeCount,
 		uint32 InBaseRayCount,
@@ -100,6 +102,7 @@ public:
 		}
 		if (RadianceScratchUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceScratchUAV.GetBaseIndex(), RadianceScratchView);
 		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), HitTriangleIndexView);
+		if (LogicalToPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), InLogicalToPhysicalSRV);
 	}
 
 	template<typename TShaderRHIParamRef>
@@ -119,6 +122,7 @@ public:
 		}
 		if (RadianceScratchUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceScratchUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+		if (LogicalToPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), FShaderResourceViewRHIRef());
 	}
 
 private:
@@ -135,6 +139,7 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceScratchUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexUAV);
+	LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
 };
 
 IMPLEMENT_SHADER_TYPE(
@@ -1009,6 +1014,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			InitializeShader->SetParameters(
 				RHICmdList, InitializeShader.GetComputeShader(), InitDirectionsUAV, InitRadianceUAV,
 				InitHitDistanceUAV, InitRadianceScratchUAV, InitHitTriangleIndexUAV,
+				LogicalToPhysicalSRV,
 				TotalRaysPerProbe,
 				static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
 				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64)),
