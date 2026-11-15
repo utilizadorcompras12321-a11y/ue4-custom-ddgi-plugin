@@ -452,6 +452,8 @@ public:
 		NextCascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("NextCascadeStorageOffset"));
 		EffectiveSplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
+		GatheredRadianceTexture.Bind(Initializer.ParameterMap, TEXT("GatheredRadianceTexture"));
+		ChildRadianceTexture.Bind(Initializer.ParameterMap, TEXT("ChildRadianceTexture"));
 		HitDistanceTexture.Bind(Initializer.ParameterMap, TEXT("HitDistanceTexture"));
 		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 	}
@@ -466,6 +468,8 @@ public:
 		FRHICommandList& RHICmdList,
 		const TShaderRHIParamRef ShaderRHI,
 		FUnorderedAccessViewRHIRef InRadianceUAV,
+		FShaderResourceViewRHIRef GatheredRadianceSRV,
+		FShaderResourceViewRHIRef ChildRadianceSRV,
 		FShaderResourceViewRHIRef HitDistanceSRV,
 		FShaderResourceViewRHIRef LogicalToPhysicalSRV,
 		uint32 InTotalIntegrationTexels,
@@ -489,6 +493,14 @@ public:
 		{
 			RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), InRadianceUAV);
 		}
+		if (GatheredRadianceTexture.IsBound())
+		{
+			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, GatheredRadianceTexture.GetBaseIndex(), GatheredRadianceSRV);
+		}
+		if (ChildRadianceTexture.IsBound())
+		{
+			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ChildRadianceTexture.GetBaseIndex(), ChildRadianceSRV);
+		}
 		if (HitDistanceTexture.IsBound())
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitDistanceTexture.GetBaseIndex(), HitDistanceSRV);
@@ -505,6 +517,14 @@ public:
 		if (RadianceUAV.IsBound())
 		{
 			RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+		}
+		if (GatheredRadianceTexture.IsBound())
+		{
+			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, GatheredRadianceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+		}
+		if (ChildRadianceTexture.IsBound())
+		{
+			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ChildRadianceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
 		}
 		if (HitDistanceTexture.IsBound())
 		{
@@ -526,6 +546,8 @@ private:
 	LAYOUT_FIELD(FShaderParameter, NextCascadeStorageOffset);
 	LAYOUT_FIELD(FShaderParameter, EffectiveSplitFactor);
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
+	LAYOUT_FIELD(FShaderResourceParameter, GatheredRadianceTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, ChildRadianceTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
 };
