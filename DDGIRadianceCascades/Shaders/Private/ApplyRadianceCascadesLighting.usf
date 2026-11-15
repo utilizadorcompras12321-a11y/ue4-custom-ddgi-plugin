@@ -28,6 +28,7 @@ float ProbeSpacing;
 float4 ProbeGridOrigin;
 float4 BVHWorldOrigin;
 uint ShouldUsePreExposure;
+uint DebugMode;
 
 #define DDGI_RC_TEXTURE_WIDTH 4096u
 
@@ -116,7 +117,14 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float DeviceZ = DepthTexture.SampleLevel(PointClampSampler, BufferUV, 0).r;
     if (DeviceZ <= 0.000001f)
     {
-        SceneColorOutputUAV[BufferPixelIndex] = SceneColorTexture.Load(int3(BufferPixelIndex, 0));
+        if (DebugMode == 1u)
+        {
+            SceneColorOutputUAV[BufferPixelIndex] = float4(0.0f, 0.0f, 0.25f, 1.0f);
+        }
+        else
+        {
+            SceneColorOutputUAV[BufferPixelIndex] = SceneColorTexture.Load(int3(BufferPixelIndex, 0));
+        }
         return;
     }
 
@@ -172,10 +180,28 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     if (ProbeWeightSum <= 0.00001f)
     {
-        SceneColorOutputUAV[BufferPixelIndex] = SceneColorTexture.Load(int3(BufferPixelIndex, 0));
+        if (DebugMode == 1u)
+        {
+            SceneColorOutputUAV[BufferPixelIndex] = float4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+        else
+        {
+            SceneColorOutputUAV[BufferPixelIndex] = SceneColorTexture.Load(int3(BufferPixelIndex, 0));
+        }
         return;
     }
     Irradiance /= ProbeWeightSum;
+
+    if (DebugMode == 1u)
+    {
+        SceneColorOutputUAV[BufferPixelIndex] = float4(0.0f, 0.8f, 0.0f, 1.0f);
+        return;
+    }
+    if (DebugMode == 2u)
+    {
+        SceneColorOutputUAV[BufferPixelIndex] = float4(saturate(Irradiance * 4.0f), 1.0f);
+        return;
+    }
 
     // The existing upscale pass applies albedo when rendering below full res.
     if (View.ViewSizeAndInvSize.x != ScaledViewSizeAndInvSize.x)
