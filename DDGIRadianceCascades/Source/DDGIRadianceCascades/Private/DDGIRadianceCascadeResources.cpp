@@ -551,7 +551,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                     const FIntVector NeighborCell = CenterCell + FIntVector(X, Y, Z) * LevelCellStep;
                     if (const uint32* NeighborIndex = ProbeCellToIndex.Find(NeighborCell))
                     {
-                        NeighborEntries[static_cast<int32>(ProbeIndex * 26u + Slot)] = *NeighborIndex;
+                        const FVector4& NeighborPosition = Config.ProbePositions[static_cast<int32>(*NeighborIndex)];
+                        const int32 NeighborLevel = FMath::Clamp(FMath::RoundToInt(NeighborPosition.W), 0, 7);
+                        // The gather kernel uses the center probe's spacing.
+                        // Never feed it a neighbor from another spatial level.
+                        if (NeighborLevel == ProbeLevel)
+                        {
+                            NeighborEntries[static_cast<int32>(ProbeIndex * 26u + Slot)] = *NeighborIndex;
+                        }
                     }
                     ++Slot;
                 }
