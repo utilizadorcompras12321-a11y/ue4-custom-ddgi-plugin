@@ -797,6 +797,16 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
+	FShaderResourceViewRHIRef NodesSRV;
+	FShaderResourceViewRHIRef TrianglesSRV;
+	uint32 NodeCount = 0;
+	uint32 TriangleCount = 0;
+	if (!DDGIGetSoftwareBVHResources_RenderThread(Scene, NodesSRV, TrianglesSRV, NodeCount, TriangleCount))
+	{
+		// The resource manager supplies valid zero-count buffers for an empty BVH.
+		return;
+	}
+
 	FTexture2DRHIRef DirectionsTexture;
 	FTexture2DRHIRef RadianceTexture;
 	FTexture2DRHIRef HitDistanceTexture;
@@ -907,16 +917,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create initialization UAVs."));
 			return;
 		}
-	}
-
-	FShaderResourceViewRHIRef NodesSRV;
-	FShaderResourceViewRHIRef TrianglesSRV;
-	uint32 NodeCount = 0;
-	uint32 TriangleCount = 0;
-	if (!DDGIGetSoftwareBVHResources_RenderThread(Scene, NodesSRV, TrianglesSRV, NodeCount, TriangleCount))
-	{
-		// The resource manager supplies valid zero-count buffers for an empty BVH.
-		return;
 	}
 
 	FShaderResourceViewRHIRef DirectionsSRV = RHICreateShaderResourceView(DirectionsTexture, 0);
