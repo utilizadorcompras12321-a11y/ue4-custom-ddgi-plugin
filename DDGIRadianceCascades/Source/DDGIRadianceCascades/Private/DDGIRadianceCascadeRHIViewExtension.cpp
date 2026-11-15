@@ -990,9 +990,15 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FShaderResourceViewRHIRef SpatialHashSRV, NeighborListSRV;
 	uint32 HashCapacity=0, SpatialProbeCount=0, NeighborListProbeCount=0;
 	float ProbeSpacing=0.0f;
-	const bool bHasNeighborList = DDGIGetRadianceCascadeProbeNeighborList_RenderThread(Scene,NeighborListSRV,NeighborListProbeCount) &&
-		NeighborListSRV.IsValid() && NeighborListProbeCount==ProbeCount;
-	const uint32 bUseNeighborList = (bHasNeighborList && CVarDDGIUsePrecomputedProbeNeighbors.GetValueOnRenderThread()!=0) ? 1u : 0u;
+	const bool bRequestNeighborList = CVarDDGIUsePrecomputedProbeNeighbors.GetValueOnRenderThread()!=0;
+	uint32 bUseNeighborList = 0u;
+	if (bRequestNeighborList)
+	{
+		bUseNeighborList =
+			DDGIGetRadianceCascadeProbeNeighborList_RenderThread(Scene,NeighborListSRV,NeighborListProbeCount) &&
+			NeighborListSRV.IsValid() && NeighborListProbeCount==ProbeCount
+			? 1u : 0u;
+	}
 	if (!DDGIGetRadianceCascadeScratchTexture_RenderThread(Scene,RadianceScratchTexture) ||
 		!DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(Scene,ProbePositionsTexture,SpatialProbeCount) ||
 		SpatialProbeCount!=ProbeCount) return;
