@@ -401,7 +401,8 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.GIIntensity = FMath::Max(0.0f, InActor->GIIntensity);
 
 	UpdateDirectionalLighting(InActor);
-	Config.DynamicGIDistance = FMath::Max(0.0f, InActor->DynamicGIDistance);
+	Config.DynamicGIDistance = FMath::Max(1.0f, InActor->DynamicGIDistance);
+	Config.ProbeGridDistance = FMath::Max(1.0f, InActor->ProbeGridDistance);
 	Config.RadianceCascades.CascadeCount = FMath::Clamp(InActor->CascadeCount, 1, 8);
 	Config.RadianceCascades.BaseRayCount = FMath::Clamp(InActor->BaseRayCount, 1, 64);
 	Config.RadianceCascades.RaySplitFactor = FMath::Clamp(InActor->RaySplitFactor, 1, 4);
@@ -469,14 +470,20 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	// The BVH origin remains fixed until the BVH is rebuilt. The Master Actor
 	// may move independently; only its probe lattice moves within this frame.
 	Config.ProbeGridOrigin = InActor->GetActorLocation() - Config.SoftwareBVH->WorldOrigin;
+	const float RequestedProbeSpacing = Config.ProbeSpacing;
 	Config.ProbeSpacing = DDGIBuildSparseProbePositions(
-		Config.ProbeSpacing,
-		Config.DynamicGIDistance,
+		RequestedProbeSpacing,
+		Config.ProbeGridDistance,
 		Config.MaxActiveProbes,
 		Config.ProbePositions);
 	Config.ProbeCount = Config.ProbePositions.Num();
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
 		Config.ProbePositions, Config.ProbeSpacing);
+
+	UE_LOG(LogTemp, Log,
+		TEXT("DDGI probe grid: radius %.1f cm, requested spacing %.1f cm, effective spacing %.1f cm, probes %d / %d; ray trace distance %.1f cm."),
+		Config.ProbeGridDistance, RequestedProbeSpacing, Config.ProbeSpacing,
+		Config.ProbeCount, Config.MaxActiveProbes, Config.DynamicGIDistance);
 
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;
