@@ -248,6 +248,27 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float Metallic = MetallicTexture.SampleLevel(PointClampSampler, BufferUV, 0).r;
     float3 Albedo = BaseColor * (1.0f - Metallic);
 
+    // Diagnostic modes 4-7 isolate each spatial probe level. This bypasses
+    // distance-based level selection so sparse/coarse-level failures can be
+    // distinguished from transition blending.
+    if (DebugMode >= 4u && DebugMode <= 7u)
+    {
+        const uint DebugLevel = DebugMode - 4u;
+        bool bDebugLevelValid = false;
+        float3 DebugLevelIrradiance = DDGISampleLevelValue(
+            LocalPosition, Normal, DebugLevel, bDebugLevelValid);
+        if (!bDebugLevelValid)
+        {
+            SceneColorOutputUAV[BufferPixelIndex] = float4(1.0f, 0.0f, 1.0f, 1.0f);
+        }
+        else
+        {
+            float3 DebugLevelValue = log2(1.0f + max(DebugLevelIrradiance, 0.0f)) * 0.25f;
+            SceneColorOutputUAV[BufferPixelIndex] = float4(DebugLevelValue, 1.0f);
+        }
+        return;
+    }
+
     float GridRadius = max(ProbeGridDistance, 1.0f);
     float GridDistance = length(LocalPosition - ActiveWindowCenter.xyz);
     float TransitionWidth = max(ProbeSpacing * 2.0f, GridRadius * 0.05f);
