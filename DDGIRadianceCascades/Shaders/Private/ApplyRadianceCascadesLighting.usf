@@ -32,11 +32,12 @@ uint DebugMode;
 
 #define DDGI_RC_TEXTURE_WIDTH 4096u
 
-uint DDGIHashProbeCell(int3 Cell)
+uint DDGIHashProbeCell(int3 Cell, uint Level)
 {
     uint Hash = asuint(Cell.x) * 0x8DA6B343u;
     Hash ^= asuint(Cell.y) * 0xD8163841u;
     Hash ^= asuint(Cell.z) * 0xCB1AB31Fu;
+    Hash ^= (Level + 1u) * 0x9E3779B9u;
     Hash ^= Hash >> 16;
     Hash *= 0x7FEB352Du;
     Hash ^= Hash >> 15;
@@ -45,19 +46,20 @@ uint DDGIHashProbeCell(int3 Cell)
     return Hash;
 }
 
-bool DDGIFindProbeInCell(int3 Cell, out uint OutProbeIndex)
+bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
 {
     OutProbeIndex = 0u;
-    if (HashCapacity == 0u || ProbeCount == 0u) return false;
-    uint Slot = DDGIHashProbeCell(Cell) & (HashCapacity - 1u);
+    if (HashCapacity == 0u || ProbeCount == 0u || Level > 7u) return false;
+    uint Slot = DDGIHashProbeCell(Cell, Level) & (HashCapacity - 1u);
     [loop]
     for (uint Attempt = 0u; Attempt < ProbeCount; ++Attempt)
     {
         float4 Entry = ProbeSpatialHash[Slot];
         if (Entry.w < 0.0f) return false;
-        if (all(Entry.xyz == float3(Cell)))
+        if (all(Entry.xyz == float3(Cell)) &&
+            (((uint)round(Entry.w) & 7u) == Level))
         {
-            OutProbeIndex = (uint)Entry.w;
+            OutProbeIndex = (uint)round(Entry.w) >> 3u;
             return OutProbeIndex < ProbeCount;
         }
         Slot = (Slot + 1u) & (HashCapacity - 1u);
@@ -92,6 +94,58 @@ float3 DDGIProbeDiffuseIrradiance(uint ProbeIndex, float3 Normal)
     // Equal-solid-angle base directions: each represents 4*PI/N steradians.
     // Dividing irradiance by PI yields the Lambertian diffuse response.
     return Irradiance * (4.0f / (float)SafeRayCount);
+}
+
+float3 DDGISampleProbeLevel(
+    float3 LocalPosition,
+    float3 Normal,
+    uint Level,
+    out float OutWeightSum)
+{
+    OutWeightSum = 0.0f;
+    float3 Irradiance = 0.0f;
+    uint LevelStep = 1u << Level;
+    float LevelSpacing = max(ProbeSpacing, 1.0f) * (float)LevelStep;
+    float3 GridPosition = (LocalPosition - ProbeGridOrigin.xyz) / LevelSpacing;
+    int3 BaseCell = int3(floor(GridPosition));
+    float3 CellFraction = frac(GridPosition);
+
+    [unroll]
+    for (int Z = 0; Z <= 1; ++Z)
+    [unroll]
+    for (int Y = 0; Y <= 1; ++Y)
+    [unroll]
+    for (int X = 0; X <= 1; ++X)
+    {
+        int3 Cell = (BaseCell + int3(X, Y, Z)) * (int)LevelStep;
+        float3 AxisWeight = lerp(
+            1.0f - CellFraction, CellFraction, float3(X, Y, Z));
+        float Weight = AxisWeight.x * AxisWeight.y * AxisWeight.z;
+        if (Weight <= 0.00001f) continue;
+
+        uint ProbeIndex;
+        if (!DDGIFindProbeInCell(Cell, Level, ProbeIndex)) continue;
+
+        uint2 ProbePixel = uint2(
+            ProbeIndex % DDGI_RC_TEXTURE_WIDTH,
+            ProbeIndex / DDGI_RC_TEXTURE_WIDTH);
+        float3 ProbePosition = ProbeGridOrigin.xyz +
+            ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
+        float3 SurfaceToProbe = ProbePosition - LocalPosition;
+        float SurfaceSide = dot(Normal, SurfaceToProbe);
+        float SideThreshold = max(LevelSpacing * 0.01f, 0.5f);
+        float SideFadeDistance = max(LevelSpacing * 0.25f, 10.0f);
+        Weight *= smoothstep(
+            SideThreshold,
+            SideThreshold + SideFadeDistance,
+            SurfaceSide);
+        if (Weight <= 0.00001f) continue;
+
+        Irradiance += DDGIProbeDiffuseIrradiance(ProbeIndex, Normal) * Weight;
+        OutWeightSum += Weight;
+    }
+
+    return Irradiance / max(OutWeightSum, 0.00001f);
 }
 
 [numthreads(8, 8, 1)]
@@ -147,54 +201,35 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float Metallic = MetallicTexture.SampleLevel(PointClampSampler, BufferUV, 0).r;
     float3 Albedo = BaseColor * (1.0f - Metallic);
 
-    float3 GridPosition = (LocalPosition - ProbeGridOrigin.xyz) /
-        max(ProbeSpacing, 1.0f);
-    int3 BaseCell = int3(floor(GridPosition));
-    float3 CellFraction = frac(GridPosition);
+    float GridRadius = max(ProbeGridDistance, 1.0f);
+    float GridDistance = length(LocalPosition - ProbeGridOrigin.xyz);
+    float TransitionWidth = max(ProbeSpacing * 2.0f, GridRadius * 0.05f);
+    float Boundary0 = GridRadius * 0.25f;
+    float Boundary1 = GridRadius * 0.50f;
+    float Boundary2 = GridRadius * 0.75f;
+    float Blend0 = 1.0f - smoothstep(Boundary0 - TransitionWidth, Boundary0 + TransitionWidth, GridDistance);
+    float Blend1 = smoothstep(Boundary0 - TransitionWidth, Boundary0 + TransitionWidth, GridDistance) *
+        (1.0f - smoothstep(Boundary1 - TransitionWidth, Boundary1 + TransitionWidth, GridDistance));
+    float Blend2 = smoothstep(Boundary1 - TransitionWidth, Boundary1 + TransitionWidth, GridDistance) *
+        (1.0f - smoothstep(Boundary2 - TransitionWidth, Boundary2 + TransitionWidth, GridDistance));
+    float Blend3 = smoothstep(Boundary2 - TransitionWidth, Boundary2 + TransitionWidth, GridDistance);
 
     float3 Irradiance = 0.0f;
     float ProbeWeightSum = 0.0f;
     [unroll]
-    for (int Z = 0; Z <= 1; ++Z)
-    [unroll]
-    for (int Y = 0; Y <= 1; ++Y)
-    [unroll]
-    for (int X = 0; X <= 1; ++X)
+    for (uint Level = 0u; Level < 4u; ++Level)
     {
-        int3 Cell = BaseCell + int3(X, Y, Z);
-        float3 AxisWeight = lerp(
-            1.0f - CellFraction, CellFraction, float3(X, Y, Z));
-        float Weight = AxisWeight.x * AxisWeight.y * AxisWeight.z;
-        if (Weight <= 0.00001f) continue;
+        float BlendWeight = Level == 0u ? Blend0 :
+            (Level == 1u ? Blend1 : (Level == 2u ? Blend2 : Blend3));
+        if (BlendWeight <= 0.00001f) continue;
 
-        uint ProbeIndex;
-        if (!DDGIFindProbeInCell(Cell, ProbeIndex)) continue;
+        float LevelWeightSum = 0.0f;
+        float3 LevelIrradiance = DDGISampleProbeLevel(
+            LocalPosition, Normal, Level, LevelWeightSum);
+        if (LevelWeightSum <= 0.00001f) continue;
 
-        // Reject probes on the opposite side of the receiver surface. Probe
-        // positions and LocalPosition are both in BVH-local coordinates.
-        // This inexpensive hemisphere test suppresses the common wall-through
-        // interpolation leak without introducing another ray-tracing pass.
-        uint2 ProbePixel = uint2(
-            ProbeIndex % DDGI_RC_TEXTURE_WIDTH,
-            ProbeIndex / DDGI_RC_TEXTURE_WIDTH);
-        // ProbePositionsTexture stores offsets relative to the movable grid origin.
-        float3 ProbePosition = ProbeGridOrigin.xyz + ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
-        float3 SurfaceToProbe = ProbePosition - LocalPosition;
-        float SurfaceSide = dot(Normal, SurfaceToProbe);
-        // Fade probes across the receiver hemisphere boundary instead of
-        // abruptly removing them. This keeps interpolation continuous while
-        // still suppressing probes clearly located behind the surface.
-        float SideThreshold = max(ProbeSpacing * 0.01f, 0.5f);
-        float SideFadeDistance = max(ProbeSpacing * 0.25f, 10.0f);
-        float SideWeight = smoothstep(
-            SideThreshold,
-            SideThreshold + SideFadeDistance,
-            SurfaceSide);
-        Weight *= SideWeight;
-        if (Weight <= 0.00001f) continue;
-
-        Irradiance += DDGIProbeDiffuseIrradiance(ProbeIndex, Normal) * Weight;
-        ProbeWeightSum += Weight;
+        Irradiance += LevelIrradiance * BlendWeight;
+        ProbeWeightSum += BlendWeight;
     }
 
     if (ProbeWeightSum <= 0.00001f)
