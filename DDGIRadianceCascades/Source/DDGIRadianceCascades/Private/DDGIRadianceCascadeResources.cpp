@@ -785,34 +785,46 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     FTexture2DRHIRef& OutDirections,
     FTexture2DRHIRef& OutRadiance,
     FTexture2DRHIRef& OutHitDistance,
+    FTexture2DRHIRef& OutRadianceScratch,
+    FTexture2DRHIRef& OutHitTriangleIndex,
     uint32& OutProbeCount)
 {
     check(IsInRenderingThread() || IsInParallelRenderingThread());
     OutDirections.SafeRelease();
     OutRadiance.SafeRelease();
     OutHitDistance.SafeRelease();
+    OutRadianceScratch.SafeRelease();
+    OutHitTriangleIndex.SafeRelease();
     OutProbeCount = 0;
     FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || !Storage->bNeedsInitialization ||
         !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() ||
-        !Storage->HitDistance.IsValid() || Storage->UploadedProbeCount <= 0)
+        !Storage->HitDistance.IsValid() || !Storage->RadianceScratch.IsValid() ||
+        !Storage->HitTriangleIndex.IsValid() || Storage->UploadedProbeCount <= 0)
     {
         return false;
     }
     const FSceneRenderTargetItem& DirectionsItem = Storage->Directions->GetRenderTargetItem();
     const FSceneRenderTargetItem& RadianceItem = Storage->Radiance->GetRenderTargetItem();
     const FSceneRenderTargetItem& HitDistanceItem = Storage->HitDistance->GetRenderTargetItem();
+    const FSceneRenderTargetItem& RadianceScratchItem = Storage->RadianceScratch->GetRenderTargetItem();
+    const FSceneRenderTargetItem& HitTriangleIndexItem = Storage->HitTriangleIndex->GetRenderTargetItem();
     if (!DirectionsItem.ShaderResourceTexture.IsValid() ||
         !RadianceItem.ShaderResourceTexture.IsValid() ||
-        !HitDistanceItem.ShaderResourceTexture.IsValid())
+        !HitDistanceItem.ShaderResourceTexture.IsValid() ||
+        !RadianceScratchItem.ShaderResourceTexture.IsValid() ||
+        !HitTriangleIndexItem.ShaderResourceTexture.IsValid())
     {
         return false;
     }
     OutDirections = DirectionsItem.ShaderResourceTexture->GetTexture2D();
     OutRadiance = RadianceItem.ShaderResourceTexture->GetTexture2D();
     OutHitDistance = HitDistanceItem.ShaderResourceTexture->GetTexture2D();
+    OutRadianceScratch = RadianceScratchItem.ShaderResourceTexture->GetTexture2D();
+    OutHitTriangleIndex = HitTriangleIndexItem.ShaderResourceTexture->GetTexture2D();
     OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
-    return OutDirections.IsValid() && OutRadiance.IsValid() && OutHitDistance.IsValid();
+    return OutDirections.IsValid() && OutRadiance.IsValid() && OutHitDistance.IsValid() &&
+        OutRadianceScratch.IsValid() && OutHitTriangleIndex.IsValid();
 }
 
 bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
