@@ -186,6 +186,7 @@ public:
 		bHasDirectionalLight.Bind(Initializer.ParameterMap, TEXT("bHasDirectionalLight"));
 		DirectionsTexture.Bind(Initializer.ParameterMap, TEXT("DirectionsTexture"));
 		ProbePositionsTexture.Bind(Initializer.ParameterMap, TEXT("ProbePositionsTexture"));
+		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 		BVHNodes.Bind(Initializer.ParameterMap, TEXT("BVHNodes"));
 		BVHTriangles.Bind(Initializer.ParameterMap, TEXT("BVHTriangles"));
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
