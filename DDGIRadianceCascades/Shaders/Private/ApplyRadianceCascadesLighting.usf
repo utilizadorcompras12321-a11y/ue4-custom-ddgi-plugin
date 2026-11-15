@@ -14,6 +14,7 @@ Texture2D<float4> DirectionsTexture;
 Texture2D<float4> RadianceTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<int4> ProbeSpatialHash;
+StructuredBuffer<uint> LogicalToPhysicalSlots;
 Texture2D<float4> SceneColorTexture;
 RWTexture2D<float4> SceneColorOutputUAV;
 SamplerState PointClampSampler;
@@ -88,7 +89,8 @@ float3 DDGIProbeDiffuseIrradiance(uint ProbeIndex, float3 Normal)
         float Cosine = saturate(dot(Normal, Direction));
         if (Cosine <= 0.0f) continue;
 
-        uint LinearIndex = ProbeIndex * TotalRaysPerProbe + RayIndex;
+        uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+        uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
         uint2 RadiancePixel = uint2(
             LinearIndex % DDGI_RC_TEXTURE_WIDTH,
             LinearIndex / DDGI_RC_TEXTURE_WIDTH);
