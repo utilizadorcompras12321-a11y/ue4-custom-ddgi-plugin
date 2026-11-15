@@ -446,7 +446,7 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				continue;
 			}
 
-			if (Component->Mobility != EComponentMobility::Static)
+			if (Component->Mobility == EComponentMobility::Movable)
 			{
 				++OutStats.SkippedMovable;
 				continue;
