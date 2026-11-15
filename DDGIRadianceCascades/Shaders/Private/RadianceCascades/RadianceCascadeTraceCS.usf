@@ -677,7 +677,9 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // ProbePositionsTexture stores lattice-relative offsets; ProbeGridOrigin maps them into trace space.
     float3 Origin = ProbeGridOrigin.xyz + ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
     float4 PackedDirection = DirectionsTexture.Load(int3(Pixel, 0));
-    float3 Direction = normalize(PackedDirection.xyz);
+    // Direction vectors are normalized by RadianceCascadeInitializeCS.
+        // Keep the stored unit vector; tracing does not need to normalize it again.
+        float3 Direction = PackedDirection.xyz;
     uint CascadeIndex = min((uint)max(PackedDirection.w, 0.0f), max(CascadeCount, 1u) - 1u);
     float2 CascadeInterval = DDGIRadianceCascadeDistanceInterval(
         (int)CascadeIndex, BaseSegmentLength, CascadeScale, MaxTraceDistance);
