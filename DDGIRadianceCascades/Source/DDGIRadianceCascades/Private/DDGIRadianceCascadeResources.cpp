@@ -170,9 +170,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         return;
     }
 
-    // MaxActiveProbes is a hard safety cap. GPU ray and probe-position textures
-    // are sized from the actual active probe count to avoid reserving unused capacity.
-    // Enforce the cap here as well as in the actor/subsystem for external configs.
+    // MaxActiveProbes is a hard safety cap. Ray textures retain their
+    // grow-only capacity, while probe-position metadata reserves the configured
+    // maximum. Enforce the active-count cap here as well as in the subsystem.
     if (Config.MaxActiveProbes <= 0 || Config.MaxActiveProbes > 32768 ||
         Config.TotalRaysPerProbe <= 0 || Config.ProbePositions.Num() > Config.MaxActiveProbes)
     {
