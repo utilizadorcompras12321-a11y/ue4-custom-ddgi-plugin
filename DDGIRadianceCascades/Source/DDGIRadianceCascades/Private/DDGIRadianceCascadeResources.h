@@ -107,5 +107,8 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     uint32& OutProbeCount,
     uint32& OutTotalRaysPerProbe);
 
+/** Invalidates per-probe radiance after the camera-relative probe lattice moves. */
+void DDGIInvalidateRadianceCascadeHistory_RenderThread(const FSceneInterface* Scene);
+
 /** Marks initialization as scheduled after all required GPU resources were bound and dispatch was issued. */
 void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInterface* Scene);
