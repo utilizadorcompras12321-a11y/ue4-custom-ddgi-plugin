@@ -33,8 +33,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Lighting", meta = (ClampMin = "0.0", ClampMax = "10000.0", UIMin = "0.0", UIMax = "500.0"))
 	float DirectionalLightGIIntensityScale = 100.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "0.0", Units = "cm"))
+	// Maximum distance traced by each radiance ray. Independent from the local probe-grid coverage radius.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", Units = "cm"))
 	float DynamicGIDistance = 10000.0f;
+
+	// Radius covered by the probe lattice. A smaller local radius preserves probe density under the GPU probe budget.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", Units = "cm"))
+	float ProbeGridDistance = 4000.0f;
 
 	// Radiance Cascades layout. These settings define the cascade hierarchy,
 	// not the scene tracing backend.
