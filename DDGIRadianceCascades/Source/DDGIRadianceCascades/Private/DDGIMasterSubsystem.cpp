@@ -12,30 +12,19 @@
 
 namespace
 {
-	struct FDDGIProbeCandidate
-	{
-		FVector4 Position;
-		double DistanceSquared;
-	};
-
-	bool DDGIProbeCandidateLess(const FDDGIProbeCandidate& A, const FDDGIProbeCandidate& B)
-	{
-		if (A.DistanceSquared != B.DistanceSquared)
-		{
-			return A.DistanceSquared < B.DistanceSquared;
-		}
-		if (A.Position.Z != B.Position.Z) return A.Position.Z < B.Position.Z;
-		if (A.Position.Y != B.Position.Y) return A.Position.Y < B.Position.Y;
-		return A.Position.X < B.Position.X;
-	}
-
 	int64 DDGIFloorSqrt(int64 Value)
 	{
 		if (Value <= 0) return 0;
-		int64 Root = static_cast<int64>(FMath::Sqrt(static_cast<double>(Value)));
+		int64 Root = static_cast<int64>(std::sqrt(static_cast<double>(Value)));
 		while (Root + 1 > 0 && Root + 1 <= Value / (Root + 1)) ++Root;
 		while (Root > 0 && Root > Value / Root) --Root;
 		return Root;
+	}
+
+	int64 DDGICeilSqrt(int64 Value)
+	{
+		const int64 Root = DDGIFloorSqrt(Value);
+		return Root * Root < Value ? Root + 1 : Root;
 	}
 
 	int64 DDGIFloorDiv(int64 Numerator, int64 Denominator)
@@ -108,8 +97,9 @@ namespace
 		TArray<FVector4>& OutPositions)
 	{
 		OutPositions.Reset();
-		const double SafeSpacing = static_cast<double>(FMath::Max(1.0f, Spacing));
-		const double SafeRadius = static_cast<double>(FMath::Max(0.0f, Radius));
+		const float SafeSpacing = FMath::Max(1.0f, Spacing);
+		const float SafeRadius = FMath::Max(0.0f, Radius);
+		const double SafeSpacingDouble = static_cast<double>(SafeSpacing);
 		const int32 SafeMaxProbeCount = FMath::Max(0, MaxProbeCount);
 		if (SafeMaxProbeCount == 0) return;
 
@@ -117,7 +107,7 @@ namespace
 			static_cast<double>(CenterCell.X) * SafeSpacing,
 			static_cast<double>(CenterCell.Y) * SafeSpacing,
 			static_cast<double>(CenterCell.Z) * SafeSpacing);
-		const double TransitionWidth = FMath::Max(SafeSpacing * 2.0, SafeRadius * 0.05);
+		const float TransitionWidth = FMath::Max(SafeSpacing * 2.0f, SafeRadius * 0.05f);
 		int64 LevelCandidateCounts[4] = { 0, 0, 0, 0 };
 		int32 FirstX[4], LastX[4], FirstY[4], LastY[4], FirstZ[4], LastZ[4];
 		int32 LevelSteps[4] = { 1, 2, 4, 8 };
@@ -129,13 +119,13 @@ namespace
 		for (int32 Level = 0; Level < 4; ++Level)
 		{
 			const int32 LevelStep = LevelSteps[Level];
-			const double BoundaryBefore = SafeRadius * (static_cast<double>(Level) / 4.0);
-			const double BoundaryAfter = SafeRadius * (static_cast<double>(Level + 1) / 4.0);
-			const double InnerRadius = Level == 0 ? 0.0 :
+			const float BoundaryBefore = SafeRadius * (static_cast<float>(Level) / 4.0f);
+			const float BoundaryAfter = SafeRadius * (static_cast<float>(Level + 1) / 4.0f);
+			const float InnerRadius = Level == 0 ? 0.0f :
 				FMath::Max(0.0, BoundaryBefore - TransitionWidth);
-			const double OuterRadius = Level == 3 ? SafeRadius :
+			const float OuterRadius = Level == 3 ? SafeRadius :
 				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
-			const double SpacingSquared = SafeSpacing * SafeSpacing;
+			const double SpacingSquared = SafeSpacingDouble * SafeSpacingDouble;
 			MinDistanceSquared[Level] = static_cast<int64>(
 				std::ceil((InnerRadius * InnerRadius) / SpacingSquared));
 			MaxDistanceSquared[Level] = static_cast<int64>(
@@ -181,8 +171,7 @@ namespace
 					if (YZSquared > MaxQ) continue;
 					const int64 MaxXAbs = DDGIFloorSqrt(MaxQ - YZSquared);
 					const int64 MinXAbs = MinQ > YZSquared ?
-						DDGIFloorSqrt(MinQ - YZSquared) +
-						((DDGIFloorSqrt(MinQ - YZSquared) * DDGIFloorSqrt(MinQ - YZSquared) < MinQ - YZSquared) ? 1 : 0) : 0;
+						DDGICeilSqrt(MinQ - YZSquared) : 0;
 					LevelCandidateCounts[Level] += DDGICountLatticeValuesByAbsoluteValue(
 						FirstDeltaX, LastDeltaX, LevelStep, MinXAbs, MaxXAbs);
 				}
@@ -266,8 +255,7 @@ namespace
 						if (YZSquared > MidQ) continue;
 						const int64 MaxXAbs = DDGIFloorSqrt(FMath::Min(MaxQ, MidQ) - YZSquared);
 					const int64 MinXAbs = MinQ > YZSquared ?
-						DDGIFloorSqrt(MinQ - YZSquared) +
-						((DDGIFloorSqrt(MinQ - YZSquared) * DDGIFloorSqrt(MinQ - YZSquared) < MinQ - YZSquared) ? 1 : 0) : 0;
+						DDGICeilSqrt(MinQ - YZSquared) : 0;
 						CountAtOrBelow += DDGICountLatticeValuesByAbsoluteValue(
 							FirstDeltaX, LastDeltaX, LevelStep, MinXAbs, MaxXAbs);
 					}
@@ -290,8 +278,7 @@ namespace
 					if (YZSquared >= ThresholdQ) continue;
 					const int64 MaxXAbs = DDGIFloorSqrt(FMath::Min(MaxQ, ThresholdQ - 1) - YZSquared);
 					const int64 MinXAbs = MinQ > YZSquared ?
-						DDGIFloorSqrt(MinQ - YZSquared) +
-						((DDGIFloorSqrt(MinQ - YZSquared) * DDGIFloorSqrt(MinQ - YZSquared) < MinQ - YZSquared) ? 1 : 0) : 0;
+						DDGICeilSqrt(MinQ - YZSquared) : 0;
 					auto AddXRange = [&](int64 MinX, int64 MaxX)
 					{
 						const int64 ClampedMin = FMath::Max(FirstDeltaX, MinX);
@@ -306,9 +293,9 @@ namespace
 						const int32 CellY = static_cast<int32>(static_cast<int64>(CenterCell.Y) + DY);
 						const int32 CellZ = static_cast<int32>(static_cast<int64>(CenterCell.Z) + DZ);
 						OutPositions.Add(FVector4(
-							static_cast<float>(CellX) * static_cast<float>(SafeSpacing),
-							static_cast<float>(CellY) * static_cast<float>(SafeSpacing),
-							static_cast<float>(CellZ) * static_cast<float>(SafeSpacing),
+							static_cast<float>(CellX) * SafeSpacing,
+							static_cast<float>(CellY) * SafeSpacing,
+							static_cast<float>(CellZ) * SafeSpacing,
 							static_cast<float>(Level)));
 					}
 					};
