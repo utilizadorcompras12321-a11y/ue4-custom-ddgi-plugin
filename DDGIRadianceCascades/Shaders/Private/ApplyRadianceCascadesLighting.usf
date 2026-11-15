@@ -240,8 +240,9 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         // interpolation weights produces a valid local average, but must not
         // cancel the surface-side fade applied to probes behind the receiver.
         const float LevelCoverage = saturate(LevelWeightSum);
-        Irradiance += LevelIrradiance * (BlendWeight * LevelCoverage);
-        ProbeWeightSum += BlendWeight;
+        const float EffectiveWeight = BlendWeight * LevelCoverage;
+        Irradiance += LevelIrradiance * EffectiveWeight;
+        ProbeWeightSum += EffectiveWeight;
     }
 
     if (ProbeWeightSum <= 0.00001f)
