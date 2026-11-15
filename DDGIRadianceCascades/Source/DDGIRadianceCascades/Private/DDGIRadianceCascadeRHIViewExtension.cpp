@@ -25,7 +25,7 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
     TEXT("r.DDGI.DebugApply"),
     0,
-    TEXT("DDGI apply debug view (0=off, 1=probe coverage, 2=raw irradiance)."),
+    TEXT("DDGI apply debug view (0=off, 1=probe coverage, 2=raw irradiance, 3=solid magenta output test)."),
     ECVF_RenderThreadSafe);
 
 class FDDGIRadianceCascadeInitializeRHI : public FGlobalShader
@@ -661,7 +661,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		Config->SoftwareBVH->WorldOrigin.Y,
 		Config->SoftwareBVH->WorldOrigin.Z, 0.0f);
 	PassParameters->ShouldUsePreExposure = 1u;
-	PassParameters->DebugMode = static_cast<uint32>(FMath::Clamp(CVarDDGIDebugApply.GetValueOnRenderThread(), 0, 2));
+	PassParameters->DebugMode = static_cast<uint32>(FMath::Clamp(CVarDDGIDebugApply.GetValueOnRenderThread(), 0, 3));
 
 	TShaderMapRef<FDDGIApplyRadianceCascadesLightingCS> ComputeShader(
 		GetGlobalShaderMap(View.GetFeatureLevel()));
@@ -678,10 +678,28 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	static bool bLoggedApplyScheduled = false;
 	if (!bLoggedApplyScheduled)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply compute pass scheduled. Probes=%u RaysPerProbe=%u HashCapacity=%u View=%dx%d."),
-			ProbeCount, TotalRaysPerProbe, HashCapacity, ViewSize.X, ViewSize.Y);
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply compute pass scheduled. Probes=%u RaysPerProbe=%u HashCapacity=%u View=%dx%d OverrideOutput=%d."),
+			ProbeCount, TotalRaysPerProbe, HashCapacity, ViewSize.X, ViewSize.Y,
+			Inputs.OverrideOutput.IsValid() ? 1 : 0);
 		bLoggedApplyScheduled = true;
 	}
+
+	// SceneViewExtension callbacks must write to OverrideOutput when the
+	// post-process graph supplies one (typically when this is the final pass).
+	// The compute shader writes to a UAV-capable intermediate texture; copy its
+	// viewport region into the engine-owned output target before returning it.
+	if (Inputs.OverrideOutput.IsValid())
+	{
+		AddDrawTexturePass(
+			GraphBuilder,
+			View,
+			FScreenPassTexture(OutputTexture, SceneColor.ViewRect),
+			Inputs.OverrideOutput);
+		return FScreenPassTexture(
+			Inputs.OverrideOutput.Texture,
+			Inputs.OverrideOutput.ViewRect);
+	}
+
 	return FScreenPassTexture(OutputTexture, SceneColor.ViewRect);
 }
 
