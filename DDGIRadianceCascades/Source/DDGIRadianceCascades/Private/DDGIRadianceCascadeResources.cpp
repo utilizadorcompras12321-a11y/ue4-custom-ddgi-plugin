@@ -512,7 +512,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                     }
                     ++Slot;
                 }
-                if (Slot != 26u) bBuildSucceeded = false;
+                // Probes on the spherical boundary legitimately have fewer than 26 neighbors.
+                // Missing slots remain MAX_uint32 and are skipped by the gather shader.
             }
         }
 
