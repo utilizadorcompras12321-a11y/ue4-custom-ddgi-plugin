@@ -121,21 +121,28 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         if (dot(CenterNormal, CenterDirection) > 0.0f) CenterNormal = -CenterNormal;
     }
     float WeightSum = 1.0f;
-    float SafeSpacing = max(ProbeSpacing, 1.0f);
+    // ProbePositionsTexture.w stores the spatial level. Level zero preserves
+    // the original uniform lattice; each subsequent level doubles spacing.
+    float CenterLevelValue = ProbePositionsTexture.Load(
+        int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0)).w;
+    uint CenterLevel = (uint)clamp(round(CenterLevelValue), 0.0f, 7.0f);
+    float LevelScale = (float)(1u << CenterLevel);
+    float SafeSpacing = max(ProbeSpacing, 1.0f) * LevelScale;
     float MaxHitPositionDelta = SafeSpacing * 1.25f;
     float MaxHitPositionDeltaSquared = MaxHitPositionDelta * MaxHitPositionDelta;
     float PlaneTolerance = clamp(SafeSpacing * 0.01f, 0.05f, 1.0f);
     float WeightDistanceRange = SafeSpacing * 1.75f;
-    // Cell coordinates are relative to the grid origin; use the stored
-    // offset directly rather than subtracting the origin from world position.
-    int3 CenterCell = int3(round(CenterPositionOffset / SafeSpacing));
+    // Hash cells remain expressed in base-spacing units. Search the 26
+    // adjacent cells at this probe level's stride.
+    int3 CenterCell = int3(round(CenterPositionOffset / max(ProbeSpacing, 1.0f)));
+    int3 LevelCellStep = int3((int)LevelScale, (int)LevelScale, (int)LevelScale);
     uint NeighborSlot = 0u;
     [unroll] for (int Z=-1; Z<=1; ++Z)
     [unroll] for (int Y=-1; Y<=1; ++Y)
     [unroll] for (int X=-1; X<=1; ++X)
     {
         if (X==0 && Y==0 && Z==0) continue;
-        int3 NeighborCell = CenterCell + int3(X,Y,Z);
+        int3 NeighborCell = CenterCell + int3(X,Y,Z) * LevelCellStep;
         uint NeighborIndex;
         if (UsePrecomputedProbeNeighbors != 0u)
         {
