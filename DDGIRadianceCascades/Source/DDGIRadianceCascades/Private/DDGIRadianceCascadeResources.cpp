@@ -189,8 +189,24 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         return;
     }
 
-    const FIntPoint RequiredDimensions(GDDGIRadianceCascadeTextureWidth, static_cast<int32>(Height64));
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
+
+    // Ray textures are a grow-only capacity pool. A smaller active window must
+    // not shrink/recreate the textures: doing so discards every probe's history.
+    // A ray-layout change still requires new storage, but must not evict the
+    // scene BVH or spatial lookup resources.
+    const bool bRayLayoutChanged =
+        Storage.TotalRaysPerProbe != 0 &&
+        Storage.TotalRaysPerProbe != Config.TotalRaysPerProbe;
+    const int64 ExistingProbeCapacity =
+        (!bRayLayoutChanged && Storage.Dimensions.X > 0 && Storage.Dimensions.Y > 0)
+        ? (static_cast<int64>(Storage.Dimensions.X) * Storage.Dimensions.Y) / Config.TotalRaysPerProbe
+        : 0;
+    const int64 RequiredProbeCapacity = FMath::Max<int64>(ActiveProbeCount, ExistingProbeCapacity);
+    const int64 RequiredCapacityTexels = RequiredProbeCapacity * static_cast<int64>(Config.TotalRaysPerProbe);
+    const int64 CapacityHeight64 = (RequiredCapacityTexels + GDDGIRadianceCascadeTextureWidth - 1) /
+        GDDGIRadianceCascadeTextureWidth;
+    const FIntPoint RequiredDimensions(GDDGIRadianceCascadeTextureWidth, static_cast<int32>(CapacityHeight64));
     const bool bRayStorageMatches =
         Storage.Dimensions == RequiredDimensions &&
         Storage.TotalRaysPerProbe == Config.TotalRaysPerProbe &&
@@ -202,7 +218,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
     if (!bRayStorageMatches)
     {
-        Storage.Release();
+        Storage.Directions.SafeRelease();
+        Storage.Radiance.SafeRelease();
+        Storage.RadianceScratch.SafeRelease();
+        Storage.HitDistance.SafeRelease();
+        Storage.HitTriangleIndex.SafeRelease();
+        Storage.Dimensions = FIntPoint::ZeroValue;
+        Storage.TotalRaysPerProbe = 0;
+        Storage.bNeedsInitialization = true;
 
         // Half-float RGBA texels store direction and radiance; R32F stores hit distance.
         const FPooledRenderTargetDesc DirectionDesc = FPooledRenderTargetDesc::Create2DDesc(
@@ -243,7 +266,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // Master Actor translation changes only ProbeGridOrigin and does not require
     // rewriting this texture.
     const int32 ProbeTextureWidth = 4096;
-    const int32 ProbeTextureHeight = FMath::Max(1, FMath::DivideAndRoundUp(ActiveProbeCount, ProbeTextureWidth));
+    const int32 RequiredProbeTextureHeight = FMath::Max(1, FMath::DivideAndRoundUp(ActiveProbeCount, ProbeTextureWidth));
+    // Keep probe-position capacity when the active window contracts. Growing
+    // the window may reallocate this small metadata texture; shrinking never does.
+    const int32 ProbeTextureHeight = FMath::Max(
+        RequiredProbeTextureHeight,
+        Storage.ProbePositionDimensions.X == ProbeTextureWidth
+            ? Storage.ProbePositionDimensions.Y
+            : 1);
     const FIntPoint ProbePositionDimensions(ProbeTextureWidth, ProbeTextureHeight);
     if (Storage.ProbePositionDimensions != ProbePositionDimensions || !Storage.ProbePositions.IsValid())
     {
