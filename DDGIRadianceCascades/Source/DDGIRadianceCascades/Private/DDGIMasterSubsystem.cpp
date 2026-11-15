@@ -99,7 +99,7 @@ namespace
 		// Store probe positions relative to ProbeGridOrigin. The origin is
 		// supplied separately to shaders, so translating the actor never
 		// accumulates float error in every probe position.
-		OutPositions.Add(FVector4(0.0f, 0.0f, 0.0f, 1.0f));
+		OutPositions.Add(FVector4(0.0f, 0.0f, 0.0f, 0.0f));
 
 		for (int32 Z = -MaxShell; Z <= MaxShell; ++Z)
 		{
@@ -122,7 +122,7 @@ namespace
 						static_cast<float>(DX),
 						static_cast<float>(DY),
 						static_cast<float>(DZ));
-					OutPositions.Add(FVector4(Position.X, Position.Y, Position.Z, 1.0f));
+					OutPositions.Add(FVector4(Position.X, Position.Y, Position.Z, 0.0f));
 				}
 			}
 		}
