@@ -53,11 +53,11 @@ namespace
 {
 	static const int32 GDDGIRadianceCascadeTextureWidth = 4096;
 	static const int32 GDDGIRadianceCascadeMaxTextureDimension = 16384;
-	// Four per-probe ray textures consume 24 bytes per ray record.
+	// Five per-probe ray textures consume 32 bytes per ray record.
 	// Directions are stored once per ray layout (8 bytes per direction), shared
 	// by all probes. Bound this subsystem independently of RHI texture limits.
 	static const int64 GDDGIRadianceCascadeMaxRayStorageBytes = 512ll * 1024ll * 1024ll;
-	static const int64 GDDGIRadianceCascadeBytesPerProbeRay = 24ll;
+	static const int64 GDDGIRadianceCascadeBytesPerProbeRay = 32ll;
 	static const int64 GDDGIRadianceCascadeBytesPerSharedDirection = 8ll;
 
 	struct FDDGIRadianceCascadeGPUStorage
@@ -65,6 +65,7 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> Directions;
 		TRefCountPtr<IPooledRenderTarget> Radiance;
 		TRefCountPtr<IPooledRenderTarget> RadianceScratch;
+		TRefCountPtr<IPooledRenderTarget> RadianceIntegrationScratch;
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> HitTriangleIndex;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
@@ -131,6 +132,7 @@ namespace
 			Directions.SafeRelease();
 			Radiance.SafeRelease();
 			RadianceScratch.SafeRelease();
+			RadianceIntegrationScratch.SafeRelease();
 			HitDistance.SafeRelease();
 			HitTriangleIndex.SafeRelease();
 			ProbePositions.SafeRelease();
@@ -317,6 +319,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.Directions.IsValid() &&
         Storage.Radiance.IsValid() &&
         Storage.RadianceScratch.IsValid() &&
+        Storage.RadianceIntegrationScratch.IsValid() &&
         Storage.HitDistance.IsValid() &&
         Storage.HitTriangleIndex.IsValid();
 
@@ -325,6 +328,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.Directions.SafeRelease();
         Storage.Radiance.SafeRelease();
         Storage.RadianceScratch.SafeRelease();
+        Storage.RadianceIntegrationScratch.SafeRelease();
         Storage.HitDistance.SafeRelease();
         Storage.HitTriangleIndex.SafeRelease();
         Storage.Dimensions = FIntPoint::ZeroValue;
@@ -369,11 +373,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             TEXT("DDGIRadianceCascade_Radiance"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, RadianceDesc, Storage.RadianceScratch,
             TEXT("DDGIRadianceCascade_RadianceScratch"), ERenderTargetTransience::NonTransient);
+        GRenderTargetPool.FindFreeElement(RHICmdList, RadianceDesc, Storage.RadianceIntegrationScratch,
+            TEXT("DDGIRadianceCascade_RadianceIntegrationScratch"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, DistanceDesc, Storage.HitDistance,
             TEXT("DDGIRadianceCascade_HitDistance"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, HitTriangleIndexDesc, Storage.HitTriangleIndex,
             TEXT("DDGIRadianceCascade_HitTriangleIndex"), ERenderTargetTransience::NonTransient);
-        if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.RadianceScratch.IsValid() || !Storage.HitDistance.IsValid() || !Storage.HitTriangleIndex.IsValid())
+        if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.RadianceScratch.IsValid() || !Storage.RadianceIntegrationScratch.IsValid() ||
+            !Storage.HitDistance.IsValid() || !Storage.HitTriangleIndex.IsValid())
         {
             Storage.Release();
             UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate persistent GPU textures."));
@@ -1139,6 +1146,7 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     FTexture2DRHIRef& OutRadiance,
     FTexture2DRHIRef& OutHitDistance,
     FTexture2DRHIRef& OutRadianceScratch,
+    FTexture2DRHIRef& OutRadianceIntegrationScratch,
     FTexture2DRHIRef& OutHitTriangleIndex,
     uint32& OutPendingSlotCount,
     bool& bOutInitializeDirections)
@@ -1148,6 +1156,7 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     OutRadiance.SafeRelease();
     OutHitDistance.SafeRelease();
     OutRadianceScratch.SafeRelease();
+    OutRadianceIntegrationScratch.SafeRelease();
     OutHitTriangleIndex.SafeRelease();
     OutPendingSlotCount = 0;
     bOutInitializeDirections = false;
@@ -1157,7 +1166,7 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
         (Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0 && !Storage->bNeedsDirectionInitialization) ||
         !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() ||
         !Storage->HitDistance.IsValid() || !Storage->RadianceScratch.IsValid() ||
-        !Storage->HitTriangleIndex.IsValid() || Storage->UploadedProbeCount <= 0)
+        !Storage->RadianceIntegrationScratch.IsValid() || !Storage->HitTriangleIndex.IsValid() || Storage->UploadedProbeCount <= 0)
     {
         return false;
     }
@@ -1165,11 +1174,13 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     const FSceneRenderTargetItem& RadianceItem = Storage->Radiance->GetRenderTargetItem();
     const FSceneRenderTargetItem& HitDistanceItem = Storage->HitDistance->GetRenderTargetItem();
     const FSceneRenderTargetItem& RadianceScratchItem = Storage->RadianceScratch->GetRenderTargetItem();
+    const FSceneRenderTargetItem& RadianceIntegrationScratchItem = Storage->RadianceIntegrationScratch->GetRenderTargetItem();
     const FSceneRenderTargetItem& HitTriangleIndexItem = Storage->HitTriangleIndex->GetRenderTargetItem();
     if (!DirectionsItem.ShaderResourceTexture.IsValid() ||
         !RadianceItem.ShaderResourceTexture.IsValid() ||
         !HitDistanceItem.ShaderResourceTexture.IsValid() ||
         !RadianceScratchItem.ShaderResourceTexture.IsValid() ||
+        !RadianceIntegrationScratchItem.ShaderResourceTexture.IsValid() ||
         !HitTriangleIndexItem.ShaderResourceTexture.IsValid())
     {
         return false;
@@ -1178,11 +1189,13 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     OutRadiance = RadianceItem.ShaderResourceTexture->GetTexture2D();
     OutHitDistance = HitDistanceItem.ShaderResourceTexture->GetTexture2D();
     OutRadianceScratch = RadianceScratchItem.ShaderResourceTexture->GetTexture2D();
+    OutRadianceIntegrationScratch = RadianceIntegrationScratchItem.ShaderResourceTexture->GetTexture2D();
     OutHitTriangleIndex = HitTriangleIndexItem.ShaderResourceTexture->GetTexture2D();
     OutPendingSlotCount = static_cast<uint32>(Storage->NewlyAllocatedPhysicalSlotsCPU.Num());
     bOutInitializeDirections = Storage->bNeedsDirectionInitialization;
     return OutDirections.IsValid() && OutRadiance.IsValid() && OutHitDistance.IsValid() &&
-        OutRadianceScratch.IsValid() && OutHitTriangleIndex.IsValid();
+        OutRadianceScratch.IsValid() && OutRadianceIntegrationScratch.IsValid() &&
+        OutHitTriangleIndex.IsValid();
 }
 
 bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
@@ -1255,6 +1268,26 @@ bool DDGIGetRadianceCascadeScratchTexture_RenderThread(
 	return OutRadianceScratch.IsValid();
 }
 
+bool DDGIGetRadianceCascadeIntegrationScratchTexture_RenderThread(
+    const FSceneInterface* Scene,
+    FTexture2DRHIRef& OutRadianceIntegrationScratch)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutRadianceIntegrationScratch.SafeRelease();
+    const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || !Storage->RadianceIntegrationScratch.IsValid())
+    {
+        return false;
+    }
+    const FSceneRenderTargetItem& Item = Storage->RadianceIntegrationScratch->GetRenderTargetItem();
+    if (!Item.ShaderResourceTexture.IsValid())
+    {
+        return false;
+    }
+    OutRadianceIntegrationScratch = Item.ShaderResourceTexture->GetTexture2D();
+    return OutRadianceIntegrationScratch.IsValid();
+}
+
 void DDGISwapRadianceCascadeRadianceBuffers_RenderThread(const FSceneInterface* Scene)
 {
 	check(IsInRenderingThread() || IsInParallelRenderingThread());
@@ -1262,6 +1295,15 @@ void DDGISwapRadianceCascadeRadianceBuffers_RenderThread(const FSceneInterface* 
 	{
 		Swap(Storage->Radiance, Storage->RadianceScratch);
 	}
+}
+
+void DDGISwapRadianceCascadeIntegrationBuffers_RenderThread(const FSceneInterface* Scene)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    if (FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene))
+    {
+        Swap(Storage->Radiance, Storage->RadianceIntegrationScratch);
+    }
 }
 
 bool DDGIGetSoftwareBVHResources_RenderThread(
