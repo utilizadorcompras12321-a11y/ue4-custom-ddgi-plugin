@@ -424,7 +424,7 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 	for (TActorIterator<AActor> ActorIt(World); ActorIt; ++ActorIt)
 	{
 		AActor* Actor = *ActorIt;
-		if (!IsValid(Actor))
+		if (!IsValid(Actor) || Actor->IsHidden())
 		{
 			continue;
 		}
@@ -435,6 +435,13 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 		for (UStaticMeshComponent* Component : Components)
 		{
 			if (!IsValid(Component) || !Component->GetStaticMesh())
+			{
+				continue;
+			}
+
+			// The BVH represents geometry that can contribute to runtime rendering.
+			// Exclude editor-hidden/invisible components and components hidden in game.
+			if (!Component->IsVisible() || Component->bHiddenInGame)
 			{
 				continue;
 			}
