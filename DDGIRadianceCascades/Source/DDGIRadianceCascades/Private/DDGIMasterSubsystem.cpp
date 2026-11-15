@@ -334,63 +334,80 @@ namespace
 
 			// Generate all candidates strictly nearer than the threshold. The
 			// count is guaranteed to be smaller than Quota.
-			for (int64 DZ = FirstDeltaZ; DZ <= LastDeltaZ; DZ += LevelStep)
+			int64 InteriorZStart = 0, InteriorZEnd = -1;
+			if (ThresholdQ > 0 && DDGIGetLatticeRangeWithinAbs(
+				FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(ThresholdQ - 1),
+				InteriorZStart, InteriorZEnd))
 			{
-				const int64 ZSquared = DZ * DZ;
-				if (ZSquared >= ThresholdQ) continue;
-				for (int64 DY = FirstDeltaY; DY <= LastDeltaY; DY += LevelStep)
+				for (int64 DZ = InteriorZStart; DZ <= InteriorZEnd; DZ += LevelStep)
 				{
-					const int64 YZSquared = DY * DY + ZSquared;
-					if (YZSquared >= ThresholdQ) continue;
-					const int64 MaxXAbs = DDGIFloorSqrt(FMath::Min(MaxQ, ThresholdQ - 1) - YZSquared);
-					const int64 MinXAbs = MinQ > YZSquared ?
-						DDGICeilSqrt(MinQ - YZSquared) : 0;
-					auto AddXRange = [&](int64 MinX, int64 MaxX)
+					const int64 ZSquared = DZ * DZ;
+					int64 InteriorYStart = 0, InteriorYEnd = -1;
+					if (!DDGIGetLatticeRangeWithinAbs(
+						FirstDeltaY, LastDeltaY, LevelStep,
+						DDGIFloorSqrt(ThresholdQ - 1 - ZSquared),
+						InteriorYStart, InteriorYEnd)) continue;
+					for (int64 DY = InteriorYStart; DY <= InteriorYEnd; DY += LevelStep)
 					{
-						const int64 ClampedMin = FMath::Max(FirstDeltaX, MinX);
-						const int64 ClampedMax = FMath::Min(LastDeltaX, MaxX);
-						if (ClampedMin > ClampedMax) return;
-						const int64 FirstIndex = DDGICeilDiv(ClampedMin - FirstDeltaX, LevelStep);
+						const int64 YZSquared = DY * DY + ZSquared;
+						const int64 MaxXAbs = DDGIFloorSqrt(ThresholdQ - 1 - YZSquared);
+						const int64 MinXAbs = MinQ > YZSquared ?
+							DDGICeilSqrt(MinQ - YZSquared) : 0;
+						auto AddXRange = [&](int64 MinX, int64 MaxX)
+						{
+							const int64 ClampedMin = FMath::Max(FirstDeltaX, MinX);
+							const int64 ClampedMax = FMath::Min(LastDeltaX, MaxX);
+							if (ClampedMin > ClampedMax) return;
+							const int64 FirstIndex = DDGICeilDiv(ClampedMin - FirstDeltaX, LevelStep);
 						const int64 LastIndex = DDGIFloorDiv(ClampedMax - FirstDeltaX, LevelStep);
 						for (int64 Index = FirstIndex; Index <= LastIndex; ++Index)
+							{
+								const int64 DX = FirstDeltaX + Index * LevelStep;
+								AddSelectedProbe(DX, DY, DZ);
+							}
+						};
+						if (MinXAbs == 0)
 						{
-							const int64 DX = FirstDeltaX + Index * LevelStep;
-							AddSelectedProbe(DX, DY, DZ);
+							AddXRange(-MaxXAbs, -1);
+							AddXRange(0, MaxXAbs);
 						}
-					};
-					if (MinXAbs == 0)
-					{
-						AddXRange(-MaxXAbs, -1);
-						AddXRange(0, MaxXAbs);
-					}
-					else
-					{
-						AddXRange(-MaxXAbs, -MinXAbs);
-						AddXRange(MinXAbs, MaxXAbs);
+						else
+						{
+							AddXRange(-MaxXAbs, -MinXAbs);
+							AddXRange(MinXAbs, MaxXAbs);
+						}
 					}
 				}
 			}
 
 			// At the threshold, X can only be +/-sqrt(ThresholdQ - YZ).
 			// Z/Y/X traversal gives the deterministic tie-break order.
-			for (int64 DZ = FirstDeltaZ; DZ <= LastDeltaZ && SelectedCandidates.Num() < Quota; DZ += LevelStep)
+			int64 TieZStart = 0, TieZEnd = -1;
+			if (DDGIGetLatticeRangeWithinAbs(
+				FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(ThresholdQ),
+				TieZStart, TieZEnd))
 			{
-				const int64 ZSquared = DZ * DZ;
-				if (ZSquared > ThresholdQ) continue;
-				for (int64 DY = FirstDeltaY; DY <= LastDeltaY && SelectedCandidates.Num() < Quota; DY += LevelStep)
+				for (int64 DZ = TieZStart; DZ <= TieZEnd && SelectedCandidates.Num() < Quota; DZ += LevelStep)
 				{
-					const int64 Remainder = ThresholdQ - (DY * DY + ZSquared);
-					if (Remainder < 0) continue;
-					const int64 Root = DDGIFloorSqrt(Remainder);
-					if (Root * Root != Remainder) continue;
-					const int64 CandidateDX[2] = { -Root, Root };
-					for (int32 SignIndex = 0; SignIndex < (Root == 0 ? 1 : 2) &&
-						SelectedCandidates.Num() < Quota; ++SignIndex)
+					const int64 ZSquared = DZ * DZ;
+					int64 TieYStart = 0, TieYEnd = -1;
+					if (!DDGIGetLatticeRangeWithinAbs(
+						FirstDeltaY, LastDeltaY, LevelStep,
+						DDGIFloorSqrt(ThresholdQ - ZSquared), TieYStart, TieYEnd)) continue;
+					for (int64 DY = TieYStart; DY <= TieYEnd && SelectedCandidates.Num() < Quota; DY += LevelStep)
 					{
-						const int64 DX = CandidateDX[SignIndex];
-						if (DX < FirstDeltaX || DX > LastDeltaX ||
-							(DX - FirstDeltaX) % LevelStep != 0) continue;
-						AddSelectedProbe(DX, DY, DZ);
+						const int64 Remainder = ThresholdQ - (DY * DY + ZSquared);
+						const int64 Root = DDGIFloorSqrt(Remainder);
+						if (Root * Root != Remainder) continue;
+						const int64 CandidateDX[2] = { -Root, Root };
+						for (int32 SignIndex = 0; SignIndex < (Root == 0 ? 1 : 2) &&
+							SelectedCandidates.Num() < Quota; ++SignIndex)
+						{
+							const int64 DX = CandidateDX[SignIndex];
+							if (DX < FirstDeltaX || DX > LastDeltaX ||
+								(DX - FirstDeltaX) % LevelStep != 0) continue;
+							AddSelectedProbe(DX, DY, DZ);
+						}
 					}
 				}
 			}
