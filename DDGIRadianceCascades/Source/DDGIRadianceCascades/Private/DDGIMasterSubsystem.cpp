@@ -100,6 +100,76 @@ namespace
 		return DDGICountLatticeValuesInRange(FirstValue, LastValue, Step, -MaxAbs, -MinAbs) +
 			DDGICountLatticeValuesInRange(FirstValue, LastValue, Step, MinAbs, MaxAbs);
 	}
+	bool DDGIGetLatticeRange(
+		int64 FirstValue, int64 LastValue, int64 Step, int64 MinValue, int64 MaxValue,
+		int64& OutFirst, int64& OutLast)
+	{
+		const int64 ClampedMin = FMath::Max(FirstValue, MinValue);
+		const int64 ClampedMax = FMath::Min(LastValue, MaxValue);
+		if (ClampedMin > ClampedMax) return false;
+		const int64 FirstIndex = DDGICeilDiv(ClampedMin - FirstValue, Step);
+		const int64 LastIndex = DDGIFloorDiv(ClampedMax - FirstValue, Step);
+		if (LastIndex < FirstIndex) return false;
+		OutFirst = FirstValue + FirstIndex * Step;
+		OutLast = FirstValue + LastIndex * Step;
+		return true;
+	}
+
+	void DDGISiftSelectedProbeHeapUp(
+		TArray<FDDGISelectedProbeCandidate>& Heap, int32 Index)
+	{
+		while (Index > 0)
+		{
+			const int32 Parent = (Index - 1) / 2;
+			if (!DDGISelectedProbeCandidateLess(Heap[Parent], Heap[Index])) break;
+			Heap.Swap(Parent, Index);
+			Index = Parent;
+		}
+	}
+
+	void DDGISiftSelectedProbeHeapDown(
+		TArray<FDDGISelectedProbeCandidate>& Heap, int32 Index)
+	{
+		for (;;)
+		{
+			const int32 Left = Index * 2 + 1;
+			const int32 Right = Left + 1;
+			int32 Worst = Index;
+			if (Left < Heap.Num() &&
+				DDGISelectedProbeCandidateLess(Heap[Worst], Heap[Left]))
+			{
+				Worst = Left;
+			}
+			if (Right < Heap.Num() &&
+				DDGISelectedProbeCandidateLess(Heap[Worst], Heap[Right]))
+			{
+				Worst = Right;
+			}
+			if (Worst == Index) break;
+			Heap.Swap(Index, Worst);
+			Index = Worst;
+		}
+	}
+
+	void DDGIInsertBoundedSelectedProbe(
+		TArray<FDDGISelectedProbeCandidate>& Heap,
+		const FDDGISelectedProbeCandidate& Candidate,
+		int32 Capacity)
+	{
+		if (Capacity <= 0) return;
+		if (Heap.Num() < Capacity)
+		{
+			const int32 NewIndex = Heap.Add(Candidate);
+			DDGISiftSelectedProbeHeapUp(Heap, NewIndex);
+			return;
+		}
+		if (DDGISelectedProbeCandidateLess(Candidate, Heap[0]))
+		{
+			Heap[0] = Candidate;
+			DDGISiftSelectedProbeHeapDown(Heap, 0);
+		}
+	}
+
 	FVector DDGIGetCameraWorldLocation(const ADDGIMasterActor* InActor)
 	{
 		if (!InActor) return FVector::ZeroVector;
@@ -282,131 +352,86 @@ namespace
 			const int64 MinQ = MinDistanceSquared[Level];
 			const int64 MaxQ = MaxDistanceSquared[Level];
 
-			// Find the exact integer squared-distance of the quota-th point.
-			int64 LowQ = MinQ;
-			int64 HighQ = MaxQ;
-			while (LowQ < HighQ)
-			{
-				const int64 MidQ = LowQ + (HighQ - LowQ) / 2;
-				int64 CountAtOrBelow = 0;
-				int64 ZStart = 0, ZEnd = -1;
-				if (DDGIGetLatticeRangeWithinAbs(
-					FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(MidQ), ZStart, ZEnd))
-				{
-					for (int64 DZ = ZStart; DZ <= ZEnd; DZ += LevelStep)
-					{
-						const int64 ZSquared = DZ * DZ;
-						int64 YStart = 0, YEnd = -1;
-						if (!DDGIGetLatticeRangeWithinAbs(
-							FirstDeltaY, LastDeltaY, LevelStep,
-							DDGIFloorSqrt(MidQ - ZSquared), YStart, YEnd)) continue;
-						for (int64 DY = YStart; DY <= YEnd; DY += LevelStep)
-						{
-							const int64 YZSquared = DY * DY + ZSquared;
-							const int64 MaxXAbs = DDGIFloorSqrt(MidQ - YZSquared);
-						const int64 MinXAbs = MinQ > YZSquared ?
-							DDGICeilSqrt(MinQ - YZSquared) : 0;
-							CountAtOrBelow += DDGICountLatticeValuesByAbsoluteValue(
-								FirstDeltaX, LastDeltaX, LevelStep, MinXAbs, MaxXAbs);
-						}
-					}
-				}
-				if (CountAtOrBelow >= Quota) HighQ = MidQ;
-				else LowQ = MidQ + 1;
-			}
-			const int64 ThresholdQ = LowQ;
+			// One Y/Z pass per level. Keep only the best Quota candidates in
+			// a bounded max-heap. X values in each row are visited by increasing
+			// absolute distance, so a candidate that cannot beat the heap root
+			// proves that no later X in that row can enter the result.
 			TArray<FDDGISelectedProbeCandidate> SelectedCandidates;
 			SelectedCandidates.Reserve(Quota);
-			auto AddSelectedProbe = [&](int64 DX, int64 DY, int64 DZ)
-			{
-				FDDGISelectedProbeCandidate Candidate;
-				Candidate.CellX = static_cast<int32>(static_cast<int64>(CenterCell.X) + DX);
-				Candidate.CellY = static_cast<int32>(static_cast<int64>(CenterCell.Y) + DY);
-				Candidate.CellZ = static_cast<int32>(static_cast<int64>(CenterCell.Z) + DZ);
-				Candidate.Position = FVector4(
-					static_cast<float>(Candidate.CellX) * SafeSpacing,
-					static_cast<float>(Candidate.CellY) * SafeSpacing,
-					static_cast<float>(Candidate.CellZ) * SafeSpacing,
-					static_cast<float>(Level));
-				Candidate.DistanceSquared = DX * DX + DY * DY + DZ * DZ;
-				SelectedCandidates.Add(Candidate);
-			};
 
-			// Generate all candidates strictly nearer than the threshold. The
-			// count is guaranteed to be smaller than Quota.
-			int64 InteriorZStart = 0, InteriorZEnd = -1;
-			if (ThresholdQ > 0 && DDGIGetLatticeRangeWithinAbs(
-				FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(ThresholdQ - 1),
-				InteriorZStart, InteriorZEnd))
+			int64 ZStart = 0, ZEnd = -1;
+			if (DDGIGetLatticeRangeWithinAbs(
+				FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(MaxQ), ZStart, ZEnd))
 			{
-				for (int64 DZ = InteriorZStart; DZ <= InteriorZEnd; DZ += LevelStep)
+				for (int64 DZ = ZStart; DZ <= ZEnd; DZ += LevelStep)
 				{
 					const int64 ZSquared = DZ * DZ;
-					int64 InteriorYStart = 0, InteriorYEnd = -1;
+					int64 YStart = 0, YEnd = -1;
 					if (!DDGIGetLatticeRangeWithinAbs(
 						FirstDeltaY, LastDeltaY, LevelStep,
-						DDGIFloorSqrt(ThresholdQ - 1 - ZSquared),
-						InteriorYStart, InteriorYEnd)) continue;
-					for (int64 DY = InteriorYStart; DY <= InteriorYEnd; DY += LevelStep)
+						DDGIFloorSqrt(MaxQ - ZSquared), YStart, YEnd)) continue;
+
+					for (int64 DY = YStart; DY <= YEnd; DY += LevelStep)
 					{
 						const int64 YZSquared = DY * DY + ZSquared;
-						const int64 MaxXAbs = DDGIFloorSqrt(ThresholdQ - 1 - YZSquared);
+						const int64 MaxXAbs = DDGIFloorSqrt(MaxQ - YZSquared);
 						const int64 MinXAbs = MinQ > YZSquared ?
 							DDGICeilSqrt(MinQ - YZSquared) : 0;
-						auto AddXRange = [&](int64 MinX, int64 MaxX)
-						{
-							const int64 ClampedMin = FMath::Max(FirstDeltaX, MinX);
-							const int64 ClampedMax = FMath::Min(LastDeltaX, MaxX);
-							if (ClampedMin > ClampedMax) return;
-							const int64 FirstIndex = DDGICeilDiv(ClampedMin - FirstDeltaX, LevelStep);
-						const int64 LastIndex = DDGIFloorDiv(ClampedMax - FirstDeltaX, LevelStep);
-						for (int64 Index = FirstIndex; Index <= LastIndex; ++Index)
-							{
-								const int64 DX = FirstDeltaX + Index * LevelStep;
-								AddSelectedProbe(DX, DY, DZ);
-							}
-						};
-						if (MinXAbs == 0)
-						{
-							AddXRange(-MaxXAbs, -1);
-							AddXRange(0, MaxXAbs);
-						}
-						else
-						{
-							AddXRange(-MaxXAbs, -MinXAbs);
-							AddXRange(MinXAbs, MaxXAbs);
-						}
-					}
-				}
-			}
 
-			// At the threshold, X can only be +/-sqrt(ThresholdQ - YZ).
-			// Z/Y/X traversal gives the deterministic tie-break order.
-			int64 TieZStart = 0, TieZEnd = -1;
-			if (DDGIGetLatticeRangeWithinAbs(
-				FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(ThresholdQ),
-				TieZStart, TieZEnd))
-			{
-				for (int64 DZ = TieZStart; DZ <= TieZEnd && SelectedCandidates.Num() < Quota; DZ += LevelStep)
-				{
-					const int64 ZSquared = DZ * DZ;
-					int64 TieYStart = 0, TieYEnd = -1;
-					if (!DDGIGetLatticeRangeWithinAbs(
-						FirstDeltaY, LastDeltaY, LevelStep,
-						DDGIFloorSqrt(ThresholdQ - ZSquared), TieYStart, TieYEnd)) continue;
-					for (int64 DY = TieYStart; DY <= TieYEnd && SelectedCandidates.Num() < Quota; DY += LevelStep)
-					{
-						const int64 Remainder = ThresholdQ - (DY * DY + ZSquared);
-						const int64 Root = DDGIFloorSqrt(Remainder);
-						if (Root * Root != Remainder) continue;
-						const int64 CandidateDX[2] = { -Root, Root };
-						for (int32 SignIndex = 0; SignIndex < (Root == 0 ? 1 : 2) &&
-							SelectedCandidates.Num() < Quota; ++SignIndex)
+						int64 NegativeFirst = 0, NegativeLast = -1;
+						int64 PositiveFirst = 0, PositiveLast = -1;
+						const bool bHasNegative = DDGIGetLatticeRange(
+							FirstDeltaX, LastDeltaX, LevelStep,
+							-MaxXAbs, MinXAbs == 0 ? -1 : -MinXAbs,
+							NegativeFirst, NegativeLast);
+						const bool bHasPositive = DDGIGetLatticeRange(
+							FirstDeltaX, LastDeltaX, LevelStep,
+							MinXAbs, MaxXAbs, PositiveFirst, PositiveLast);
+
+						int64 NegativeX = bHasNegative ? NegativeLast : 0;
+						int64 PositiveX = bHasPositive ? PositiveFirst : 0;
+						bool bNegativeValid = bHasNegative;
+						bool bPositiveValid = bHasPositive;
+
+						while (bNegativeValid || bPositiveValid)
 						{
-							const int64 DX = CandidateDX[SignIndex];
-							if (DX < FirstDeltaX || DX > LastDeltaX ||
-								(DX - FirstDeltaX) % LevelStep != 0) continue;
-							AddSelectedProbe(DX, DY, DZ);
+							const bool bTakeNegative = bNegativeValid &&
+								(!bPositiveValid || -NegativeX <= PositiveX);
+							const int64 DX = bTakeNegative ? NegativeX : PositiveX;
+
+							FDDGISelectedProbeCandidate Candidate;
+							Candidate.CellX = static_cast<int32>(
+								static_cast<int64>(CenterCell.X) + DX);
+							Candidate.CellY = static_cast<int32>(
+								static_cast<int64>(CenterCell.Y) + DY);
+							Candidate.CellZ = static_cast<int32>(
+								static_cast<int64>(CenterCell.Z) + DZ);
+							Candidate.Position = FVector4(
+								static_cast<float>(Candidate.CellX) * SafeSpacing,
+								static_cast<float>(Candidate.CellY) * SafeSpacing,
+								static_cast<float>(Candidate.CellZ) * SafeSpacing,
+								static_cast<float>(Level));
+							Candidate.DistanceSquared = DX * DX + YZSquared;
+
+							const bool bHeapHasRoom = SelectedCandidates.Num() < Quota;
+							if (!bHeapHasRoom &&
+								!DDGISelectedProbeCandidateLess(Candidate, SelectedCandidates[0]))
+							{
+								break;
+							}
+						DDGIInsertBoundedSelectedProbe(
+							SelectedCandidates, Candidate, Quota);
+
+							if (bTakeNegative)
+							{
+								NegativeX -= LevelStep;
+								bNegativeValid = NegativeX >= NegativeFirst;
+							}
+							else
+							{
+								PositiveX += LevelStep;
+								bPositiveValid = PositiveX <= PositiveLast;
+							}
 						}
 					}
 				}
