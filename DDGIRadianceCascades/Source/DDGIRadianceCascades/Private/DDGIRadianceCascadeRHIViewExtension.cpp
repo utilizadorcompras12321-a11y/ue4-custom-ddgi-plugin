@@ -774,7 +774,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		Config->SoftwareBVH->WorldOrigin.Y,
 		Config->SoftwareBVH->WorldOrigin.Z, 0.0f);
 	PassParameters->ShouldUsePreExposure = 1u;
-	PassParameters->DebugMode = static_cast<uint32>(FMath::Clamp(CVarDDGIDebugApply.GetValueOnRenderThread(), 0, 3));
+	PassParameters->DebugMode = static_cast<uint32>(FMath::Clamp(CVarDDGIDebugApply.GetValueOnRenderThread(), 0, 7));
 
 	TShaderMapRef<FDDGIApplyRadianceCascadesLightingCS> ComputeShader(
 		GetGlobalShaderMap(View.GetFeatureLevel()));
