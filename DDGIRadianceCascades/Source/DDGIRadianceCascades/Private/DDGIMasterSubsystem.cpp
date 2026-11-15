@@ -248,31 +248,6 @@ void UDDGIMasterSubsystem::RebuildSoftwareBVH(ADDGIMasterActor* InActor)
 	CopyConfigFromActor(InActor);
 }
 
-void UDDGIMasterSubsystem::RefreshProbeGridOrigin(ADDGIMasterActor* InActor)
-{
-	if (!IsValid(InActor) || ActiveMasterActor.Get() != InActor ||
-		!Config.SoftwareBVH.IsValid() || Config.ProbePositions.Num() == 0)
-	{
-		return;
-	}
-
-	// The static BVH remains in its original coordinate frame. Moving the
-	// Master Actor translates the existing probe lattice in that frame; it
-	// does not change its spacing, radius, topology, or ray layout.
-	const FVector NewOrigin = InActor->GetActorLocation() - Config.SoftwareBVH->WorldOrigin;
-	const FVector Delta = NewOrigin - Config.ProbeGridOrigin;
-	if (Delta.IsNearlyZero(0.001f))
-	{
-		return;
-	}
-
-	Config.ProbeGridOrigin = NewOrigin;
-	// ProbePositions are grid-relative offsets and therefore do not change.
-	// Publish only the origin; copying the full config here would also copy
-	// the probe array and shared BVH on every actor movement.
-	PublishProbeGridOriginOnly();
-}
-
 void UDDGIMasterSubsystem::RefreshDirectionalLighting(ADDGIMasterActor* InActor)
 {
 	if (IsValid(InActor) && ActiveMasterActor.Get() == InActor && UpdateDirectionalLighting(InActor))
@@ -377,30 +352,6 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 		});
 }
 
-
-void UDDGIMasterSubsystem::PublishProbeGridOriginOnly()
-{
-	UWorld* World = GetWorld();
-	FSceneInterface* Scene = World ? World->Scene : nullptr;
-	if (!Scene)
-	{
-		return;
-	}
-
-	// The probe offsets, layout, BVH and GPU resources are unchanged by a
-	// translation. Capture only the small origin value and patch the existing
-	// render-thread config. Render commands preserve publication order.
-	const FVector ProbeGridOrigin = Config.ProbeGridOrigin;
-
-	ENQUEUE_RENDER_COMMAND(DDGIUpdateProbeGridOrigin)(
-		[Scene, ProbeGridOrigin](FRHICommandListImmediate& RHICmdList)
-		{
-			if (FDDGIMasterConfig* ExistingConfig = GDDGIMasterConfigs_RenderThread.Find(Scene))
-			{
-				ExistingConfig->ProbeGridOrigin = ProbeGridOrigin;
-			}
-		});
-}
 
 void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 {
