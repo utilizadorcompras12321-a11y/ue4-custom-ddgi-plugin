@@ -546,9 +546,12 @@ static FScreenPassTexture DDGIReturnSceneColorForPostProcessing(
 	{
 		AddDrawTexturePass(
 			GraphBuilder,
-			View,
-			SceneColor,
-			FScreenPassTexture(Inputs.OverrideOutput.Texture, Inputs.OverrideOutput.ViewRect));
+			static_cast<const FViewInfo&>(View),
+			SceneColor.Texture,
+			Inputs.OverrideOutput.Texture,
+			SceneColor.ViewRect.Min,
+			Inputs.OverrideOutput.ViewRect.Min,
+			SceneColor.ViewRect.Size());
 		return FScreenPassTexture(
 			Inputs.OverrideOutput.Texture,
 			Inputs.OverrideOutput.ViewRect);
@@ -714,9 +717,12 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	{
 		AddDrawTexturePass(
 			GraphBuilder,
-			View,
-			FScreenPassTexture(OutputTexture, SceneColor.ViewRect),
-			FScreenPassTexture(Inputs.OverrideOutput.Texture, Inputs.OverrideOutput.ViewRect));
+			static_cast<const FViewInfo&>(View),
+			OutputTexture,
+			Inputs.OverrideOutput.Texture,
+			SceneColor.ViewRect.Min,
+			Inputs.OverrideOutput.ViewRect.Min,
+			SceneColor.ViewRect.Size());
 		return FScreenPassTexture(
 			Inputs.OverrideOutput.Texture,
 			Inputs.OverrideOutput.ViewRect);
