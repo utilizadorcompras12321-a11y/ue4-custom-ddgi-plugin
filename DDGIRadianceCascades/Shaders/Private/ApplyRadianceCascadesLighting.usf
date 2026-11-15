@@ -108,9 +108,11 @@ float3 DDGISampleProbeLevel(
     float3 LocalPosition,
     float3 Normal,
     uint Level,
-    out float OutWeightSum)
+    out float OutSpatialWeightSum,
+    out float OutVisibleWeightSum)
 {
-    OutWeightSum = 0.0f;
+    OutSpatialWeightSum = 0.0f;
+    OutVisibleWeightSum = 0.0f;
     float3 Irradiance = 0.0f;
     uint LevelStep = 1u << Level;
     float LevelSpacing = max(ProbeSpacing, 1.0f) * (float)LevelStep;
@@ -139,6 +141,11 @@ float3 DDGISampleProbeLevel(
             ProbeIndex / DDGI_RC_TEXTURE_WIDTH);
         float3 ProbePosition = ProbeGridOrigin.xyz +
             ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
+        // Track geometric support separately from the surface-side visibility
+        // fade. Sparse coarse levels can then be renormalized without cancelling
+        // the fade that rejects probes behind the receiving surface.
+        OutSpatialWeightSum += Weight;
+
         float3 SurfaceToProbe = ProbePosition - LocalPosition;
         float SurfaceSide = dot(Normal, SurfaceToProbe);
         float SideThreshold = max(LevelSpacing * 0.01f, 0.5f);
@@ -150,10 +157,10 @@ float3 DDGISampleProbeLevel(
         if (Weight <= 0.00001f) continue;
 
         Irradiance += DDGIProbeDiffuseIrradiance(ProbeIndex, Normal) * Weight;
-        OutWeightSum += Weight;
+        OutVisibleWeightSum += Weight;
     }
 
-    return Irradiance / max(OutWeightSum, 0.00001f);
+    return Irradiance / max(OutVisibleWeightSum, 0.00001f);
 }
 
 [numthreads(8, 8, 1)]
@@ -231,17 +238,22 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             (Level == 1u ? Blend1 : (Level == 2u ? Blend2 : Blend3));
         if (BlendWeight <= 0.00001f) continue;
 
-        float LevelWeightSum = 0.0f;
+        float LevelSpatialWeightSum = 0.0f;
+        float LevelVisibleWeightSum = 0.0f;
         float3 LevelIrradiance = DDGISampleProbeLevel(
-            LocalPosition, Normal, Level, LevelWeightSum);
-        if (LevelWeightSum <= 0.00001f) continue;
+            LocalPosition, Normal, Level,
+            LevelSpatialWeightSum, LevelVisibleWeightSum);
+        if (LevelVisibleWeightSum <= 0.00001f ||
+            LevelSpatialWeightSum <= 0.00001f) continue;
 
-        // Keep the surviving spatial confidence. Normalizing the level's
-        // interpolation weights produces a valid local average, but must not
-        // cancel the surface-side fade applied to probes behind the receiver.
-        const float LevelCoverage = saturate(LevelWeightSum);
+        // Normalize across levels using available geometric support, so a
+        // coarse level with fewer valid trilinear neighbors does not darken the
+        // result. Preserve the separate surface-side fade as an attenuation.
+        const float LevelCoverage = saturate(LevelSpatialWeightSum);
+        const float LevelVisibility = saturate(
+            LevelVisibleWeightSum / max(LevelSpatialWeightSum, 0.00001f));
         const float EffectiveWeight = BlendWeight * LevelCoverage;
-        Irradiance += LevelIrradiance * EffectiveWeight;
+        Irradiance += LevelIrradiance * (EffectiveWeight * LevelVisibility);
         ProbeWeightSum += EffectiveWeight;
     }
 
