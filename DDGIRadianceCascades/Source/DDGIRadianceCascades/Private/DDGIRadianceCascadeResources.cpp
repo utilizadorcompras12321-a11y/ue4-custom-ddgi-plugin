@@ -389,10 +389,10 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         // The final texture row is fully allocated, even when the active ray
         // count does not fill it. Count every complete probe-sized range that
         // physically fits in the allocated texture, not only active probes.
-        const int64 AllocatedRayTexels =
+        const int64 AllocatedTextureTexels =
             static_cast<int64>(Storage.Dimensions.X) * Storage.Dimensions.Y;
         Storage.RayProbeCapacity = static_cast<int32>(
-            AllocatedRayTexels / Config.TotalRaysPerProbe);
+            AllocatedTextureTexels / Config.TotalRaysPerProbe);
         Storage.PhysicalSlotCapacity = FMath::Min<uint32>(
             static_cast<uint32>(Storage.RayProbeCapacity),
             static_cast<uint32>(Config.MaxActiveProbes));
