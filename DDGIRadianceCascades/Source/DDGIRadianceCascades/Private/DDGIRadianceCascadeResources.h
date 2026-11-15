@@ -61,6 +61,14 @@ bool DDGIGetSoftwareBVHResources_RenderThread(
     uint32& OutNodeCount,
     uint32& OutTriangleCount);
 
+/** Returns logical-to-physical ray-slot mapping and slots requiring fresh history initialization. */
+bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
+    const FSceneInterface* Scene,
+    FShaderResourceViewRHIRef& OutLogicalToPhysicalSRV,
+    FShaderResourceViewRHIRef& OutNewPhysicalSlotsSRV,
+    uint32& OutNewPhysicalSlotCount,
+    uint32& OutPhysicalSlotCapacity);
+
 /** Returns the deterministic GPU spatial hash for sparse probe cell lookup. */
 bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
     const FSceneInterface* Scene,
