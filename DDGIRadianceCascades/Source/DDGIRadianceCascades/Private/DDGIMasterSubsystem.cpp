@@ -346,7 +346,6 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 	Config.ProbeSpacing = FMath::Max(1.0f, InActor->ProbeSpacing);
 	// Keep probe count within the texture/hash layout supported by the renderer.
 	Config.MaxActiveProbes = FMath::Clamp(InActor->MaxActiveProbes, 1, 32768);
-	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.MaxActiveProbes);
 	Config.ProbeUpdateBudget = FMath::Max(0, InActor->ProbeUpdateBudget);
 	Config.MaxSoftwareTriangles = FMath::Clamp(InActor->MaxSoftwareTriangles, 1, 250000);
 
@@ -410,6 +409,8 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor)
 		Config.MaxActiveProbes,
 		Config.ProbePositions);
 	Config.ProbeCount = Config.ProbePositions.Num();
+	// Estimate the actual generated lattice, not the hard safety cap.
+	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
 		Config.ProbePositions, Config.ProbeSpacing);
 
