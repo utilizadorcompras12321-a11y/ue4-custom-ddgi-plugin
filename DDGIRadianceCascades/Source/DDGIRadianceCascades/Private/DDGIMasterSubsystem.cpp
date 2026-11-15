@@ -144,6 +144,7 @@ namespace
 			Hash = (Hash ^ static_cast<uint32>(Cell.X)) * 16777619u;
 			Hash = (Hash ^ static_cast<uint32>(Cell.Y)) * 16777619u;
 			Hash = (Hash ^ static_cast<uint32>(Cell.Z)) * 16777619u;
+			Hash = (Hash ^ static_cast<uint32>(FMath::RoundToInt(Position.W))) * 16777619u;
 		}
 		return Hash;
 	}
