@@ -99,6 +99,7 @@ private:
 	bool bHasSearchedDirectionalLights = false;
 	bool UpdateDirectionalLighting(const ADDGIMasterActor* InActor);
 	void PublishConfigValuesOnly();
+	void PublishConfigActiveWindowCenterOnly();
 	void CopyConfigFromActor(const ADDGIMasterActor* InActor, bool bForceSoftwareBVHRebuild = false);
 	void PublishConfig(bool bHasConfig);
 
