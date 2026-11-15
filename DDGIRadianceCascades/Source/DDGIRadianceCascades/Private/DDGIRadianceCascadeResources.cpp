@@ -519,6 +519,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.LogicalToPhysicalSlotCPU[LogicalIndex] = NewPhysicalSlot;
             Storage.NewlyAllocatedPhysicalSlotsCPU.AddUnique(NewPhysicalSlot);
             Storage.bPendingPhysicalSlotsUpload = true;
+            Storage.bNeedsInitialization = true;
         }
 
         TResourceArray<uint32> LogicalToPhysicalData;
@@ -1015,6 +1016,7 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     OutHitDistance = nullptr;
     FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || !Storage->bNeedsInitialization ||
+        Storage->bPendingPhysicalSlotsUpload || Storage->bInvalidateAllPhysicalSlots ||
         (Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0 && !Storage->bNeedsDirectionInitialization) ||
         !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() || !Storage->HitDistance.IsValid())
     {
@@ -1196,7 +1198,8 @@ bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
     OutPhysicalSlotCapacity = 0;
 
     const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
-    if (!Storage || !Storage->LogicalToPhysicalSlotsSRV.IsValid() ||
+    if (!Storage || Storage->bPendingPhysicalSlotsUpload || Storage->bInvalidateAllPhysicalSlots ||
+        !Storage->LogicalToPhysicalSlotsSRV.IsValid() ||
         !Storage->NewlyAllocatedPhysicalSlotsSRV.IsValid() ||
         Storage->LogicalToPhysicalSlotCPU.Num() != Storage->UploadedProbeCount ||
         Storage->PhysicalSlotCapacity == 0)
