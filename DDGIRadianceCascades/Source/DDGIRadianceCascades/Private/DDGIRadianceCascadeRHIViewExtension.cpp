@@ -792,11 +792,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	// Probe positions are anchored to world origin. The active view controls
 	// when this scene-wide update runs, but never translates the probe lattice.
-	if (!DDGIBeginRadianceCascadeUpdate_RenderThread(Scene, InView.Family->FrameNumber))
-	{
-		return;
-	}
-	if (!Config || !Config->SoftwareBVH.IsValid())
+	if (!Config->SoftwareBVH.IsValid())
 	{
 		return;
 	}
@@ -830,6 +826,14 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	const uint32 TotalTexels = ProbeCount * TotalRaysPerProbe;
 	if (TotalTexels == 0)
+	{
+		return;
+	}
+
+	// Claim the scene-wide update only after all prerequisites have been
+	// acquired. A view that cannot obtain valid GPU resources must not prevent
+	// another view in the same frame from performing the update.
+	if (!DDGIBeginRadianceCascadeUpdate_RenderThread(Scene, InView.Family->FrameNumber))
 	{
 		return;
 	}
