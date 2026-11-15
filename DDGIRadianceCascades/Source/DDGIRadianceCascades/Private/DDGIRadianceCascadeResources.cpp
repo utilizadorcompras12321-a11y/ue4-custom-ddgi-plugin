@@ -35,7 +35,7 @@ namespace
 		}
 		friend uint32 GetTypeHash(const FDDGIProbeCellKey& Key)
 		{
-			return HashCombine(GetTypeHash(Key.Cell), GetTypeHash(Key.Level));
+			return DDGIHashProbeCell(Key.Cell, Key.Level);
 		}
 	};
 }
