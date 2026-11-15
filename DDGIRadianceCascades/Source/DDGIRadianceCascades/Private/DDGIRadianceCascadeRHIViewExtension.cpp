@@ -51,7 +51,8 @@ public:
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
 		RadianceScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
 		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
-		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
+		NewPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("NewPhysicalSlots"));
+		bInitializeDirections.Bind(Initializer.ParameterMap, TEXT("bInitializeDirections"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -68,7 +69,8 @@ public:
 		FUnorderedAccessViewRHIRef HitDistanceView,
 		FUnorderedAccessViewRHIRef RadianceScratchView,
 		FUnorderedAccessViewRHIRef HitTriangleIndexView,
-		FShaderResourceViewRHIRef InLogicalToPhysicalSRV,
+		FShaderResourceViewRHIRef InNewPhysicalSlotsSRV,
+		uint32 bInInitializeDirections,
 		uint32 InTotalRaysPerProbe,
 		uint32 InCascadeCount,
 		uint32 InBaseRayCount,
@@ -87,6 +89,7 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, TotalTexels, InTotalTexels);
 		SetShaderValue(RHICmdList, ShaderRHI, DispatchGroupsX, InDispatchGroupsX);
 		SetShaderValue(RHICmdList, ShaderRHI, ProbeCount, InProbeCount);
+		SetShaderValue(RHICmdList, ShaderRHI, bInitializeDirections, bInInitializeDirections);
 
 		if (DirectionsUAV.IsBound())
 		{
@@ -102,7 +105,7 @@ public:
 		}
 		if (RadianceScratchUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceScratchUAV.GetBaseIndex(), RadianceScratchView);
 		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), HitTriangleIndexView);
-		if (LogicalToPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), InLogicalToPhysicalSRV);
+		if (NewPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, NewPhysicalSlots.GetBaseIndex(), InNewPhysicalSlotsSRV);
 	}
 
 	template<typename TShaderRHIParamRef>
@@ -122,7 +125,7 @@ public:
 		}
 		if (RadianceScratchUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceScratchUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
-		if (LogicalToPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), FShaderResourceViewRHIRef());
+		if (NewPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, NewPhysicalSlots.GetBaseIndex(), FShaderResourceViewRHIRef());
 	}
 
 private:
@@ -139,7 +142,8 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceScratchUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexUAV);
-	LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
+	LAYOUT_FIELD(FShaderResourceParameter, NewPhysicalSlots);
+	LAYOUT_FIELD(FShaderParameter, bInitializeDirections);
 };
 
 IMPLEMENT_SHADER_TYPE(
@@ -974,10 +978,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FTexture2DRHIRef InitHitDistanceTexture;
 	FTexture2DRHIRef InitRadianceScratchTexture;
 	FTexture2DRHIRef InitHitTriangleIndexTexture;
-	uint32 InitProbeCount = 0;
+	uint32 InitPendingSlotCount = 0;
+	bool bInitializeDirections = false;
 	if (DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
 		Scene, InitDirectionsTexture, InitRadianceTexture, InitHitDistanceTexture,
-		InitRadianceScratchTexture, InitHitTriangleIndexTexture, InitProbeCount))
+		InitRadianceScratchTexture, InitHitTriangleIndexTexture, InitPendingSlotCount, bInitializeDirections))
 	{
 		if (!InitDirectionsTexture.IsValid() ||
 			!InitRadianceTexture.IsValid() ||
@@ -1012,16 +1017,20 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 			TShaderMapRef<FDDGIRadianceCascadeInitializeRHI> InitializeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 			RHICmdList.SetComputeShader(InitializeShader.GetComputeShader());
+			const uint32 InitTotalTexels = InitPendingSlotCount * TotalRaysPerProbe;
+			const uint32 InitTotalGroups = FMath::DivideAndRoundUp(InitTotalTexels, 64u);
+			const uint32 InitGroupsX = FMath::Min(InitTotalGroups, 65535u);
+			const uint32 InitGroupsY = FMath::DivideAndRoundUp(InitTotalGroups, InitGroupsX);
 			InitializeShader->SetParameters(
 				RHICmdList, InitializeShader.GetComputeShader(), InitDirectionsUAV, InitRadianceUAV,
 				InitHitDistanceUAV, InitRadianceScratchUAV, InitHitTriangleIndexUAV,
-				LogicalToPhysicalSRV,
+				NewPhysicalSlotsSRV, bInitializeDirections ? 1u : 0u,
 				TotalRaysPerProbe,
 				static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
 				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64)),
 				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.RaySplitFactor, 1, 4)),
-				InitProbeCount, TotalTexels, GroupsX);
-			DispatchComputeShader(RHICmdList, InitializeShader.GetShader(), GroupsX, GroupsY, 1);
+				InitPendingSlotCount, InitTotalTexels, InitGroupsX);
+			DispatchComputeShader(RHICmdList, InitializeShader.GetShader(), InitGroupsX, InitGroupsY, 1);
 			InitializeShader->UnbindResources(RHICmdList, InitializeShader.GetComputeShader());
 
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InitDirectionsTexture);
