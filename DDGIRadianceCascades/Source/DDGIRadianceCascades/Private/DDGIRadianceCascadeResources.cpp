@@ -258,7 +258,13 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         (!bRayLayoutChanged && Storage.RayProbeCapacity > 0)
         ? static_cast<int64>(Storage.RayProbeCapacity)
         : 0;
-    const int64 RequiredProbeCapacity = FMath::Max<int64>(ActiveProbeCount, ExistingProbeCapacity);
+    // Keep modest growth headroom so small active-window count fluctuations
+    // do not recreate ray-history textures and discard retained probe history.
+    // This is bounded by MaxActiveProbes; it never reserves the full cap by default.
+    const int64 ActiveProbeCapacity = FMath::Min<int64>(
+        Config.MaxActiveProbes,
+        static_cast<int64>(FMath::RoundUpToPowerOfTwo(static_cast<uint32>(ActiveProbeCount))));
+    const int64 RequiredProbeCapacity = FMath::Max<int64>(ActiveProbeCapacity, ExistingProbeCapacity);
     const int64 RequiredCapacityTexels = RequiredProbeCapacity * static_cast<int64>(Config.TotalRaysPerProbe);
     const int64 CapacityHeight64 = (RequiredCapacityTexels + GDDGIRadianceCascadeTextureWidth - 1) /
         GDDGIRadianceCascadeTextureWidth;
