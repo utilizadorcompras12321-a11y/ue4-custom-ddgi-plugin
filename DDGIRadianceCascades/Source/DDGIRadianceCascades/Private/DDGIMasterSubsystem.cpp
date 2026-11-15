@@ -329,7 +329,8 @@ namespace
 			SafeSpacingDouble * 2.0, static_cast<double>(SafeRadius) * 0.05);
 		int64 LevelCandidateCounts[4] = { 0, 0, 0, 0 };
 		int64 FirstX[4], LastX[4], FirstY[4], LastY[4], FirstZ[4], LastZ[4];
-		int32 LevelSteps[4] = { 1, 2, 4, 8 };
+		// Explicit non-dyadic spatial steps retain substantially more detail in distant LODs.
+		int32 LevelSteps[4] = { 1, 2, 3, 4 };
 		int64 MinDistanceSquared[4] = { 0, 0, 0, 0 };
 		int64 MaxDistanceSquared[4] = { 0, 0, 0, 0 };
 
