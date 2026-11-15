@@ -930,6 +930,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	// dispatching anything. A late allocation failure must not leave Radiance
 	// partially overwritten by Trace while Apply still reads the previous frame.
 	FTexture2DRHIRef RadianceScratchTexture;
+	FTexture2DRHIRef RadianceIntegrationScratchTexture;
 	FShaderResourceViewRHIRef SpatialHashSRV, NeighborListSRV;
 	uint32 HashCapacity = 0, SpatialProbeCount = 0, NeighborListProbeCount = 0;
 	float ProbeSpacing = 0.0f;
@@ -943,6 +944,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			? 1u : 0u;
 	}
 	if (!DDGIGetRadianceCascadeScratchTexture_RenderThread(Scene, RadianceScratchTexture) ||
+		!DDGIGetRadianceCascadeIntegrationScratchTexture_RenderThread(Scene, RadianceIntegrationScratchTexture) ||
 		!DDGIGetRadianceCascadeProbePositionsRHI_RenderThread(Scene, ProbePositionsTexture, SpatialProbeCount) ||
 		SpatialProbeCount != ProbeCount)
 	{
@@ -967,11 +969,15 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FShaderResourceViewRHIRef GatherDirectionsSRV = RHICreateShaderResourceView(DirectionsTexture, 0);
 	FShaderResourceViewRHIRef GatherPositionsSRV = RHICreateShaderResourceView(ProbePositionsTexture, 0);
 	FUnorderedAccessViewRHIRef GatherOutputUAV = RHICreateUnorderedAccessView(RadianceScratchTexture);
-	FUnorderedAccessViewRHIRef IntegrationRadianceUAV = RHICreateUnorderedAccessView(RadianceScratchTexture);
+	FShaderResourceViewRHIRef GatherOutputSRV = RHICreateShaderResourceView(RadianceScratchTexture, 0);
+	FShaderResourceViewRHIRef IntegrationScratchSRV = RHICreateShaderResourceView(RadianceIntegrationScratchTexture, 0);
+	FUnorderedAccessViewRHIRef IntegrationScratchUAV = RHICreateUnorderedAccessView(RadianceIntegrationScratchTexture);
 	FShaderResourceViewRHIRef IntegrationHitDistanceSRV = RHICreateShaderResourceView(HitDistanceTexture, 0);
 	if (!GatherRadianceSRV.IsValid() || !GatherHitSRV.IsValid() || !GatherHitIndicesSRV.IsValid() ||
 		!GatherDirectionsSRV.IsValid() || !GatherPositionsSRV.IsValid() || !TrianglesSRV.IsValid() ||
-		!GatherOutputUAV.IsValid() || !IntegrationRadianceUAV.IsValid() || !IntegrationHitDistanceSRV.IsValid())
+		!GatherOutputUAV.IsValid() || !GatherOutputSRV.IsValid() ||
+		!IntegrationScratchSRV.IsValid() || !IntegrationScratchUAV.IsValid() ||
+		!IntegrationHitDistanceSRV.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to prepare Gather/Integrate SRV/UAV views."));
 		return;
@@ -1165,12 +1171,25 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	GatherShader->UnbindResources(RHICmdList,GatherShader.GetComputeShader());
 	
 
-	// Integrate directly in the gather output. Parent and child cascades occupy
-	// disjoint texel ranges, so one UAV can safely read child rays and write parents.
+	// Gather output remains immutable during integration. Each dispatch reads
+	// its child cascade from the previous result and writes only the parent range
+	// into the alternate output texture. The first cascade is the only result
+	// consumed by deferred lighting.
 	{
 		const uint32 CascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
 		const uint32 TotalRays = static_cast<uint32>(Config->TotalRaysPerProbe);
 		TShaderMapRef<FDDGIRadianceCascadeIntegrateRHI> IntegrateShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+
+		FShaderResourceViewRHIRef ChildRadianceSRV = GatherOutputSRV;
+		FTexture2DRHIRef IntegrationDestinationTexture = RadianceTexture;
+		FUnorderedAccessViewRHIRef IntegrationDestinationUAV = RadianceUAV;
+		bool bIntegrationDestinationIsPrimary = true;
+		bool bFinalRadianceIsPrimary = false;
+		bool bDispatchedIntegration = false;
+
+		DDGITransitionTexture(RHICmdList, RadianceScratchTexture,
+			ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+
 		for (int32 CascadeIndex = static_cast<int32>(CascadeCount) - 2; CascadeIndex >= 0; --CascadeIndex)
 		{
 			const uint32 CurrentCascadeRayCount = static_cast<uint32>(
@@ -1186,17 +1205,14 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			const uint32 IntegrationGroupsY = FMath::DivideAndRoundUp(
 				IntegrationTexels, IntegrationGroups * 64u);
 
-
-			// Same-state UAV transition: D3D12 flushes the compute UAV cache;
-			// D3D11 ends the UAV-overlap group. Orders Gather and each cascade
-			// before the following Integrate dispatch reads child radiance.
-			DDGITransitionTexture(RHICmdList, RadianceScratchTexture,
-				ERHIAccess::UAVCompute, ERHIAccess::UAVCompute);
+			DDGITransitionTexture(RHICmdList, IntegrationDestinationTexture,
+				ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 
 			RHICmdList.SetComputeShader(IntegrateShader.GetComputeShader());
 			IntegrateShader->SetParameters(
 				RHICmdList, IntegrateShader.GetComputeShader(),
-				IntegrationRadianceUAV, IntegrationHitDistanceSRV, LogicalToPhysicalSRV,
+				IntegrationDestinationUAV, GatherOutputSRV, ChildRadianceSRV,
+				IntegrationHitDistanceSRV, LogicalToPhysicalSRV,
 				IntegrationTexels, IntegrationGroups, TotalRays,
 				static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
 				CurrentCascadeRayCount,
@@ -1207,14 +1223,38 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), IntegrationGroups, IntegrationGroupsY, 1);
 			IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
 
+			DDGITransitionTexture(RHICmdList, IntegrationDestinationTexture,
+				ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+			bFinalRadianceIsPrimary = bIntegrationDestinationIsPrimary;
+			bDispatchedIntegration = true;
+
+			ChildRadianceSRV = bIntegrationDestinationIsPrimary
+				? GatherRadianceSRV
+				: IntegrationScratchSRV;
+
+			if (bIntegrationDestinationIsPrimary)
+			{
+				IntegrationDestinationTexture = RadianceIntegrationScratchTexture;
+				IntegrationDestinationUAV = IntegrationScratchUAV;
+				bIntegrationDestinationIsPrimary = false;
+			}
+			else
+			{
+				IntegrationDestinationTexture = RadianceTexture;
+				IntegrationDestinationUAV = RadianceUAV;
+				bIntegrationDestinationIsPrimary = true;
+			}
 		}
 
-		DDGITransitionTexture(RHICmdList, RadianceScratchTexture,
-			ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
-
-		// Apply consumes Storage.Radiance. Swap once, including the one-cascade
-		// case where gather output is already the complete radiance result.
-		DDGISwapRadianceCascadeRadianceBuffers_RenderThread(Scene);
+		if (!bDispatchedIntegration)
+		{
+			// With one cascade, Gather already produced the complete result.
+			DDGISwapRadianceCascadeRadianceBuffers_RenderThread(Scene);
+		}
+		else if (!bFinalRadianceIsPrimary)
+		{
+			DDGISwapRadianceCascadeIntegrationBuffers_RenderThread(Scene);
+		}
 	}
 
 }
