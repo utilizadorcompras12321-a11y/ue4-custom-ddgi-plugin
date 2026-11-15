@@ -51,7 +51,6 @@ public:
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
 		RadianceScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
 		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
-		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
