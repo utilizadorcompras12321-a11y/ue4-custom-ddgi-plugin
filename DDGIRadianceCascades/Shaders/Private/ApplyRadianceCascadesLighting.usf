@@ -212,10 +212,6 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
-    // The existing upscale pass applies albedo when rendering below full res.
-    if (View.ViewSizeAndInvSize.x != ScaledViewSizeAndInvSize.x)
-        Albedo = 1.0f;
-
     float PreExposure = ShouldUsePreExposure != 0u ? View.PreExposure : 1.0f;
     // Every in-bounds pixel is written exactly once. The UAV is not assumed
     // to contain initialized data from a previous frame or allocation.
