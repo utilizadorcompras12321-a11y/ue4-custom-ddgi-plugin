@@ -105,6 +105,9 @@ namespace
 		uint32 BVHTriangleCount = 0;
 		uint32 LastRadianceUpdateFrameNumber = MAX_uint32;
 		bool bNeedsInitialization = true;
+		bool bNeedsDirectionInitialization = true;
+		bool bInvalidateAllPhysicalSlots = false;
+		bool bPendingPhysicalSlotsUpload = false;
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
 		FIntPoint DirectionDimensions = FIntPoint::ZeroValue;
 		int32 TotalRaysPerProbe = 0;
@@ -169,6 +172,9 @@ namespace
 			UploadedProbeSpacing = 0.0f;
 			TotalRaysPerProbe = 0;
 			bNeedsInitialization = true;
+			bNeedsDirectionInitialization = true;
+			bInvalidateAllPhysicalSlots = false;
+			bPendingPhysicalSlotsUpload = false;
 			LastRadianceUpdateFrameNumber = MAX_uint32;
 		}
 	};
@@ -280,6 +286,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.TotalRaysPerProbe = 0;
         Storage.RayProbeCapacity = 0;
         Storage.bNeedsInitialization = true;
+        Storage.bNeedsDirectionInitialization = true;
+        Storage.bInvalidateAllPhysicalSlots = false;
+        Storage.bPendingPhysicalSlotsUpload = false;
         // Ray texture recreation invalidates every physical slot and its history.
         Storage.LogicalToPhysicalSlots.SafeRelease();
         Storage.LogicalToPhysicalSlotsSRV.SafeRelease();
@@ -390,7 +399,11 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.UploadedProbeCount == ProbeCount &&
         Storage.UploadedProbeLayoutHash == ProbeLayoutHash &&
         FMath::IsNearlyEqual(Storage.UploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f);
-    const bool bProbeLayoutChanged = !bProbePositionsMatch;
+    const bool bPhysicalMappingMissing =
+        Storage.PhysicalSlotCapacity == 0 ||
+        Storage.LogicalToPhysicalSlotCPU.Num() != ActiveProbeCount ||
+        !Storage.LogicalToPhysicalSlotsSRV.IsValid();
+    const bool bProbeLayoutChanged = !bProbePositionsMatch || bPhysicalMappingMissing;
 
     if (bProbeLayoutChanged)
     {
@@ -486,7 +499,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         }
 
         Storage.LogicalToPhysicalSlotCPU.SetNumUninitialized(ActiveProbeCount);
-        Storage.NewlyAllocatedPhysicalSlotsCPU.Reset();
         for (int32 LogicalIndex = 0; LogicalIndex < ActiveProbeCount; ++LogicalIndex)
         {
             const FDDGIProbeCellKey& Key = ProbeCellKeys[LogicalIndex];
@@ -505,7 +517,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             const uint32 NewPhysicalSlot = Storage.FreePhysicalSlots.Pop(false);
             Storage.ProbeCellToPhysicalSlot.Add(Key, NewPhysicalSlot);
             Storage.LogicalToPhysicalSlotCPU[LogicalIndex] = NewPhysicalSlot;
-            Storage.NewlyAllocatedPhysicalSlotsCPU.Add(NewPhysicalSlot);
+            Storage.NewlyAllocatedPhysicalSlotsCPU.AddUnique(NewPhysicalSlot);
+            Storage.bPendingPhysicalSlotsUpload = true;
         }
 
         TResourceArray<uint32> LogicalToPhysicalData;
@@ -522,6 +535,31 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.LogicalToPhysicalSlotsSRV = RHICreateShaderResourceView(Storage.LogicalToPhysicalSlots);
         }
 
+        if (!Storage.LogicalToPhysicalSlotsSRV.IsValid() ||
+            !Storage.NewlyAllocatedPhysicalSlotsSRV.IsValid())
+        {
+            Storage.LogicalToPhysicalSlots.SafeRelease();
+            Storage.LogicalToPhysicalSlotsSRV.SafeRelease();
+            Storage.NewlyAllocatedPhysicalSlots.SafeRelease();
+            Storage.NewlyAllocatedPhysicalSlotsSRV.SafeRelease();
+            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to upload physical probe-slot mapping buffers."));
+            return;
+        }
+    }
+
+    if (Storage.bInvalidateAllPhysicalSlots)
+    {
+        Storage.NewlyAllocatedPhysicalSlotsCPU.Reset();
+        for (const uint32 PhysicalSlot : Storage.LogicalToPhysicalSlotCPU)
+        {
+            Storage.NewlyAllocatedPhysicalSlotsCPU.AddUnique(PhysicalSlot);
+        }
+        Storage.bInvalidateAllPhysicalSlots = false;
+        Storage.bPendingPhysicalSlotsUpload = true;
+    }
+
+    if (Storage.bPendingPhysicalSlotsUpload)
+    {
         TResourceArray<uint32> NewPhysicalSlotData;
         if (Storage.NewlyAllocatedPhysicalSlotsCPU.Num() > 0)
         {
@@ -531,7 +569,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         {
             NewPhysicalSlotData.Add(0u);
         }
-        FRHIResourceCreateInfo NewPhysicalSlotsInfo(TEXT("DDGIRadianceCascade_NewPhysicalSlots"));
+        FRHIResourceCreateInfo NewPhysicalSlotsInfo(TEXT("DDGIRadianceCascade_PendingPhysicalSlots"));
         NewPhysicalSlotsInfo.ResourceArray = &NewPhysicalSlotData;
         Storage.NewlyAllocatedPhysicalSlots.SafeRelease();
         Storage.NewlyAllocatedPhysicalSlotsSRV.SafeRelease();
@@ -543,16 +581,12 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.NewlyAllocatedPhysicalSlotsSRV =
                 RHICreateShaderResourceView(Storage.NewlyAllocatedPhysicalSlots);
         }
-        if (!Storage.LogicalToPhysicalSlotsSRV.IsValid() ||
-            !Storage.NewlyAllocatedPhysicalSlotsSRV.IsValid())
+        if (!Storage.NewlyAllocatedPhysicalSlotsSRV.IsValid())
         {
-            Storage.LogicalToPhysicalSlots.SafeRelease();
-            Storage.LogicalToPhysicalSlotsSRV.SafeRelease();
-            Storage.NewlyAllocatedPhysicalSlots.SafeRelease();
-            Storage.NewlyAllocatedPhysicalSlotsSRV.SafeRelease();
-            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to upload physical probe-slot mapping buffers."));
+            UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to upload pending physical probe slots; initialization will retry."));
             return;
         }
+        Storage.bPendingPhysicalSlotsUpload = false;
     }
 
     // Hash allocation success/failure is deliberately not part of layout identity.
@@ -620,7 +654,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // allocation cannot trigger repeated initialization on an unchanged layout.
     if (bProbeLayoutChanged)
     {
-        Storage.bNeedsInitialization = true;
+        Storage.bNeedsInitialization =
+            Storage.bNeedsDirectionInitialization ||
+            Storage.NewlyAllocatedPhysicalSlotsCPU.Num() > 0;
         // A different layout is a new allocation target, so do not inherit
         // backoff from failures associated with the previous probe lattice.
         Storage.ProbeSpatialHashRetryCountdown = 0;
@@ -825,6 +861,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     {
         // Radiance and hit-distance history was traced against the previous
         // geometry snapshot. Reinitialize it before tracing with the new BVH.
+        Storage.bInvalidateAllPhysicalSlots = true;
         Storage.bNeedsInitialization = true;
         Storage.BVHRetryCountdown = 0;
     }
@@ -978,6 +1015,7 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     OutHitDistance = nullptr;
     FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || !Storage->bNeedsInitialization ||
+        (Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0 && !Storage->bNeedsDirectionInitialization) ||
         !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() || !Storage->HitDistance.IsValid())
     {
         return false;
@@ -995,7 +1033,8 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     FTexture2DRHIRef& OutHitDistance,
     FTexture2DRHIRef& OutRadianceScratch,
     FTexture2DRHIRef& OutHitTriangleIndex,
-    uint32& OutProbeCount)
+    uint32& OutPendingSlotCount,
+    bool& bOutInitializeDirections)
 {
     check(IsInRenderingThread() || IsInParallelRenderingThread());
     OutDirections.SafeRelease();
@@ -1003,9 +1042,11 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     OutHitDistance.SafeRelease();
     OutRadianceScratch.SafeRelease();
     OutHitTriangleIndex.SafeRelease();
-    OutProbeCount = 0;
+    OutPendingSlotCount = 0;
+    bOutInitializeDirections = false;
     FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || !Storage->bNeedsInitialization ||
+        (Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0 && !Storage->bNeedsDirectionInitialization) ||
         !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() ||
         !Storage->HitDistance.IsValid() || !Storage->RadianceScratch.IsValid() ||
         !Storage->HitTriangleIndex.IsValid() || Storage->UploadedProbeCount <= 0)
@@ -1030,7 +1071,8 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     OutHitDistance = HitDistanceItem.ShaderResourceTexture->GetTexture2D();
     OutRadianceScratch = RadianceScratchItem.ShaderResourceTexture->GetTexture2D();
     OutHitTriangleIndex = HitTriangleIndexItem.ShaderResourceTexture->GetTexture2D();
-    OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
+    OutPendingSlotCount = static_cast<uint32>(Storage->NewlyAllocatedPhysicalSlotsCPU.Num());
+    bOutInitializeDirections = Storage->bNeedsDirectionInitialization;
     return OutDirections.IsValid() && OutRadiance.IsValid() && OutHitDistance.IsValid() &&
         OutRadianceScratch.IsValid() && OutHitTriangleIndex.IsValid();
 }
@@ -1343,6 +1385,7 @@ void DDGIInvalidateRadianceCascadeHistory_RenderThread(const FSceneInterface* Sc
     check(IsInRenderingThread() || IsInParallelRenderingThread());
     if (FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene))
     {
+        Storage->bInvalidateAllPhysicalSlots = true;
         Storage->bNeedsInitialization = true;
     }
 }
@@ -1352,6 +1395,9 @@ void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInt
     check(IsInRenderingThread() || IsInParallelRenderingThread());
     if (FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene))
     {
+        Storage->NewlyAllocatedPhysicalSlotsCPU.Reset();
+        Storage->bNeedsDirectionInitialization = false;
+        Storage->bInvalidateAllPhysicalSlots = false;
         Storage->bNeedsInitialization = false;
     }
 }
