@@ -239,9 +239,13 @@ namespace
 		float Radius,
 		const FIntVector& CenterCell,
 		int32 MaxProbeCount,
-		TArray<FVector4>& OutPositions)
+		TArray<FVector4>& OutPositions,
+		TArray<FIntVector>& OutCellCoordinates,
+		TArray<int32>& OutLevels)
 	{
 		OutPositions.Reset();
+		OutCellCoordinates.Reset();
+		OutLevels.Reset();
 		if (!std::isfinite(static_cast<double>(Spacing)) ||
 			!std::isfinite(static_cast<double>(Radius)))
 		{
@@ -405,6 +409,8 @@ namespace
 		}
 
 		OutPositions.Reserve(static_cast<int32>(FMath::Min<int64>(SafeMaxProbeCount, TotalCandidateCount)));
+		OutCellCoordinates.Reserve(static_cast<int32>(FMath::Min<int64>(SafeMaxProbeCount, TotalCandidateCount)));
+		OutLevels.Reserve(static_cast<int32>(FMath::Min<int64>(SafeMaxProbeCount, TotalCandidateCount)));
 		for (int32 Level = 0; Level < 4; ++Level)
 		{
 			const int32 Quota = Quotas[Level];
@@ -509,26 +515,24 @@ namespace
 			for (const FDDGISelectedProbeCandidate& Candidate : SelectedCandidates)
 			{
 				OutPositions.Add(Candidate.Position);
+				OutCellCoordinates.Add(FIntVector(Candidate.CellX, Candidate.CellY, Candidate.CellZ));
+				OutLevels.Add(FMath::RoundToInt(Candidate.Position.W));
 			}
 		}
 	}
 	uint32 DDGIComputeProbeLayoutHash(
-		const TArray<FVector4>& ProbePositions,
-		float ProbeSpacing)
+		const TArray<FIntVector>& CellCoordinates,
+		const TArray<int32>& ProbeLevels)
 	{
-		const float SafeProbeSpacing = FMath::Max(1.0f, ProbeSpacing);
 		uint32 Hash = 2166136261u;
-		for (const FVector4& Position : ProbePositions)
+		const int32 Count = FMath::Min(CellCoordinates.Num(), ProbeLevels.Num());
+		for (int32 Index = 0; Index < Count; ++Index)
 		{
-			const FVector Relative(Position.X, Position.Y, Position.Z);
-			const FIntVector Cell(
-				FMath::RoundToInt(Relative.X / SafeProbeSpacing),
-				FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
-				FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
+			const FIntVector& Cell = CellCoordinates[Index];
 			Hash = (Hash ^ static_cast<uint32>(Cell.X)) * 16777619u;
 			Hash = (Hash ^ static_cast<uint32>(Cell.Y)) * 16777619u;
 			Hash = (Hash ^ static_cast<uint32>(Cell.Z)) * 16777619u;
-			Hash = (Hash ^ static_cast<uint32>(FMath::RoundToInt(Position.W))) * 16777619u;
+			Hash = (Hash ^ static_cast<uint32>(ProbeLevels[Index])) * 16777619u;
 		}
 		return Hash;
 	}
@@ -825,12 +829,12 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	bHasActiveWindowCenterCell = true;
 	DDGIBuildActiveProbePositions(
 		Config.ProbeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
-		Config.MaxActiveProbes, Config.ProbePositions);
+		Config.MaxActiveProbes, Config.ProbePositions, Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
 	// Estimate the actual generated lattice, not the hard safety cap.
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
-		Config.ProbePositions, Config.ProbeSpacing);
+		Config.ProbeCellCoordinates, Config.ProbeLevels);
 
 	UE_LOG(LogTemp, Log,
 		TEXT("DDGI probe grid: radius %.1f cm, requested spacing %.1f cm, effective spacing %.1f cm, probes %d / %d; ray trace distance %.1f cm; cascades %d / %d active; rays per probe %d."),
