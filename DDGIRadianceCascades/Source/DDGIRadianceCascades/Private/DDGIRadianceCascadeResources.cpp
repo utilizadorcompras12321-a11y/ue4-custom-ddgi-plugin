@@ -627,6 +627,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.bPendingPhysicalSlotsUpload = false;
     }
 
+    // A changed logical layout invalidates both lookup buffers immediately.
+    // Retry backoff is only for repeated allocation failures on an unchanged layout;
+    // it must never leave an old hash/neighbor table available to the new probes.
+    if (bProbeLayoutChanged)
+    {
+        Storage.ProbeSpatialHashRetryCountdown = 0;
+        Storage.ProbeNeighborRetryCountdown = 0;
+    }
+
     // Hash allocation success/failure is deliberately not part of layout identity.
     if (!bProbePositionsMatch)
     {
