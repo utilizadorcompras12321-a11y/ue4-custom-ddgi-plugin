@@ -30,6 +30,7 @@ Texture2D<float4> DirectionsTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> BVHNodes;
 StructuredBuffer<float4> BVHTriangles;
+StructuredBuffer<uint> LogicalToPhysicalSlots;
 RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<uint> HitTriangleIndexUAV;
@@ -672,9 +673,11 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    uint2 Pixel = uint2(LinearIndex % TextureWidth, LinearIndex / TextureWidth);
     uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
     uint PackedRayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
+    uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+    uint PhysicalLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
+    uint2 Pixel = uint2(PhysicalLinearIndex % TextureWidth, PhysicalLinearIndex / TextureWidth);
     uint2 ProbePixel = uint2(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth);
     // ProbePositionsTexture stores lattice-relative offsets; ProbeGridOrigin maps them into trace space.
     float3 Origin = ProbeGridOrigin.xyz + ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
