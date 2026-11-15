@@ -152,9 +152,12 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             }
             ++NeighborSlot;
         }
-        // Probe positions are generated as ProbeGridOrigin + integer cell * spacing.
-        // Reconstruct the neighbor origin instead of fetching another position texel.
-        float3 NeighborPosition = ProbeGridOrigin.xyz + float3(NeighborCell) * SafeSpacing;
+        // Read the actual neighbor offset instead of reconstructing its position
+        // from a global spacing. This is equivalent for the current uniform
+        // lattice and remains correct when probes later use per-level spacing.
+        float3 NeighborPositionOffset = ProbePositionsTexture.Load(
+            int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
+        float3 NeighborPosition = ProbeGridOrigin.xyz + NeighborPositionOffset;
         uint NeighborLinear = NeighborIndex * TotalRaysPerProbe + RayIndex;
         uint2 NeighborPixel = uint2(NeighborLinear % TextureWidth, NeighborLinear / TextureWidth);
         // Ray directions are initialized solely from RayIndex and cascade
