@@ -332,6 +332,11 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // contract before uploading positions or building either lookup structure:
     // W must be an integer level and XYZ must lie on that level's base lattice.
     const float LatticeTolerance = FMath::Max(0.01f, SafeProbeSpacing * 1.0e-4f);
+    // Cell coordinates are consumed by validation, hash construction, and
+    // neighbor construction. Quantize once so all three stages share exactly
+    // the same integer identity and avoid repeating float division/rounding.
+    TArray<FDDGIProbeCellKey> ProbeCellKeys;
+    ProbeCellKeys.SetNumUninitialized(ActiveProbeCount);
     for (int32 ProbeIndex = 0; ProbeIndex < ActiveProbeCount; ++ProbeIndex)
     {
         const FVector4& Position = Config.ProbePositions[ProbeIndex];
@@ -351,6 +356,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             FMath::RoundToInt(Position.X / SafeProbeSpacing),
             FMath::RoundToInt(Position.Y / SafeProbeSpacing),
             FMath::RoundToInt(Position.Z / SafeProbeSpacing));
+        ProbeCellKeys[ProbeIndex] = FDDGIProbeCellKey{
+            Cell, static_cast<uint32>(ProbeLevel) };
         const bool bOnBaseLattice =
             FMath::IsNearlyEqual(Position.X, static_cast<float>(Cell.X) * SafeProbeSpacing, LatticeTolerance) &&
             FMath::IsNearlyEqual(Position.Y, static_cast<float>(Cell.Y) * SafeProbeSpacing, LatticeTolerance) &&
@@ -481,13 +488,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         bool bHashBuildSucceeded = true;
         for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
         {
-            const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
-            const FVector Relative(Position.X, Position.Y, Position.Z);
-            const FIntVector Cell(
-                FMath::RoundToInt(Relative.X / SafeProbeSpacing),
-                FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
-                FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
-            const uint32 ProbeLevel = static_cast<uint32>(FMath::Clamp(FMath::RoundToInt(Position.W), 0, 7));
+            const FDDGIProbeCellKey& ProbeKey = ProbeCellKeys[static_cast<int32>(ProbeIndex)];
+            const FIntVector& Cell = ProbeKey.Cell;
+            const uint32 ProbeLevel = ProbeKey.Level;
             uint32 Slot = DDGIHashProbeCell(Cell, ProbeLevel) & (RequiredHashCapacity - 1u);
             bool bInserted = false;
             for (uint32 ProbeAttempt = 0u; ProbeAttempt < RequiredHashCapacity; ++ProbeAttempt)
@@ -583,14 +586,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         bool bBuildSucceeded = true;
         for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash; ++ProbeIndex)
         {
-            const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
-            const FVector Relative(Position.X, Position.Y, Position.Z);
-            const FIntVector Cell(
-                FMath::RoundToInt(Relative.X / SafeProbeSpacing),
-                FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
-                FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
-            const uint32 ProbeLevel = static_cast<uint32>(FMath::Clamp(FMath::RoundToInt(Position.W), 0, 7));
-            const FDDGIProbeCellKey Key{ Cell, ProbeLevel };
+            const FDDGIProbeCellKey& Key = ProbeCellKeys[static_cast<int32>(ProbeIndex)];
             if (ProbeCellToIndex.Contains(Key))
             {
                 bBuildSucceeded = false;
@@ -610,13 +606,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             }
             for (uint32 ProbeIndex = 0u; ProbeIndex < ProbeCountForHash && bBuildSucceeded; ++ProbeIndex)
             {
-                const FVector4& Position = Config.ProbePositions[static_cast<int32>(ProbeIndex)];
-                const FVector Relative(Position.X, Position.Y, Position.Z);
-                const FIntVector CenterCell(
-                    FMath::RoundToInt(Relative.X / SafeProbeSpacing),
-                    FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
-                    FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
-                const int32 ProbeLevel = FMath::Clamp(FMath::RoundToInt(Position.W), 0, 7);
+                const FDDGIProbeCellKey& CenterKey = ProbeCellKeys[static_cast<int32>(ProbeIndex)];
+                const FIntVector& CenterCell = CenterKey.Cell;
+                const int32 ProbeLevel = static_cast<int32>(CenterKey.Level);
                 const int32 LevelCellStep = 1 << ProbeLevel;
                 uint32 Slot = 0u;
                 for (int32 Z = -1; Z <= 1; ++Z)
