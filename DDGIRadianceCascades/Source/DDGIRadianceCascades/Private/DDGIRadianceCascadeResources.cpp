@@ -1021,7 +1021,7 @@ bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || !Storage->bNeedsInitialization ||
         Storage->bPendingPhysicalSlotsUpload || Storage->bInvalidateAllPhysicalSlots ||
-        (Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0 && !Storage->bNeedsDirectionInitialization) ||
+        Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0 ||
         !Storage->Directions.IsValid() || !Storage->Radiance.IsValid() || !Storage->HitDistance.IsValid())
     {
         return false;
