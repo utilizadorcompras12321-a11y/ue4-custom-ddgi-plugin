@@ -791,16 +791,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
-	// Probe data is scene-wide. The first view that claims this frame also
-	// supplies the camera center; later views must not move the grid again.
+	// Probe positions are anchored to world origin. The active view controls
+	// when this scene-wide update runs, but never translates the probe lattice.
 	if (!DDGIBeginRadianceCascadeUpdate_RenderThread(Scene, InView.Family->FrameNumber))
 	{
 		return;
 	}
-
-	DDGIUpdateCameraProbeGridOrigin_RenderThread(
-		Scene, InView.ViewMatrices.GetViewOrigin());
-	Config = DDGIGetMasterConfig_RenderThread(Scene);
 	if (!Config || !Config->SoftwareBVH.IsValid())
 	{
 		return;
@@ -843,8 +839,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const uint32 GroupsX = FMath::Min(TotalGroups, 65535u);
 	const uint32 GroupsY = FMath::DivideAndRoundUp(TotalGroups, GroupsX);
 
-	// Initialize ray directions and clear radiance when the probe layout or snapped
-	// camera-centered grid changes, or when GPU storage is recreated.
+	// Initialize ray directions and clear radiance when the fixed world-space
+	// probe layout changes or when GPU storage is recreated.
 	// Keep initialization outputs separate from the tracing resources.
 	// The initialization getter SafeReleases its output references when no
 	// initialization is pending; sharing the tracing references would null them.
