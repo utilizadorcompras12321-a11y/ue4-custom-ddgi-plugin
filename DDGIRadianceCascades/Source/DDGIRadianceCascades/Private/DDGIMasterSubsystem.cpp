@@ -7,8 +7,8 @@
 #include "DDGIRadianceCascadeResources.h"
 #include "DDGISoftwareBVH.h"
 #include "Components/DirectionalLightComponent.h"
-#include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 
 namespace
 {
@@ -26,14 +26,10 @@ namespace
 		{
 			if (APlayerController* PlayerController = World->GetFirstPlayerController())
 			{
-				if (PlayerController->PlayerCameraManager)
-				{
-					return PlayerController->PlayerCameraManager->GetCameraLocation();
-				}
-				if (APawn* Pawn = PlayerController->GetPawn())
-				{
-					return Pawn->GetActorLocation();
-				}
+				FVector CameraLocation = FVector::ZeroVector;
+				FRotator CameraRotation = FRotator::ZeroRotator;
+				PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
+				return CameraLocation;
 			}
 		}
 		return InActor->GetActorLocation();
