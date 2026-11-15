@@ -222,12 +222,18 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float Boundary0 = GridRadius * 0.25f;
     float Boundary1 = GridRadius * 0.50f;
     float Boundary2 = GridRadius * 0.75f;
-    float Blend0 = 1.0f - smoothstep(Boundary0 - TransitionWidth, Boundary0 + TransitionWidth, GridDistance);
-    float Blend1 = smoothstep(Boundary0 - TransitionWidth, Boundary0 + TransitionWidth, GridDistance) *
-        (1.0f - smoothstep(Boundary1 - TransitionWidth, Boundary1 + TransitionWidth, GridDistance));
-    float Blend2 = smoothstep(Boundary1 - TransitionWidth, Boundary1 + TransitionWidth, GridDistance) *
-        (1.0f - smoothstep(Boundary2 - TransitionWidth, Boundary2 + TransitionWidth, GridDistance));
-    float Blend3 = smoothstep(Boundary2 - TransitionWidth, Boundary2 + TransitionWidth, GridDistance);
+    // Build a partition of unity. Each farther level receives only the
+    // weight remaining after all nearer transitions have completed.
+    float Transition0 = smoothstep(
+        Boundary0 - TransitionWidth, Boundary0 + TransitionWidth, GridDistance);
+    float Transition1 = smoothstep(
+        Boundary1 - TransitionWidth, Boundary1 + TransitionWidth, GridDistance);
+    float Transition2 = smoothstep(
+        Boundary2 - TransitionWidth, Boundary2 + TransitionWidth, GridDistance);
+    float Blend0 = 1.0f - Transition0;
+    float Blend1 = Transition0 * (1.0f - Transition1);
+    float Blend2 = Transition0 * Transition1 * (1.0f - Transition2);
+    float Blend3 = Transition0 * Transition1 * Transition2;
 
     float3 Irradiance = 0.0f;
     float ProbeWeightSum = 0.0f;
