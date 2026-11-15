@@ -25,6 +25,14 @@ namespace
 		return Hash;
 	}
 
+	struct FDDGIProbeSpatialHashEntry
+	{
+		int32 X;
+		int32 Y;
+		int32 Z;
+		int32 EncodedProbe;
+	};
+
 	struct FDDGIProbeCellKey
 	{
 		FIntVector Cell;
@@ -504,11 +512,11 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbeSpatialHash.SafeRelease();
         Storage.ProbeSpatialHashSRV.SafeRelease();
 
-        TResourceArray<FVector4> HashEntries;
+        TResourceArray<FDDGIProbeSpatialHashEntry> HashEntries;
         HashEntries.SetNumUninitialized(static_cast<int32>(RequiredHashCapacity));
         for (FVector4& Entry : HashEntries)
         {
-            Entry = FVector4(0.0f, 0.0f, 0.0f, -1.0f);
+            Entry = FDDGIProbeSpatialHashEntry{ 0, 0, 0, -1 };
         }
 
         bool bHashBuildSucceeded = true;
