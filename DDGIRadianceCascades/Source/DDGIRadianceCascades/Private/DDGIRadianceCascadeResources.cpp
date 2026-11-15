@@ -206,8 +206,21 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const int64 RequiredCapacityTexels = RequiredProbeCapacity * static_cast<int64>(Config.TotalRaysPerProbe);
     const int64 MaxTextureTexels = static_cast<int64>(GDDGIRadianceCascadeTextureWidth) *
         static_cast<int64>(GDDGIRadianceCascadeMaxTextureDimension);
-    const int64 CapacityHeight64 = (RequiredCapacityTexels + GDDGIRadianceCascadeTextureWidth - 1) /
+    const int64 CalculatedCapacityHeight64 = (RequiredCapacityTexels + GDDGIRadianceCascadeTextureWidth - 1) /
         GDDGIRadianceCascadeTextureWidth;
+    // Preserve the existing allocation's row count when the ray layout is
+    // unchanged. RayProbeCapacity includes every complete probe block that
+    // fits in the padded rows; converting that capacity back to texels and
+    // rounding up can otherwise produce one fewer row for some ray counts.
+    // That false shrink would recreate all history textures on the next update.
+    const int64 ExistingCapacityHeight64 =
+        (!bRayLayoutChanged &&
+         Storage.Radiance.IsValid() &&
+         Storage.Dimensions.X == GDDGIRadianceCascadeTextureWidth)
+        ? static_cast<int64>(Storage.Dimensions.Y)
+        : 0;
+    const int64 CapacityHeight64 = FMath::Max(
+        CalculatedCapacityHeight64, ExistingCapacityHeight64);
 
     // Account for complete allocated rows, not only logically active ray records.
     // Per-probe history uses four textures (24 bytes/texel); the direction
