@@ -284,7 +284,11 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     if (DebugMode == 2u)
     {
-        SceneColorOutputUAV[BufferPixelIndex] = float4(saturate(Irradiance * 4.0f), 1.0f);
+        // Irradiance is HDR. A hard saturate(Irradiance * 4) clips most
+        // editor-view values to the same white/primary colour and hides
+        // spatial variation. Use a per-channel logarithmic display mapping.
+        float3 DebugIrradiance = log2(1.0f + max(Irradiance, 0.0f)) * 0.25f;
+        SceneColorOutputUAV[BufferPixelIndex] = float4(DebugIrradiance, 1.0f);
         return;
     }
 
