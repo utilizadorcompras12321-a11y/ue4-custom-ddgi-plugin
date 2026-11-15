@@ -85,9 +85,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0));
     float3 CenterPositionOffset = CenterProbeData.xyz;
     float3 CenterPosition = ProbeGridOrigin.xyz + CenterPositionOffset;
-    // Directions are normalized once when the fixed ray layout is initialized.
-    // Re-normalizing the same stored direction for every probe/ray gather is redundant.
-    float3 CenterDirection = DirectionsTexture.Load(int3(Pixel, 0)).xyz;
+    float3 CenterDirection = normalize(DirectionsTexture.Load(int3(Pixel, 0)).xyz);
     float4 CenterRadianceSample = RadianceTexture.Load(int3(Pixel, 0));
     float CenterHitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
     bool CenterHit = CenterHitDistance >= 0.0f;
