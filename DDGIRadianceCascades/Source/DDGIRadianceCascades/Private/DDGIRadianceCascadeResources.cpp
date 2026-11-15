@@ -499,13 +499,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                     FMath::RoundToInt(Relative.X / SafeProbeSpacing),
                     FMath::RoundToInt(Relative.Y / SafeProbeSpacing),
                     FMath::RoundToInt(Relative.Z / SafeProbeSpacing));
+                const int32 ProbeLevel = FMath::Clamp(FMath::RoundToInt(Position.W), 0, 7);
+                const int32 LevelCellStep = 1 << ProbeLevel;
                 uint32 Slot = 0u;
                 for (int32 Z = -1; Z <= 1; ++Z)
                 for (int32 Y = -1; Y <= 1; ++Y)
                 for (int32 X = -1; X <= 1; ++X)
                 {
                     if (X == 0 && Y == 0 && Z == 0) continue;
-                    const FIntVector NeighborCell = CenterCell + FIntVector(X, Y, Z);
+                    const FIntVector NeighborCell = CenterCell + FIntVector(X, Y, Z) * LevelCellStep;
                     if (const uint32* NeighborIndex = ProbeCellToIndex.Find(NeighborCell))
                     {
                         NeighborEntries[static_cast<int32>(ProbeIndex * 26u + Slot)] = *NeighborIndex;
