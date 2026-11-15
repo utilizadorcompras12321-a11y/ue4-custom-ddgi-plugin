@@ -51,6 +51,7 @@ public:
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
 		RadianceScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
 		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
+		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -199,6 +200,7 @@ public:
 		const TShaderRHIParamRef ShaderRHI,
 		FShaderResourceViewRHIRef DirectionsSRV,
 		FShaderResourceViewRHIRef ProbePositionsSRV,
+		FShaderResourceViewRHIRef LogicalToPhysicalSRV,
 		FShaderResourceViewRHIRef NodesSRV,
 		FShaderResourceViewRHIRef TrianglesSRV,
 		FUnorderedAccessViewRHIRef RadianceView,
@@ -255,6 +257,7 @@ public:
 
 		if (DirectionsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, DirectionsTexture.GetBaseIndex(), DirectionsSRV);
 		if (ProbePositionsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ProbePositionsTexture.GetBaseIndex(), ProbePositionsSRV);
+		if (LogicalToPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), LogicalToPhysicalSRV);
 		if (BVHNodes.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, BVHNodes.GetBaseIndex(), NodesSRV);
 		if (BVHTriangles.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, BVHTriangles.GetBaseIndex(), TrianglesSRV);
 		if (RadianceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), RadianceView);
@@ -267,6 +270,7 @@ public:
 	{
 		if (DirectionsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, DirectionsTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
 		if (ProbePositionsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ProbePositionsTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+		if (LogicalToPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), FShaderResourceViewRHIRef());
 		if (BVHNodes.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, BVHNodes.GetBaseIndex(), FShaderResourceViewRHIRef());
 		if (BVHTriangles.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, BVHTriangles.GetBaseIndex(), FShaderResourceViewRHIRef());
 		if (RadianceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
@@ -301,6 +305,7 @@ private:
 	LAYOUT_FIELD(FShaderParameter, bHasDirectionalLight);
 	LAYOUT_FIELD(FShaderResourceParameter, DirectionsTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, ProbePositionsTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
 	LAYOUT_FIELD(FShaderResourceParameter, BVHNodes);
 	LAYOUT_FIELD(FShaderResourceParameter, BVHTriangles);
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
@@ -335,11 +340,12 @@ public:
   ProbeNeighborIndices.Bind(I.ParameterMap,TEXT("ProbeNeighborIndices"));
   UsePrecomputedProbeNeighbors.Bind(I.ParameterMap,TEXT("UsePrecomputedProbeNeighbors"));
   OutputRadianceUAV.Bind(I.ParameterMap,TEXT("OutputRadianceUAV"));
+  LogicalToPhysicalSlots.Bind(I.ParameterMap,TEXT("LogicalToPhysicalSlots"));
  }
  static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P){return IsFeatureLevelSupported(P.Platform,ERHIFeatureLevel::SM5);}
  template<typename TShaderRHIParamRef>
  void SetParameters(FRHICommandList& C,const TShaderRHIParamRef Sh,FShaderResourceViewRHIRef R,FShaderResourceViewRHIRef H,FShaderResourceViewRHIRef HitIndices,
-  FShaderResourceViewRHIRef D,FShaderResourceViewRHIRef P,FShaderResourceViewRHIRef Triangles,FShaderResourceViewRHIRef S,
+  FShaderResourceViewRHIRef D,FShaderResourceViewRHIRef P,FShaderResourceViewRHIRef LogicalToPhysicalSRV,FShaderResourceViewRHIRef Triangles,FShaderResourceViewRHIRef S,
   FShaderResourceViewRHIRef NeighborList,FUnorderedAccessViewRHIRef O,
   uint32 T,uint32 G,uint32 PC,uint32 RPP,uint32 HC,uint32 TC,float PS,const FVector4& Origin,uint32 bUseNeighborList)
  {
@@ -355,6 +361,7 @@ public:
   if(DirectionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,DirectionsTexture.GetBaseIndex(),D);
   
   if(ProbePositionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbePositionsTexture.GetBaseIndex(),P);
+  if(LogicalToPhysicalSlots.IsBound()) C.SetShaderResourceViewParameter(Sh,LogicalToPhysicalSlots.GetBaseIndex(),LogicalToPhysicalSRV);
   if(BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh,BVHTriangles.GetBaseIndex(),Triangles);
   if(ProbeSpatialHash.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbeSpatialHash.GetBaseIndex(),S);
   if(ProbeNeighborIndices.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbeNeighborIndices.GetBaseIndex(),NeighborList);
@@ -369,6 +376,7 @@ public:
   if(DirectionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,DirectionsTexture.GetBaseIndex(),FShaderResourceViewRHIRef());
   
   if(ProbePositionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbePositionsTexture.GetBaseIndex(),FShaderResourceViewRHIRef());
+  if(LogicalToPhysicalSlots.IsBound()) C.SetShaderResourceViewParameter(Sh,LogicalToPhysicalSlots.GetBaseIndex(),FShaderResourceViewRHIRef());
   if(BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh,BVHTriangles.GetBaseIndex(),FShaderResourceViewRHIRef());
   if(ProbeSpatialHash.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbeSpatialHash.GetBaseIndex(),FShaderResourceViewRHIRef());
   if(ProbeNeighborIndices.IsBound()) C.SetShaderResourceViewParameter(Sh,ProbeNeighborIndices.GetBaseIndex(),FShaderResourceViewRHIRef());
@@ -389,6 +397,7 @@ private:
  LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexTexture);
  LAYOUT_FIELD(FShaderResourceParameter, DirectionsTexture);
  LAYOUT_FIELD(FShaderResourceParameter, ProbePositionsTexture);
+ LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
  LAYOUT_FIELD(FShaderResourceParameter, BVHTriangles);
  LAYOUT_FIELD(FShaderResourceParameter, ProbeSpatialHash);
  LAYOUT_FIELD(FShaderResourceParameter, ProbeNeighborIndices);
@@ -419,6 +428,7 @@ public:
 		EffectiveSplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		HitDistanceTexture.Bind(Initializer.ParameterMap, TEXT("HitDistanceTexture"));
+		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -432,6 +442,7 @@ public:
 		const TShaderRHIParamRef ShaderRHI,
 		FUnorderedAccessViewRHIRef InRadianceUAV,
 		FShaderResourceViewRHIRef HitDistanceSRV,
+		FShaderResourceViewRHIRef LogicalToPhysicalSRV,
 		uint32 InTotalIntegrationTexels,
 		uint32 InDispatchGroupsX,
 		uint32 InTotalRaysPerProbe,
@@ -457,6 +468,10 @@ public:
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitDistanceTexture.GetBaseIndex(), HitDistanceSRV);
 		}
+		if (LogicalToPhysicalSlots.IsBound())
+		{
+			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), LogicalToPhysicalSRV);
+		}
 	}
 
 	template<typename TShaderRHIParamRef>
@@ -469,6 +484,10 @@ public:
 		if (HitDistanceTexture.IsBound())
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitDistanceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+		}
+		if (LogicalToPhysicalSlots.IsBound())
+		{
+			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), FShaderResourceViewRHIRef());
 		}
 	}
 
@@ -483,6 +502,7 @@ private:
 	LAYOUT_FIELD(FShaderParameter, EffectiveSplitFactor);
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
 };
 
 IMPLEMENT_SHADER_TYPE(
@@ -510,6 +530,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbePositionsTexture)
 		SHADER_PARAMETER_SRV(StructuredBuffer<int4>, ProbeSpatialHash)
+		SHADER_PARAMETER_SRV(StructuredBuffer<uint>, LogicalToPhysicalSlots)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, SceneColorOutputUAV)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
 		SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
@@ -621,6 +642,8 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	}
 
 	FShaderResourceViewRHIRef ProbeSpatialHashSRV;
+	FShaderResourceViewRHIRef LogicalToPhysicalSRV, NewPhysicalSlotsSRV;
+	uint32 NewPhysicalSlotCount = 0, PhysicalSlotCapacity = 0;
 	uint32 HashCapacity = 0;
 	float ProbeSpacing = 0.0f;
 	if (!DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
@@ -670,6 +693,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->RadianceTexture = RadianceTexture;
 	PassParameters->ProbePositionsTexture = ProbePositionsTexture;
 	PassParameters->ProbeSpatialHash = ProbeSpatialHashSRV;
+	PassParameters->LogicalToPhysicalSlots = LogicalToPhysicalSRV;
 	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
 	PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->ScaledViewSizeAndInvSize = FVector4(
@@ -900,6 +924,13 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	}
 
 	FShaderResourceViewRHIRef DirectionsSRV = RHICreateShaderResourceView(DirectionsTexture, 0);
+	if (!DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
+		Scene, LogicalToPhysicalSRV, NewPhysicalSlotsSRV, NewPhysicalSlotCount, PhysicalSlotCapacity) ||
+		!LogicalToPhysicalSRV.IsValid() || PhysicalSlotCapacity == 0u)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to acquire logical-to-physical probe mapping."));
+		return;
+	}
 	FShaderResourceViewRHIRef ProbePositionsSRV = RHICreateShaderResourceView(ProbePositionsTexture, 0);
 	FUnorderedAccessViewRHIRef RadianceUAV = RHICreateUnorderedAccessView(RadianceTexture);
 	FUnorderedAccessViewRHIRef HitDistanceUAV = RHICreateUnorderedAccessView(HitDistanceTexture);
@@ -1027,7 +1058,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	TShaderMapRef<FDDGIRadianceCascadeTraceRHI> TraceShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
 	TraceShader->SetParameters(
-		RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, NodesSRV, TrianglesSRV,
+		RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
 		RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
 		TotalTexels, GroupsX, ProbeCount, TotalRaysPerProbe,
 		NodeCount, TriangleCount,
@@ -1062,7 +1093,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	TShaderMapRef<FDDGIRadianceCascadeSpatialGatherRHI> GatherShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(GatherShader.GetComputeShader());
 	GatherShader->SetParameters(RHICmdList,GatherShader.GetComputeShader(),GatherRadianceSRV,GatherHitSRV,GatherHitIndicesSRV,GatherDirectionsSRV,
-		GatherPositionsSRV,TrianglesSRV,SpatialHashSRV,NeighborListSRV,GatherOutputUAV,TotalTexels,GroupsX,ProbeCount,
+		GatherPositionsSRV,LogicalToPhysicalSRV,TrianglesSRV,SpatialHashSRV,NeighborListSRV,GatherOutputUAV,TotalTexels,GroupsX,ProbeCount,
 		TotalRaysPerProbe,HashCapacity,TriangleCount,ProbeSpacing,
 		FVector4(Config->ProbeGridOrigin.X,Config->ProbeGridOrigin.Y,Config->ProbeGridOrigin.Z,0.0f),bUseNeighborList);
 	DispatchComputeShader(RHICmdList,GatherShader.GetShader(),GroupsX,GroupsY,1);
@@ -1096,7 +1127,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			RHICmdList.SetComputeShader(IntegrateShader.GetComputeShader());
 			IntegrateShader->SetParameters(
 				RHICmdList, IntegrateShader.GetComputeShader(),
-				IntegrationRadianceUAV, IntegrationHitDistanceSRV,
+				IntegrationRadianceUAV, IntegrationHitDistanceSRV, LogicalToPhysicalSRV,
 				IntegrationTexels, IntegrationGroups, TotalRays,
 				static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
 				CurrentCascadeRayCount,
