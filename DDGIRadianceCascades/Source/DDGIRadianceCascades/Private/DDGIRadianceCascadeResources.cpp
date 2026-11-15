@@ -111,6 +111,9 @@ namespace
 		FIntPoint Dimensions = FIntPoint::ZeroValue;
 		FIntPoint DirectionDimensions = FIntPoint::ZeroValue;
 		int32 TotalRaysPerProbe = 0;
+		int32 RayLayoutCascadeCount = 0;
+		int32 RayLayoutBaseRayCount = 0;
+		int32 RayLayoutSplitFactor = 0;
 		int32 RayProbeCapacity = 0;
 		FIntPoint ProbePositionDimensions = FIntPoint::ZeroValue;
 		// Cache validated lattice identities across scene updates. Re-quantizing every
@@ -171,6 +174,9 @@ namespace
 			UploadedProbeLayoutHash = 0;
 			UploadedProbeSpacing = 0.0f;
 			TotalRaysPerProbe = 0;
+			RayLayoutCascadeCount = 0;
+			RayLayoutBaseRayCount = 0;
+			RayLayoutSplitFactor = 0;
 			bNeedsInitialization = true;
 			bNeedsDirectionInitialization = true;
 			bInvalidateAllPhysicalSlots = false;
@@ -251,9 +257,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // not shrink/recreate the textures: doing so discards every probe's history.
     // A ray-layout change still requires new storage, but must not evict the
     // scene BVH or spatial lookup resources.
+    const int32 RequestedRayLayoutCascadeCount = Config.RadianceCascades.GetSafeCascadeCount();
+    const int32 RequestedRayLayoutBaseRayCount = FMath::Clamp(Config.RadianceCascades.BaseRayCount, 1, 64);
+    const int32 RequestedRayLayoutSplitFactor = FMath::Clamp(Config.RadianceCascades.RaySplitFactor, 1, 4);
     const bool bRayLayoutChanged =
         Storage.TotalRaysPerProbe != 0 &&
-        Storage.TotalRaysPerProbe != Config.TotalRaysPerProbe;
+        (Storage.TotalRaysPerProbe != Config.TotalRaysPerProbe ||
+            Storage.RayLayoutCascadeCount != RequestedRayLayoutCascadeCount ||
+            Storage.RayLayoutBaseRayCount != RequestedRayLayoutBaseRayCount ||
+            Storage.RayLayoutSplitFactor != RequestedRayLayoutSplitFactor);
     const int64 ExistingProbeCapacity =
         (!bRayLayoutChanged && Storage.RayProbeCapacity > 0)
         ? static_cast<int64>(Storage.RayProbeCapacity)
@@ -299,6 +311,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.Dimensions == RequiredDimensions &&
         Storage.DirectionDimensions == RequiredDirectionDimensions &&
         Storage.TotalRaysPerProbe == Config.TotalRaysPerProbe &&
+        Storage.RayLayoutCascadeCount == RequestedRayLayoutCascadeCount &&
+        Storage.RayLayoutBaseRayCount == RequestedRayLayoutBaseRayCount &&
+        Storage.RayLayoutSplitFactor == RequestedRayLayoutSplitFactor &&
         Storage.Directions.IsValid() &&
         Storage.Radiance.IsValid() &&
         Storage.RadianceScratch.IsValid() &&
@@ -315,6 +330,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.Dimensions = FIntPoint::ZeroValue;
         Storage.DirectionDimensions = FIntPoint::ZeroValue;
         Storage.TotalRaysPerProbe = 0;
+        Storage.RayLayoutCascadeCount = 0;
+        Storage.RayLayoutBaseRayCount = 0;
+        Storage.RayLayoutSplitFactor = 0;
         Storage.RayProbeCapacity = 0;
         Storage.bNeedsInitialization = true;
         Storage.bNeedsDirectionInitialization = true;
@@ -365,6 +383,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.Dimensions = RequiredDimensions;
         Storage.DirectionDimensions = RequiredDirectionDimensions;
         Storage.TotalRaysPerProbe = Config.TotalRaysPerProbe;
+        Storage.RayLayoutCascadeCount = RequestedRayLayoutCascadeCount;
+        Storage.RayLayoutBaseRayCount = RequestedRayLayoutBaseRayCount;
+        Storage.RayLayoutSplitFactor = RequestedRayLayoutSplitFactor;
         // The final texture row is fully allocated, even when the active ray
         // count does not fill it. Count every complete probe-sized range that
         // physically fits in the allocated texture, not only active probes.
