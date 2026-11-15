@@ -8,6 +8,7 @@
 #include "DDGISoftwareBVH.h"
 #include "Components/DirectionalLightComponent.h"
 #include "GameFramework/PlayerController.h"
+#include <cmath>
 
 namespace
 {
@@ -136,9 +137,9 @@ namespace
 				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
 			const double SpacingSquared = SafeSpacing * SafeSpacing;
 			MinDistanceSquared[Level] = static_cast<int64>(
-				FMath::CeilToDouble((InnerRadius * InnerRadius) / SpacingSquared));
+				std::ceil((InnerRadius * InnerRadius) / SpacingSquared));
 			MaxDistanceSquared[Level] = static_cast<int64>(
-				FMath::FloorToDouble((OuterRadius * OuterRadius) / SpacingSquared));
+				std::floor((OuterRadius * OuterRadius) / SpacingSquared));
 
 			const int32 MinCellX = FMath::FloorToInt((CenterWorld.X - OuterRadius) / SafeSpacing);
 			const int32 MaxCellX = FMath::CeilToInt((CenterWorld.X + OuterRadius) / SafeSpacing);
