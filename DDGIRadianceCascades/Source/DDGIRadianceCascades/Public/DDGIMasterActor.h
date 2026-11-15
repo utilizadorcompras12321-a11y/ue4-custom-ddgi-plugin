@@ -89,6 +89,8 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void PostRegisterAllComponents() override;
+	virtual bool ShouldTickIfViewportsOnly() const override { return true; }
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 
