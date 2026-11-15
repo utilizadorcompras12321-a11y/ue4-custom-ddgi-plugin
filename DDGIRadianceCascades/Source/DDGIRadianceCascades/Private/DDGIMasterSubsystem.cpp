@@ -8,6 +8,7 @@
 #include "DDGISoftwareBVH.h"
 #include "Components/DirectionalLightComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 #include <cmath>
 
 namespace
@@ -204,39 +205,58 @@ namespace
 	FVector DDGIGetCameraWorldLocation(const ADDGIMasterActor* InActor)
 	{
 		if (!InActor) return FVector::ZeroVector;
+
 		UWorld* World = InActor->GetWorld();
 		if (World)
 		{
 			if (APlayerController* PlayerController = World->GetFirstPlayerController())
 			{
-				FVector CameraLocation = FVector::ZeroVector;
-				FRotator CameraRotation = FRotator::ZeroRotator;
-				PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
-				static bool bLoggedPlayerCamera = false;
-				if (!bLoggedPlayerCamera)
+				// PlayerCameraManager tracks the active view, including ViewTarget
+				// changes and camera blends used by gameplay and cutscenes.
+				if (APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager)
+				{
+					const FVector CameraLocation = CameraManager->GetCameraLocation();
+					static bool bLoggedCameraManager = false;
+					if (!bLoggedCameraManager)
+					{
+						UE_LOG(LogTemp, Warning,
+							TEXT("DDGI DIAG: probe window camera source=PlayerCameraManager, camera=(%.1f, %.1f, %.1f), master-root=(%.1f, %.1f, %.1f), world=%s."),
+							CameraLocation.X, CameraLocation.Y, CameraLocation.Z,
+							InActor->GetActorLocation().X, InActor->GetActorLocation().Y, InActor->GetActorLocation().Z,
+							*GetNameSafe(World));
+						bLoggedCameraManager = true;
+					}
+					return CameraLocation;
+				}
+
+				// Defensive fallback for a controller whose camera manager is not
+				// initialized yet. This still asks the controller for its active view.
+				FVector ViewLocation = FVector::ZeroVector;
+				FRotator ViewRotation = FRotator::ZeroRotator;
+				PlayerController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+				static bool bLoggedControllerFallback = false;
+				if (!bLoggedControllerFallback)
 				{
 					UE_LOG(LogTemp, Warning,
-						TEXT("DDGI DIAG: probe window camera source=PlayerController, camera=(%.1f, %.1f, %.1f), master-root=(%.1f, %.1f, %.1f), world=%s."),
-						CameraLocation.X, CameraLocation.Y, CameraLocation.Z,
-						InActor->GetActorLocation().X, InActor->GetActorLocation().Y, InActor->GetActorLocation().Z,
-						*GetNameSafe(World));
-					bLoggedPlayerCamera = true;
+						TEXT("DDGI DIAG: PlayerCameraManager unavailable; using PlayerController view location=(%.1f, %.1f, %.1f)."),
+						ViewLocation.X, ViewLocation.Y, ViewLocation.Z);
+					bLoggedControllerFallback = true;
 				}
-				return CameraLocation;
+				return ViewLocation;
 			}
 		}
+
 		static bool bLoggedRootFallback = false;
 		if (!bLoggedRootFallback)
 		{
 			UE_LOG(LogTemp, Warning,
-				TEXT("DDGI DIAG: NO PlayerController; probe window is falling back to master ROOT=(%.1f, %.1f, %.1f), world=%s, world-type=%d. In this state probes will follow the actor, not the active editor viewport camera."),
+				TEXT("DDGI DIAG: NO PlayerController/PlayerCameraManager; probe window is falling back to master ROOT=(%.1f, %.1f, %.1f), world=%s, world-type=%d."),
 				InActor->GetActorLocation().X, InActor->GetActorLocation().Y, InActor->GetActorLocation().Z,
 				*GetNameSafe(World), World ? static_cast<int32>(World->WorldType) : -1);
 			bLoggedRootFallback = true;
 		}
 		return InActor->GetActorLocation();
 	}
-
 	FIntVector DDGIQuantizeWindowCenter(const FVector& WorldLocation, float Spacing)
 	{
 		if (!std::isfinite(static_cast<double>(Spacing)) ||
