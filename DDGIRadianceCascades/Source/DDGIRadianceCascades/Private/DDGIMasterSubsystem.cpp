@@ -828,6 +828,26 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 }
 
 
+void UDDGIMasterSubsystem::PublishConfigActiveWindowCenterOnly()
+{
+	UWorld* World = GetWorld();
+	FSceneInterface* Scene = World ? World->Scene : nullptr;
+	if (!Scene)
+	{
+		return;
+	}
+
+	const FVector ActiveProbeWindowCenter = Config.ActiveProbeWindowCenter;
+	ENQUEUE_RENDER_COMMAND(DDGIUpdateActiveProbeWindowCenter)(
+		[Scene, ActiveProbeWindowCenter](FRHICommandListImmediate& RHICmdList)
+		{
+			if (FDDGIMasterConfig* ExistingConfig = GDDGIMasterConfigs_RenderThread.Find(Scene))
+			{
+				ExistingConfig->ActiveProbeWindowCenter = ActiveProbeWindowCenter;
+			}
+		});
+}
+
 void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, bool bForceSoftwareBVHRebuild)
 {
 	if (!IsValid(InActor))
@@ -975,19 +995,31 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 	const float RecenterThreshold = SafeSpacing * 0.75f;
 	const FVector Delta = CameraLocation - CurrentCenter;
 
-	if (bHasActiveWindowCenterCell &&
-		FMath::Abs(Delta.X) <= RecenterThreshold &&
-		FMath::Abs(Delta.Y) <= RecenterThreshold &&
-		FMath::Abs(Delta.Z) <= RecenterThreshold)
+	// The blend origin is continuous and must follow the camera every tick.
+	// Previously it was only assigned after a probe-window rebuild, so the
+	// shader's cascade boundaries remained frozen and then jumped at recenter.
+	const bool bBlendCenterChanged =
+		!Config.ActiveProbeWindowCenter.Equals(CameraLocation, 0.01f);
+	if (bBlendCenterChanged)
 	{
+		Config.ActiveProbeWindowCenter = CameraLocation;
+	}
+
+	const bool bNeedsRecenter = !bHasActiveWindowCenterCell ||
+		FMath::Abs(Delta.X) > RecenterThreshold ||
+		FMath::Abs(Delta.Y) > RecenterThreshold ||
+		FMath::Abs(Delta.Z) > RecenterThreshold;
+	if (!bNeedsRecenter)
+	{
+		if (bBlendCenterChanged)
+		{
+			PublishConfigActiveWindowCenterOnly();
+		}
 		return;
 	}
 
 	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(CameraLocation, SafeSpacing);
 	bHasActiveWindowCenterCell = true;
-	// Probe membership is selected on the snapped lattice; cascade blending
-	// follows the unsnapped camera position to avoid visible stepping.
-	Config.ActiveProbeWindowCenter = CameraLocation;
 	DDGIBuildActiveProbePositions(
 		SafeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
 		Config.MaxActiveProbes, Config.ProbePositions,
