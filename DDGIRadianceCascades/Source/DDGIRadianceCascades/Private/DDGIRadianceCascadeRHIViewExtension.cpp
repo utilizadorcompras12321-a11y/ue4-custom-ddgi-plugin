@@ -182,6 +182,7 @@ public:
 		bHasDirectionalLight.Bind(Initializer.ParameterMap, TEXT("bHasDirectionalLight"));
 		DirectionsTexture.Bind(Initializer.ParameterMap, TEXT("DirectionsTexture"));
 		ProbePositionsTexture.Bind(Initializer.ParameterMap, TEXT("ProbePositionsTexture"));
+		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 		BVHNodes.Bind(Initializer.ParameterMap, TEXT("BVHNodes"));
 		BVHTriangles.Bind(Initializer.ParameterMap, TEXT("BVHTriangles"));
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
@@ -931,6 +932,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	}
 
 	FShaderResourceViewRHIRef DirectionsSRV = RHICreateShaderResourceView(DirectionsTexture, 0);
+	FShaderResourceViewRHIRef LogicalToPhysicalSRV, NewPhysicalSlotsSRV;
+	uint32 NewPhysicalSlotCount = 0, PhysicalSlotCapacity = 0;
 	if (!DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
 		Scene, LogicalToPhysicalSRV, NewPhysicalSlotsSRV, NewPhysicalSlotCount, PhysicalSlotCapacity) ||
 		!LogicalToPhysicalSRV.IsValid() || PhysicalSlotCapacity == 0u)
