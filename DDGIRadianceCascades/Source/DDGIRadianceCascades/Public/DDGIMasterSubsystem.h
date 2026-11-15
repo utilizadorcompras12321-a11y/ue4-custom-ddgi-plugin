@@ -53,6 +53,9 @@ struct FDDGIMasterConfig
 	// Fingerprint of the integer lattice; unchanged by translating the grid.
 	uint32 ProbeLayoutHash = 0;
 	UPROPERTY() TArray<FVector4> ProbePositions;
+	// Exact global lattice identity; never reconstruct cell coordinates from float positions.
+	UPROPERTY() TArray<FIntVector> ProbeCellCoordinates;
+	UPROPERTY() TArray<int32> ProbeLevels;
 	UPROPERTY() int32 ProbeCount = 0;
 	UPROPERTY() int32 MaxActiveProbes = 32768;
 	UPROPERTY() int32 ProbeUpdateBudget = 50000;
