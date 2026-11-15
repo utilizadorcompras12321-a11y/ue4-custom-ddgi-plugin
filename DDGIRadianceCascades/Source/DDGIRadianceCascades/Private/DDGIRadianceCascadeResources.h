@@ -31,6 +31,8 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     FTexture2DRHIRef& OutDirections,
     FTexture2DRHIRef& OutRadiance,
     FTexture2DRHIRef& OutHitDistance,
+    FTexture2DRHIRef& OutRadianceScratch,
+    FTexture2DRHIRef& OutHitTriangleIndex,
     uint32& OutProbeCount);
 
 bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
