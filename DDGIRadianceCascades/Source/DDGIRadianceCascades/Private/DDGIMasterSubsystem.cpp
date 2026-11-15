@@ -121,7 +121,7 @@ namespace
 		int64 TotalCandidateCount = 0;
 		for (int32 Level = 0; Level < 4; ++Level)
 		{
-			LevelCandidates[Level].Reserve(SafeMaxProbeCount);
+			LevelCandidates[Level].Reserve(FMath::Min(SafeMaxProbeCount, 256));
 		}
 
 		// All coordinates remain on the immutable world-origin lattice. The
