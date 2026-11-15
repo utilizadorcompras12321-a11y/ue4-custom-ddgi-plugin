@@ -11,6 +11,7 @@ uint EffectiveSplitFactor;
 
 RWTexture2D<float4> RadianceUAV;
 Texture2D<float> HitDistanceTexture;
+StructuredBuffer<uint> LogicalToPhysicalSlots;
 
 [numthreads(64, 1, 1)]
 void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -27,7 +28,8 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     uint ProbeIndex = LinearIndex / CascadeRayCount;
     uint LocalRayIndex = LinearIndex - ProbeIndex * CascadeRayCount;
     uint PackedRayIndex = CascadeStorageOffset + LocalRayIndex;
-    uint LinearTextureIndex = ProbeIndex * TotalRaysPerProbe + PackedRayIndex;
+    uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+    uint LinearTextureIndex = PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
     uint2 Pixel = uint2(LinearTextureIndex % TextureWidth, LinearTextureIndex / TextureWidth);
 
     // A hit in this interval, or an earlier interval, terminates transport.
@@ -39,7 +41,7 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     const uint SafeSplitFactor = max(EffectiveSplitFactor, 1u);
     const uint ChildLinearIndexBase =
-        ProbeIndex * TotalRaysPerProbe +
+        PhysicalProbeIndex * TotalRaysPerProbe +
         NextCascadeStorageOffset +
         LocalRayIndex * SafeSplitFactor;
 
