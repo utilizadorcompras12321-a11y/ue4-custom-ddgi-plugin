@@ -880,12 +880,13 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 	bHasActiveWindowCenterCell = true;
 	DDGIBuildActiveProbePositions(
 		SafeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
-		Config.MaxActiveProbes, Config.ProbePositions);
+		Config.MaxActiveProbes, Config.ProbePositions,
+		Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
 	Config.EstimatedRadianceStorageBytes =
 		Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
-		Config.ProbePositions, Config.ProbeSpacing);
+		Config.ProbeCellCoordinates, Config.ProbeLevels);
 
 	PublishConfig(true);
 }
