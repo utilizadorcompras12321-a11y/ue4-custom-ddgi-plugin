@@ -43,6 +43,17 @@ namespace
 		return static_cast<int64>(std::floor(Value));
 	}
 
+	int64 DDGISafeRoundCell(double Value)
+	{
+		if (!std::isfinite(Value))
+		{
+			return Value < 0.0 ? MIN_int32 : MAX_int32;
+		}
+		if (Value <= static_cast<double>(MIN_int32)) return MIN_int32;
+		if (Value >= static_cast<double>(MAX_int32)) return MAX_int32;
+		return static_cast<int64>(std::round(Value));
+	}
+
 	int64 DDGISafeCeilCell(double Value)
 	{
 		if (!std::isfinite(Value) || Value <= static_cast<double>(MIN_int32))
@@ -209,11 +220,18 @@ namespace
 
 	FIntVector DDGIQuantizeWindowCenter(const FVector& WorldLocation, float Spacing)
 	{
-		const float SafeSpacing = FMath::Max(1.0f, Spacing);
+		if (!std::isfinite(static_cast<double>(Spacing)) ||
+			!std::isfinite(static_cast<double>(WorldLocation.X)) ||
+			!std::isfinite(static_cast<double>(WorldLocation.Y)) ||
+			!std::isfinite(static_cast<double>(WorldLocation.Z)))
+		{
+			return FIntVector::ZeroValue;
+		}
+		const double SafeSpacing = FMath::Max(1.0, static_cast<double>(Spacing));
 		return FIntVector(
-			FMath::RoundToInt(WorldLocation.X / SafeSpacing),
-			FMath::RoundToInt(WorldLocation.Y / SafeSpacing),
-			FMath::RoundToInt(WorldLocation.Z / SafeSpacing));
+			static_cast<int32>(DDGISafeRoundCell(WorldLocation.X / SafeSpacing)),
+			static_cast<int32>(DDGISafeRoundCell(WorldLocation.Y / SafeSpacing)),
+			static_cast<int32>(DDGISafeRoundCell(WorldLocation.Z / SafeSpacing)));
 	}
 
 	void DDGIBuildActiveProbePositions(
@@ -224,6 +242,11 @@ namespace
 		TArray<FVector4>& OutPositions)
 	{
 		OutPositions.Reset();
+		if (!std::isfinite(static_cast<double>(Spacing)) ||
+			!std::isfinite(static_cast<double>(Radius)))
+		{
+			return;
+		}
 		const float SafeSpacing = FMath::Max(1.0f, Spacing);
 		const float SafeRadius = FMath::Max(0.0f, Radius);
 		const double SafeSpacingDouble = static_cast<double>(SafeSpacing);
