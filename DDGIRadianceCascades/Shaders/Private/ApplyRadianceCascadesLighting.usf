@@ -86,7 +86,9 @@ float3 DDGIProbeDiffuseIrradiance(uint ProbeIndex, float3 Normal)
             RayIndex / DDGI_RC_TEXTURE_WIDTH);
         float3 Direction = normalize(
             DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
-        float Cosine = saturate(dot(Normal, Direction));
+        // Trace directions point from the probe toward the scene. At the
+        // receiver, incoming light travels in the opposite direction.
+        float Cosine = saturate(dot(Normal, -Direction));
         if (Cosine <= 0.0f) continue;
 
         uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
