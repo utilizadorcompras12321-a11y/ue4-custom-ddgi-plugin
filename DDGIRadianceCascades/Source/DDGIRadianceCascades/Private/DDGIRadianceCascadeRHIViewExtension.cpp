@@ -1173,9 +1173,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), IntegrationGroups, IntegrationGroupsY, 1);
 			IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
 
-			// Force visibility of this cascade's writes before the next cascade
-			// reads them as child radiance through the same UAV.
-
 		}
 
 		DDGITransitionTexture(RHICmdList, RadianceScratchTexture,
