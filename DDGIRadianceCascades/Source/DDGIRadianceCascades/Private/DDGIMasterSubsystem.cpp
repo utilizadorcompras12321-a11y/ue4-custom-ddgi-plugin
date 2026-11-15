@@ -64,6 +64,61 @@ namespace
 		}
 	}
 
+	// Count candidates without allocating/writing a temporary FVector4 array.
+	// The spacing search only needs to know whether the configured cap is exceeded;
+	// stop as soon as that answer is known.
+	int32 DDGICountMultiResolutionProbePositionsAtSpacing(
+		float Spacing,
+		float Radius,
+		int32 StopAfter)
+	{
+		const float SafeSpacing = FMath::Max(1.0f, Spacing);
+		const float SafeRadius = FMath::Max(0.0f, Radius);
+		const int32 MaxCell = FMath::CeilToInt(SafeRadius / SafeSpacing);
+		const double RadiusSquared = static_cast<double>(SafeRadius) * SafeRadius;
+		const float TransitionWidth = FMath::Max(SafeSpacing * 2.0f, SafeRadius * 0.05f);
+		int32 Count = 0;
+
+		for (int32 Level = 0; Level < 4; ++Level)
+		{
+			const int32 LevelStep = 1 << Level;
+			const float BoundaryBefore = SafeRadius * (static_cast<float>(Level) / 4.0f);
+			const float BoundaryAfter = SafeRadius * (static_cast<float>(Level + 1) / 4.0f);
+			const float InnerRadius = Level == 0 ? 0.0f :
+				FMath::Max(0.0f, BoundaryBefore - TransitionWidth);
+			const float OuterRadius = Level == 3 ? SafeRadius :
+				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
+			const double InnerRadiusSquared = static_cast<double>(InnerRadius) * InnerRadius;
+			const double OuterRadiusSquared = static_cast<double>(OuterRadius) * OuterRadius;
+			const int32 FirstCell = -((MaxCell / LevelStep) * LevelStep);
+
+			for (int32 Z = FirstCell; Z <= MaxCell; Z += LevelStep)
+			{
+				for (int32 Y = FirstCell; Y <= MaxCell; Y += LevelStep)
+				{
+					for (int32 X = FirstCell; X <= MaxCell; X += LevelStep)
+					{
+						const double DX = static_cast<double>(X) * SafeSpacing;
+						const double DY = static_cast<double>(Y) * SafeSpacing;
+						const double DZ = static_cast<double>(Z) * SafeSpacing;
+						const double DistanceSquared = DX * DX + DY * DY + DZ * DZ;
+						if (DistanceSquared < InnerRadiusSquared ||
+							DistanceSquared > OuterRadiusSquared)
+						{
+							continue;
+						}
+
+						if (++Count > StopAfter)
+						{
+							return Count;
+						}
+					}
+				}
+			}
+		}
+		return Count;
+	}
+
 	float DDGIBuildSparseProbePositions(
 		float RequestedSpacing,
 		float Radius,
@@ -86,14 +141,13 @@ namespace
 			float LowerSpacing = EffectiveSpacing;
 			float UpperSpacing = FMath::Max(
 				EffectiveSpacing, SafeRadius * 2.0f + EffectiveSpacing);
-			TArray<FVector4> CandidatePositions;
 			for (int32 Iteration = 0; Iteration < 24; ++Iteration)
 			{
 				const float CandidateSpacing =
 					LowerSpacing + (UpperSpacing - LowerSpacing) * 0.5f;
-				DDGIBuildMultiResolutionProbePositionsAtSpacing(
-					CandidateSpacing, SafeRadius, CandidatePositions);
-				if (CandidatePositions.Num() > SafeMaxProbeCount)
+				const int32 CandidateCount = DDGICountMultiResolutionProbePositionsAtSpacing(
+					CandidateSpacing, SafeRadius, SafeMaxProbeCount);
+				if (CandidateCount > SafeMaxProbeCount)
 				{
 					LowerSpacing = CandidateSpacing;
 				}
