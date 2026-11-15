@@ -680,11 +680,34 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     uint2 DirectionPixel = uint2(PackedRayIndex % TextureWidth, PackedRayIndex / TextureWidth);
     float4 PackedDirection = DirectionsTexture.Load(int3(DirectionPixel, 0));
     float3 Direction = normalize(PackedDirection.xyz);
-    uint CascadeIndex = min((uint)max(PackedDirection.w, 0.0f), max(CascadeCount, 1u) - 1u);
+    uint SafeCascadeCount = max(CascadeCount, 1u);
+    uint CascadeIndex = min((uint)max(PackedDirection.w, 0.0f), SafeCascadeCount - 1u);
+    float SafeMaxTraceDistance = max(MaxTraceDistance, 1.0f);
     float2 CascadeInterval = DDGIRadianceCascadeDistanceInterval(
-        (int)CascadeIndex, BaseSegmentLength, CascadeScale, MaxTraceDistance);
+        (int)CascadeIndex, BaseSegmentLength, CascadeScale, SafeMaxTraceDistance);
     float CascadeStartDistance = CascadeInterval.x;
     float CascadeEndDistance = CascadeInterval.y;
+
+    // Cascades whose interval begins at or beyond the trace limit cannot
+    // contribute any scene hit. Clear their outputs without traversing the BVH.
+    if (CascadeStartDistance >= SafeMaxTraceDistance)
+    {
+        HitDistanceUAV[Pixel] = -1.0f;
+        HitTriangleIndexUAV[Pixel] = 0u;
+        RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return;
+    }
+
+    // The farthest cascade that still intersects the trace range owns the
+    // static background, even when later configured cascades are out of range.
+    bool bIsLastActiveCascade = CascadeIndex + 1u >= SafeCascadeCount;
+    if (!bIsLastActiveCascade)
+    {
+        float NextCascadeStartDistance = DDGIRadianceCascadeStartDistance(
+            (int)(CascadeIndex + 1u), BaseSegmentLength, CascadeScale);
+        bIsLastActiveCascade = NextCascadeStartDistance >= SafeMaxTraceDistance;
+    }
+
     // Reuse the shared closest-hit traversal for primary and secondary rays.
     // Keeping one BVH traversal implementation substantially reduces the
     // generated SM5 shader and avoids duplicating large local traversal stacks.
@@ -717,7 +740,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // The static environment is injected only by the farthest cascade.
     // Injecting it into every interval would count the same environment many times.
     float BackgroundFade = 0.0f;
-    if (bEnableStaticBackground != 0u && CascadeIndex + 1u == CascadeCount &&
+    if (bEnableStaticBackground != 0u && bIsLastActiveCascade &&
         !bHitInThisInterval && !bBlockedByEarlierSurface)
     {
         float ProbeDistance = distance(Origin, ProbeGridOrigin.xyz);
