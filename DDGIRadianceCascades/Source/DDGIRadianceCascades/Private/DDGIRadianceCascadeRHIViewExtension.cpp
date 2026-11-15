@@ -1019,7 +1019,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			RHICmdList.SetComputeShader(InitializeShader.GetComputeShader());
 			const uint32 InitTotalTexels = InitPendingSlotCount * TotalRaysPerProbe;
 			const uint32 InitTotalGroups = FMath::DivideAndRoundUp(InitTotalTexels, 64u);
-			const uint32 InitGroupsX = FMath::Min(InitTotalGroups, 65535u);
+			const uint32 InitGroupsX = FMath::Max(1u, FMath::Min(InitTotalGroups, 65535u));
 			const uint32 InitGroupsY = FMath::DivideAndRoundUp(InitTotalGroups, InitGroupsX);
 			InitializeShader->SetParameters(
 				RHICmdList, InitializeShader.GetComputeShader(), InitDirectionsUAV, InitRadianceUAV,
