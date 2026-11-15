@@ -9,6 +9,10 @@
 #include "Components/DirectionalLightComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
+#if WITH_EDITOR
+#include "Editor.h"
+#include "EditorViewportClient.h"
+#endif
 #include <cmath>
 
 namespace
@@ -207,6 +211,31 @@ namespace
 		if (!InActor) return FVector::ZeroVector;
 
 		UWorld* World = InActor->GetWorld();
+#if WITH_EDITOR
+		// Editor worlds do not have a PlayerController. Follow the active level
+		// editor viewport instead of silently using the Master Actor root.
+		if (World && World->WorldType == EWorldType::Editor && GEditor)
+		{
+			if (FViewport* ActiveViewport = GEditor->GetActiveViewport())
+			{
+				if (FEditorViewportClient* ViewportClient =
+					static_cast<FEditorViewportClient*>(ActiveViewport->GetClient()))
+				{
+					const FVector CameraLocation = ViewportClient->GetViewLocation();
+					static bool bLoggedEditorViewport = false;
+					if (!bLoggedEditorViewport)
+					{
+						UE_LOG(LogTemp, Warning,
+							TEXT("DDGI DIAG: probe window camera source=EditorViewport, camera=(%.1f, %.1f, %.1f), master-root=(%.1f, %.1f, %.1f)."),
+							CameraLocation.X, CameraLocation.Y, CameraLocation.Z,
+							InActor->GetActorLocation().X, InActor->GetActorLocation().Y, InActor->GetActorLocation().Z);
+						bLoggedEditorViewport = true;
+					}
+					return CameraLocation;
+				}
+			}
+		}
+#endif
 		if (World)
 		{
 			if (APlayerController* PlayerController = World->GetFirstPlayerController())
