@@ -646,6 +646,13 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	uint32 NewPhysicalSlotCount = 0, PhysicalSlotCapacity = 0;
 	uint32 HashCapacity = 0;
 	float ProbeSpacing = 0.0f;
+	if (!DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
+		Scene, LogicalToPhysicalSRV, NewPhysicalSlotsSRV, NewPhysicalSlotCount, PhysicalSlotCapacity) ||
+		!LogicalToPhysicalSRV.IsValid() || PhysicalSlotCapacity == 0u)
+	{
+		return DDGIReturnSceneColorForPostProcessing(GraphBuilder, View, Inputs, SceneColor);
+	}
+
 	if (!DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
 		Scene, ProbeSpatialHashSRV, HashCapacity, ProbeSpacing) ||
 		!ProbeSpatialHashSRV.IsValid() || HashCapacity == 0)
