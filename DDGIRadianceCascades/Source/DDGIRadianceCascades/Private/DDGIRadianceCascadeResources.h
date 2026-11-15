@@ -32,6 +32,7 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     FTexture2DRHIRef& OutRadiance,
     FTexture2DRHIRef& OutHitDistance,
     FTexture2DRHIRef& OutRadianceScratch,
+    FTexture2DRHIRef& OutRadianceIntegrationScratch,
     FTexture2DRHIRef& OutHitTriangleIndex,
     uint32& OutPendingSlotCount,
     bool& bOutInitializeDirections);
@@ -46,13 +47,21 @@ bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
     uint32& OutProbeCount,
     uint32& OutTotalRaysPerProbe);
 
-/** Returns the ping-pong radiance texture used by the cascade integration pass. */
+/** Returns the immutable Gather output texture used by cascade integration. */
 bool DDGIGetRadianceCascadeScratchTexture_RenderThread(
     const FSceneInterface* Scene,
     FTexture2DRHIRef& OutRadianceScratch);
 
-/** Swaps persistent radiance and scratch textures after an odd number of integration passes. */
+/** Returns the second output buffer used to ping-pong integrated cascade results. */
+bool DDGIGetRadianceCascadeIntegrationScratchTexture_RenderThread(
+    const FSceneInterface* Scene,
+    FTexture2DRHIRef& OutRadianceIntegrationScratch);
+
+/** Promotes the Gather output when no integration dispatch is required. */
 void DDGISwapRadianceCascadeRadianceBuffers_RenderThread(const FSceneInterface* Scene);
+
+/** Promotes the alternate integration output when the final cascade result resides there. */
+void DDGISwapRadianceCascadeIntegrationBuffers_RenderThread(const FSceneInterface* Scene);
 
 /** Returns the uploaded static-scene BVH buffers for GPU traversal. */
 bool DDGIGetSoftwareBVHResources_RenderThread(
