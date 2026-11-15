@@ -35,17 +35,32 @@ namespace
 				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
 			const double InnerRadiusSquared = static_cast<double>(InnerRadius) * InnerRadius;
 			const double OuterRadiusSquared = static_cast<double>(OuterRadius) * OuterRadius;
-			const int32 FirstCell = -((MaxCell / LevelStep) * LevelStep);
+			// Bound each nested loop by the outer sphere before visiting cells.
+			// Keep one extra lattice step as a precision guard; the exact annulus
+			// test below remains authoritative and preserves the generated layout.
+			const int32 MaxAlignedCell = (MaxCell / LevelStep) * LevelStep;
+			const int32 ZExtent = FMath::Min(
+				MaxAlignedCell,
+				(FMath::FloorToInt(OuterRadius / (SafeSpacing * LevelStep)) + 1) * LevelStep);
+			const int32 FirstCell = -ZExtent;
 
-			for (int32 Z = FirstCell; Z <= MaxCell; Z += LevelStep)
+			for (int32 Z = FirstCell; Z <= ZExtent; Z += LevelStep)
 			{
 				const double DZ = static_cast<double>(Z) * SafeSpacing;
 				const double ZSquared = DZ * DZ;
-				for (int32 Y = FirstCell; Y <= MaxCell; Y += LevelStep)
+				const double RemainingAfterZ = FMath::Max(0.0, OuterRadiusSquared - ZSquared);
+				const int32 YExtent = FMath::Min(
+					MaxAlignedCell,
+					(FMath::FloorToInt(FMath::Sqrt(RemainingAfterZ) / (SafeSpacing * LevelStep)) + 1) * LevelStep);
+				for (int32 Y = -YExtent; Y <= YExtent; Y += LevelStep)
 				{
 					const double DY = static_cast<double>(Y) * SafeSpacing;
 					const double YSquared = DY * DY;
-					for (int32 X = FirstCell; X <= MaxCell; X += LevelStep)
+					const double RemainingAfterY = FMath::Max(0.0, OuterRadiusSquared - ZSquared - YSquared);
+					const int32 XExtent = FMath::Min(
+						MaxAlignedCell,
+						(FMath::FloorToInt(FMath::Sqrt(RemainingAfterY) / (SafeSpacing * LevelStep)) + 1) * LevelStep);
+					for (int32 X = -XExtent; X <= XExtent; X += LevelStep)
 					{
 						const double DX = static_cast<double>(X) * SafeSpacing;
 						const double DistanceSquared = DX * DX + YSquared + ZSquared;
@@ -92,17 +107,32 @@ namespace
 				FMath::Min(SafeRadius, BoundaryAfter + TransitionWidth);
 			const double InnerRadiusSquared = static_cast<double>(InnerRadius) * InnerRadius;
 			const double OuterRadiusSquared = static_cast<double>(OuterRadius) * OuterRadius;
-			const int32 FirstCell = -((MaxCell / LevelStep) * LevelStep);
+			// Bound each nested loop by the outer sphere before visiting cells.
+			// Keep one extra lattice step as a precision guard; the exact annulus
+			// test below remains authoritative and preserves the generated layout.
+			const int32 MaxAlignedCell = (MaxCell / LevelStep) * LevelStep;
+			const int32 ZExtent = FMath::Min(
+				MaxAlignedCell,
+				(FMath::FloorToInt(OuterRadius / (SafeSpacing * LevelStep)) + 1) * LevelStep);
+			const int32 FirstCell = -ZExtent;
 
-			for (int32 Z = FirstCell; Z <= MaxCell; Z += LevelStep)
+			for (int32 Z = FirstCell; Z <= ZExtent; Z += LevelStep)
 			{
 				const double DZ = static_cast<double>(Z) * SafeSpacing;
 				const double ZSquared = DZ * DZ;
-				for (int32 Y = FirstCell; Y <= MaxCell; Y += LevelStep)
+				const double RemainingAfterZ = FMath::Max(0.0, OuterRadiusSquared - ZSquared);
+				const int32 YExtent = FMath::Min(
+					MaxAlignedCell,
+					(FMath::FloorToInt(FMath::Sqrt(RemainingAfterZ) / (SafeSpacing * LevelStep)) + 1) * LevelStep);
+				for (int32 Y = -YExtent; Y <= YExtent; Y += LevelStep)
 				{
 					const double DY = static_cast<double>(Y) * SafeSpacing;
 					const double YSquared = DY * DY;
-					for (int32 X = FirstCell; X <= MaxCell; X += LevelStep)
+					const double RemainingAfterY = FMath::Max(0.0, OuterRadiusSquared - ZSquared - YSquared);
+					const int32 XExtent = FMath::Min(
+						MaxAlignedCell,
+						(FMath::FloorToInt(FMath::Sqrt(RemainingAfterY) / (SafeSpacing * LevelStep)) + 1) * LevelStep);
+					for (int32 X = -XExtent; X <= XExtent; X += LevelStep)
 					{
 						const double DX = static_cast<double>(X) * SafeSpacing;
 						const double DistanceSquared = DX * DX + YSquared + ZSquared;
