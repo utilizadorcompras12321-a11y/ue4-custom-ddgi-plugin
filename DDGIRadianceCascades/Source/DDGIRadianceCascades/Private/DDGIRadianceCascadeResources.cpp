@@ -44,10 +44,12 @@ namespace
 {
 	static const int32 GDDGIRadianceCascadeTextureWidth = 4096;
 	static const int32 GDDGIRadianceCascadeMaxTextureDimension = 16384;
-	// Five persistent per-ray textures consume 32 bytes per ray record.
-	// Bound this subsystem's ray storage independently of the RHI texture limits.
+	// Four per-probe ray textures consume 24 bytes per ray record.
+	// Directions are stored once per ray layout (8 bytes per direction), shared
+	// by all probes. Bound this subsystem independently of RHI texture limits.
 	static const int64 GDDGIRadianceCascadeMaxRayStorageBytes = 512ll * 1024ll * 1024ll;
-	static const int64 GDDGIRadianceCascadeBytesPerRay = 32ll;
+	static const int64 GDDGIRadianceCascadeBytesPerProbeRay = 24ll;
+	static const int64 GDDGIRadianceCascadeBytesPerSharedDirection = 8ll;
 
 	struct FDDGIRadianceCascadeGPUStorage
 	{
@@ -178,10 +180,19 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         GDDGIRadianceCascadeTextureWidth;
 
     // Account for complete allocated rows, not only logically active ray records.
+    // Per-probe history uses four textures (24 bytes/texel); the direction
+    // texture has its own row padding and is allocated only once per ray layout.
     const int64 AllocatedRayTexels = Height64 * GDDGIRadianceCascadeTextureWidth;
-    const int64 EstimatedRayStorageBytes = AllocatedRayTexels * GDDGIRadianceCascadeBytesPerRay;
+    const int64 DirectionHeight64 =
+        (static_cast<int64>(Config.TotalRaysPerProbe) + GDDGIRadianceCascadeTextureWidth - 1) /
+        GDDGIRadianceCascadeTextureWidth;
+    const int64 AllocatedDirectionTexels = DirectionHeight64 * GDDGIRadianceCascadeTextureWidth;
+    const int64 EstimatedRayStorageBytes =
+        AllocatedRayTexels * GDDGIRadianceCascadeBytesPerProbeRay +
+        AllocatedDirectionTexels * GDDGIRadianceCascadeBytesPerSharedDirection;
     if (TotalTexels <= 0 || TotalTexels > MaxTextureTexels ||
         Height64 <= 0 || Height64 > GDDGIRadianceCascadeMaxTextureDimension ||
+        DirectionHeight64 <= 0 || DirectionHeight64 > GDDGIRadianceCascadeMaxTextureDimension ||
         EstimatedRayStorageBytes > GDDGIRadianceCascadeMaxRayStorageBytes)
     {
         DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
@@ -211,7 +222,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const int64 CapacityHeight64 = (RequiredCapacityTexels + GDDGIRadianceCascadeTextureWidth - 1) /
         GDDGIRadianceCascadeTextureWidth;
     const FIntPoint RequiredDimensions(GDDGIRadianceCascadeTextureWidth, static_cast<int32>(CapacityHeight64));
-    const int64 DirectionHeight64 = (static_cast<int64>(Config.TotalRaysPerProbe) + GDDGIRadianceCascadeTextureWidth - 1) / GDDGIRadianceCascadeTextureWidth;
     const FIntPoint RequiredDirectionDimensions(GDDGIRadianceCascadeTextureWidth, static_cast<int32>(DirectionHeight64));
     const bool bRayStorageMatches =
         Storage.Dimensions == RequiredDimensions &&
