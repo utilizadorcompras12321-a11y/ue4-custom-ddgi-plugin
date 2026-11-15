@@ -791,9 +791,17 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
-	// This callback is invoked once per view. Radiance Cascades are scene/probe
-	// data, not camera-view data, so compute them only once per scene per frame.
+	// Probe data is scene-wide. The first view that claims this frame also
+	// supplies the camera center; later views must not move the grid again.
 	if (!DDGIBeginRadianceCascadeUpdate_RenderThread(Scene, InView.Family->FrameNumber))
+	{
+		return;
+	}
+
+	DDGIUpdateCameraProbeGridOrigin_RenderThread(
+		Scene, InView.ViewMatrices.GetViewOrigin());
+	Config = DDGIGetMasterConfig_RenderThread(Scene);
+	if (!Config || !Config->SoftwareBVH.IsValid())
 	{
 		return;
 	}
