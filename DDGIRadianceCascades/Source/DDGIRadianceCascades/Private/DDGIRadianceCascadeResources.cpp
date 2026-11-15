@@ -1348,7 +1348,12 @@ bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
     const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage)
     {
-        UE_LOG(LogTemp, Error, TEXT("DDGI MAP DIAG: no GPU storage for Scene=%p."), Scene);
+        static bool bLoggedMissingStorage = false;
+        if (!bLoggedMissingStorage)
+        {
+            UE_LOG(LogTemp, Error, TEXT("DDGI MAP DIAG: no GPU storage for Scene=%p."), Scene);
+            bLoggedMissingStorage = true;
+        }
         return false;
     }
 
