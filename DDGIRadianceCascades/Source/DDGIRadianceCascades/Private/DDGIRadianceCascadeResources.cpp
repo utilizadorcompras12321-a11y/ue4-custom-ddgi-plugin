@@ -1346,13 +1346,47 @@ bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
     OutPhysicalSlotCapacity = 0;
 
     const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
-    if (!Storage || Storage->bPendingPhysicalSlotsUpload || Storage->bInvalidateAllPhysicalSlots ||
-        (Storage->bNeedsInitialization && Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0) ||
-        !Storage->LogicalToPhysicalSlotsSRV.IsValid() ||
-        !Storage->NewlyAllocatedPhysicalSlotsSRV.IsValid() ||
-        Storage->LogicalToPhysicalSlotCPU.Num() != Storage->UploadedProbeCount ||
-        Storage->PhysicalSlotCapacity == 0)
+    if (!Storage)
     {
+        UE_LOG(LogTemp, Error, TEXT("DDGI MAP DIAG: no GPU storage for Scene=%p."), Scene);
+        return false;
+    }
+
+    const bool bPendingUpload = Storage->bPendingPhysicalSlotsUpload;
+    const bool bInvalidatingAll = Storage->bInvalidateAllPhysicalSlots;
+    const bool bInitializationWithoutNewSlots =
+        Storage->bNeedsInitialization && Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0;
+    const bool bMissingLogicalSRV = !Storage->LogicalToPhysicalSlotsSRV.IsValid();
+    const bool bMissingNewSlotsSRV = !Storage->NewlyAllocatedPhysicalSlotsSRV.IsValid();
+    const bool bLogicalCountMismatch =
+        Storage->LogicalToPhysicalSlotCPU.Num() != Storage->UploadedProbeCount;
+    const bool bNoPhysicalCapacity = Storage->PhysicalSlotCapacity == 0;
+    if (bPendingUpload || bInvalidatingAll || bInitializationWithoutNewSlots ||
+        bMissingLogicalSRV || bMissingNewSlotsSRV || bLogicalCountMismatch || bNoPhysicalCapacity)
+    {
+        static uint32 LastLoggedFailureMask = MAX_uint32;
+        const uint32 FailureMask =
+            (bPendingUpload ? 1u : 0u) |
+            (bInvalidatingAll ? 2u : 0u) |
+            (bInitializationWithoutNewSlots ? 4u : 0u) |
+            (bMissingLogicalSRV ? 8u : 0u) |
+            (bMissingNewSlotsSRV ? 16u : 0u) |
+            (bLogicalCountMismatch ? 32u : 0u) |
+            (bNoPhysicalCapacity ? 64u : 0u);
+        if (FailureMask != LastLoggedFailureMask)
+        {
+            UE_LOG(LogTemp, Error,
+                TEXT("DDGI MAP DIAG: mapping unavailable mask=0x%02X [pendingUpload=%d invalidateAll=%d initWithoutNewSlots=%d missingLogicalSRV=%d missingNewSlotsSRV=%d logicalCountMismatch=%d noCapacity=%d], logical=%d uploaded=%d newSlots=%d capacity=%u scene=%p."),
+                FailureMask,
+                bPendingUpload ? 1 : 0, bInvalidatingAll ? 1 : 0,
+                bInitializationWithoutNewSlots ? 1 : 0,
+                bMissingLogicalSRV ? 1 : 0, bMissingNewSlotsSRV ? 1 : 0,
+                bLogicalCountMismatch ? 1 : 0, bNoPhysicalCapacity ? 1 : 0,
+                Storage->LogicalToPhysicalSlotCPU.Num(), Storage->UploadedProbeCount,
+                Storage->NewlyAllocatedPhysicalSlotsCPU.Num(),
+                Storage->PhysicalSlotCapacity, Scene);
+            LastLoggedFailureMask = FailureMask;
+        }
         return false;
     }
 
