@@ -840,13 +840,10 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
-	// Claim the scene-wide update only after all prerequisites have been
-	// acquired. A view that cannot obtain valid GPU resources must not prevent
-	// another view in the same frame from performing the update.
-	if (!DDGIBeginRadianceCascadeUpdate_RenderThread(Scene, InView.Family->FrameNumber))
-	{
-		return;
-	}
+	// Reserve the frame immediately before the first GPU dispatch. If initialization
+	// is pending, its UAVs must be valid first; otherwise tracing views are checked
+	// before the frame is claimed.
+	bool bClaimedUpdateFrame = false;
 
 	const uint32 TotalGroups = FMath::DivideAndRoundUp(TotalTexels, 64u);
 	const uint32 GroupsX = FMath::Min(TotalGroups, 65535u);
@@ -886,6 +883,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		if (InitDirectionsUAV.IsValid() && InitRadianceUAV.IsValid() && InitHitDistanceUAV.IsValid() &&
 			InitRadianceScratchUAV.IsValid() && InitHitTriangleIndexUAV.IsValid())
 		{
+			if (!DDGIBeginRadianceCascadeUpdate_RenderThread(Scene, InView.Family->FrameNumber))
+			{
+				return;
+			}
+			bClaimedUpdateFrame = true;
+
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitDirectionsTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitRadianceTexture);
 			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitHitDistanceTexture);
@@ -927,6 +930,14 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	if (!DirectionsSRV.IsValid() || !ProbePositionsSRV.IsValid() || !RadianceUAV.IsValid() || !HitDistanceUAV.IsValid() || !HitTriangleIndexUAV.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create tracing SRV/UAV views."));
+		return;
+	}
+
+	// With no initialization dispatch this is the first GPU operation, so only
+	// claim after all tracing SRV/UAV views have been created successfully.
+	if (!bClaimedUpdateFrame &&
+		!DDGIBeginRadianceCascadeUpdate_RenderThread(Scene, InView.Family->FrameNumber))
+	{
 		return;
 	}
 
