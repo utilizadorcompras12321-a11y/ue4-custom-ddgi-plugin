@@ -689,6 +689,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.BVHNodesSRV.IsValid() && Storage.BVHTrianglesSRV.IsValid();
     if (bBVHSourceChanged)
     {
+        // Radiance and hit-distance history was traced against the previous
+        // geometry snapshot. Reinitialize it before tracing with the new BVH.
+        Storage.bNeedsInitialization = true;
         Storage.BVHRetryCountdown = 0;
     }
     else if (!bBVHResourcesReady && Storage.BVHRetryCountdown > 0)
