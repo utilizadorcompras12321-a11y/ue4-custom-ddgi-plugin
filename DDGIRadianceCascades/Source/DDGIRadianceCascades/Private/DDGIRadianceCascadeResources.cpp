@@ -514,7 +514,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
         TResourceArray<FDDGIProbeSpatialHashEntry> HashEntries;
         HashEntries.SetNumUninitialized(static_cast<int32>(RequiredHashCapacity));
-        for (FVector4& Entry : HashEntries)
+        for (FDDGIProbeSpatialHashEntry& Entry : HashEntries)
         {
             Entry = FDDGIProbeSpatialHashEntry{ 0, 0, 0, -1 };
         }
@@ -529,21 +529,19 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             bool bInserted = false;
             for (uint32 ProbeAttempt = 0u; ProbeAttempt < RequiredHashCapacity; ++ProbeAttempt)
             {
-                FVector4& Entry = HashEntries[static_cast<int32>(Slot)];
-                if (Entry.W < 0.0f)
+                FDDGIProbeSpatialHashEntry& Entry = HashEntries[static_cast<int32>(Slot)];
+                if (Entry.EncodedProbe < 0)
                 {
-                    Entry = FVector4(
-                        static_cast<float>(Cell.X),
-                        static_cast<float>(Cell.Y),
-                        static_cast<float>(Cell.Z),
-                        static_cast<float>(ProbeIndex * 8u + ProbeLevel));
+                    Entry = FDDGIProbeSpatialHashEntry{
+                        Cell.X,
+                        Cell.Y,
+                        Cell.Z,
+                        static_cast<int32>(ProbeIndex * 8u + ProbeLevel) };
                     bInserted = true;
                     break;
                 }
-                if (FMath::RoundToInt(Entry.X) == Cell.X &&
-                    FMath::RoundToInt(Entry.Y) == Cell.Y &&
-                    FMath::RoundToInt(Entry.Z) == Cell.Z &&
-                    (static_cast<uint32>(FMath::RoundToInt(Entry.W)) & 7u) == ProbeLevel)
+                if (Entry.X == Cell.X && Entry.Y == Cell.Y && Entry.Z == Cell.Z &&
+                    (static_cast<uint32>(Entry.EncodedProbe) & 7u) == ProbeLevel)
                 {
                     bHashBuildSucceeded = false;
                     break;
@@ -561,7 +559,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             FRHIResourceCreateInfo HashCreateInfo(TEXT("DDGIRadianceCascade_ProbeSpatialHash"));
             HashCreateInfo.ResourceArray = &HashEntries;
             Storage.ProbeSpatialHash = RHICreateStructuredBuffer(
-                sizeof(FVector4),
+                sizeof(FDDGIProbeSpatialHashEntry),
                 static_cast<uint32>(HashEntries.GetResourceDataSize()),
                 BUF_ShaderResource,
                 HashCreateInfo);
