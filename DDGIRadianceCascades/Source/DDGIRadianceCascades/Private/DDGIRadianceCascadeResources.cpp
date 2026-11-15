@@ -482,6 +482,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
     if (bProbeLayoutChanged)
     {
+        Storage.bPendingPhysicalSlotsUpload = true;
         TSet<FDDGIProbeCellKey> ActiveKeys;
         ActiveKeys.Reserve(ActiveProbeCount);
         for (const FDDGIProbeCellKey& Key : ProbeCellKeys)
