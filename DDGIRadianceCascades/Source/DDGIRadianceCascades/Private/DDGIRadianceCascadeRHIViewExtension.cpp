@@ -860,6 +860,23 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitDistanceTexture);
 	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitTriangleIndexTexture);
 
+	static bool bLoggedTraceLightingConfig = false;
+	if (!bLoggedTraceLightingConfig)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("DDGI DIAG: GPU tracing lighting config: HasDirectionalLight=%d Direction=(%.4f, %.4f, %.4f) Color=(%.4f, %.4f, %.4f) Intensity=%.6f; StaticBackground=%d Color=(%.4f, %.4f, %.4f) Intensity=%.4f Transition=(%.1f, %.1f); GIIntensity=%.4f."),
+			Config->bHasDirectionalLight ? 1 : 0,
+			Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z,
+			Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B,
+			Config->DirectionalLightIntensity,
+			Config->bEnableStaticBackground ? 1 : 0,
+			Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G, Config->StaticBackgroundColor.B,
+			Config->StaticBackgroundIntensity,
+			Config->BackgroundTransitionStart, Config->BackgroundTransitionEnd,
+			Config->GIIntensity);
+		bLoggedTraceLightingConfig = true;
+	}
+
 	TShaderMapRef<FDDGIRadianceCascadeTraceRHI> TraceShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
 	TraceShader->SetParameters(
