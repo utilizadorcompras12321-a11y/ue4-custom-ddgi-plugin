@@ -27,6 +27,7 @@ uint HashCapacity;
 float ProbeSpacing;
 float ProbeGridDistance;
 float4 ProbeGridOrigin;
+float4 ActiveWindowCenter;
 float4 BVHWorldOrigin;
 uint ShouldUsePreExposure;
 uint DebugMode;
@@ -205,7 +206,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float3 Albedo = BaseColor * (1.0f - Metallic);
 
     float GridRadius = max(ProbeGridDistance, 1.0f);
-    float GridDistance = length(LocalPosition - ProbeGridOrigin.xyz);
+    float GridDistance = length(LocalPosition - ActiveWindowCenter.xyz);
     float TransitionWidth = max(ProbeSpacing * 2.0f, GridRadius * 0.05f);
     float Boundary0 = GridRadius * 0.25f;
     float Boundary1 = GridRadius * 0.50f;
