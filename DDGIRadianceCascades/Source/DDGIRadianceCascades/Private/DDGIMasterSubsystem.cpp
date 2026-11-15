@@ -419,8 +419,8 @@ namespace
 							{
 								break;
 							}
-						DDGIInsertBoundedSelectedProbe(
-							SelectedCandidates, Candidate, Quota);
+							DDGIInsertBoundedSelectedProbe(
+								SelectedCandidates, Candidate, Quota);
 
 							if (bTakeNegative)
 							{
