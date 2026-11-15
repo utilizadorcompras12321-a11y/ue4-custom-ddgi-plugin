@@ -28,6 +28,17 @@ static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
     TEXT("DDGI apply debug view (0=off, 1=probe coverage, 2=raw irradiance, 3=solid magenta output test)."),
     ECVF_RenderThreadSafe);
 
+static void DDGITransitionTexture(
+	FRHICommandList& RHICmdList,
+	FRHITexture* Texture,
+	ERHIAccess AccessBefore,
+	ERHIAccess AccessAfter)
+{
+	if (!Texture) return;
+	FRHITransitionInfo TransitionInfo(Texture, AccessBefore, AccessAfter);
+	RHICmdList.Transition(MakeArrayView(&TransitionInfo, 1));
+}
+
 class FDDGIRadianceCascadeInitializeRHI : public FGlobalShader
 {
 	DECLARE_SHADER_TYPE(FDDGIRadianceCascadeInitializeRHI, Global);
@@ -1009,11 +1020,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			}
 			bClaimedUpdateFrame = true;
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitDirectionsTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitRadianceTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitHitDistanceTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitRadianceScratchTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, InitHitTriangleIndexTexture);
+			DDGITransitionTexture(RHICmdList, InitDirectionsTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+			DDGITransitionTexture(RHICmdList, InitRadianceTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+			DDGITransitionTexture(RHICmdList, InitHitDistanceTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+			DDGITransitionTexture(RHICmdList, InitRadianceScratchTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+			DDGITransitionTexture(RHICmdList, InitHitTriangleIndexTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
 
 			TShaderMapRef<FDDGIRadianceCascadeInitializeRHI> InitializeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 			RHICmdList.SetComputeShader(InitializeShader.GetComputeShader());
@@ -1033,11 +1044,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			DispatchComputeShader(RHICmdList, InitializeShader.GetShader(), InitGroupsX, InitGroupsY, 1);
 			InitializeShader->UnbindResources(RHICmdList, InitializeShader.GetComputeShader());
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InitDirectionsTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InitRadianceTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InitHitDistanceTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InitRadianceScratchTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, InitHitTriangleIndexTexture);
+			DDGITransitionTexture(RHICmdList, InitDirectionsTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+			DDGITransitionTexture(RHICmdList, InitRadianceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+			DDGITransitionTexture(RHICmdList, InitHitDistanceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+			DDGITransitionTexture(RHICmdList, InitRadianceScratchTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+			DDGITransitionTexture(RHICmdList, InitHitTriangleIndexTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 			DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(Scene);
 		}
 		else
@@ -1056,11 +1067,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DirectionsTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, ProbePositionsTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RadianceTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitDistanceTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, HitTriangleIndexTexture);
+	DDGITransitionTexture(RHICmdList, DirectionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
+	DDGITransitionTexture(RHICmdList, ProbePositionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
+	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
 
 	static bool bLoggedTraceLightingConfig = false;
 	if (!bLoggedTraceLightingConfig)
@@ -1105,15 +1116,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	DispatchComputeShader(RHICmdList, TraceShader.GetShader(), GroupsX, GroupsY, 1);
 	TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
 
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitTriangleIndexTexture);
+	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,ProbePositionsTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,RadianceTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,HitDistanceTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,DirectionsTexture);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable,RadianceScratchTexture);
+	DDGITransitionTexture(RHICmdList, RadianceScratchTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
 	TShaderMapRef<FDDGIRadianceCascadeSpatialGatherRHI> GatherShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(GatherShader.GetComputeShader());
 	GatherShader->SetParameters(RHICmdList,GatherShader.GetComputeShader(),GatherRadianceSRV,GatherHitSRV,GatherHitIndicesSRV,GatherDirectionsSRV,
@@ -1122,7 +1129,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		FVector4(Config->ProbeGridOrigin.X,Config->ProbeGridOrigin.Y,Config->ProbeGridOrigin.Z,0.0f),bUseNeighborList);
 	DispatchComputeShader(RHICmdList,GatherShader.GetShader(),GroupsX,GroupsY,1);
 	GatherShader->UnbindResources(RHICmdList,GatherShader.GetComputeShader());
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable,RadianceScratchTexture);
+	
 
 	// Integrate directly in the gather output. Parent and child cascades occupy
 	// disjoint texel ranges, so one UAV can safely read child rays and write parents.
@@ -1145,8 +1152,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			const uint32 IntegrationGroupsY = FMath::DivideAndRoundUp(
 				IntegrationTexels, IntegrationGroups * 64u);
 
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, HitDistanceTexture);
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RadianceScratchTexture);
+
+			// Same-state UAV transition: D3D12 flushes the compute UAV cache;
+			// D3D11 ends the UAV-overlap group. Orders Gather and each cascade
+			// before the following Integrate dispatch reads child radiance.
+			DDGITransitionTexture(RHICmdList, RadianceScratchTexture,
+				ERHIAccess::UAVCompute, ERHIAccess::UAVCompute);
 
 			RHICmdList.SetComputeShader(IntegrateShader.GetComputeShader());
 			IntegrateShader->SetParameters(
@@ -1164,8 +1175,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 			// Force visibility of this cascade's writes before the next cascade
 			// reads them as child radiance through the same UAV.
-			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, RadianceScratchTexture);
+
 		}
+
+		DDGITransitionTexture(RHICmdList, RadianceScratchTexture,
+			ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 
 		// Apply consumes Storage.Radiance. Swap once, including the one-cascade
 		// case where gather output is already the complete radiance result.
