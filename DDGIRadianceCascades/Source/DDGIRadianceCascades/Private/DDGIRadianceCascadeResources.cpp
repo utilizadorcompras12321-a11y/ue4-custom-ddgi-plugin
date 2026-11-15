@@ -92,6 +92,9 @@ namespace
 		int32 TotalRaysPerProbe = 0;
 		int32 RayProbeCapacity = 0;
 		FIntPoint ProbePositionDimensions = FIntPoint::ZeroValue;
+		// Cache validated lattice identities across scene updates. Re-quantizing every
+		// probe every frame is unnecessary while the published layout is unchanged.
+		TArray<FDDGIProbeCellKey> ProbeCellKeys;
 		int32 UploadedProbeCount = 0;
 		uint32 UploadedProbeLayoutHash = 0;
 		float UploadedProbeSpacing = 0.0f;
@@ -129,6 +132,7 @@ namespace
 			DirectionDimensions = FIntPoint::ZeroValue;
 			RayProbeCapacity = 0;
 			ProbePositionDimensions = FIntPoint::ZeroValue;
+			ProbeCellKeys.Reset();
 			UploadedProbeCount = 0;
 			UploadedProbeLayoutHash = 0;
 			UploadedProbeSpacing = 0.0f;
@@ -328,65 +332,71 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         FMath::Max(2u, ProbeCountForHash * 2u));
     const float SafeProbeSpacing = FMath::Max(1.0f, Config.ProbeSpacing);
 
-    // Multi-resolution probes share one base-spacing hash. Validate the CPU/GPU
-    // contract before uploading positions or building either lookup structure:
-    // W must be an integer level and XYZ must lie on that level's base lattice.
-    const float LatticeTolerance = FMath::Max(0.01f, SafeProbeSpacing * 1.0e-4f);
-    // Cell coordinates are consumed by validation, hash construction, and
-    // neighbor construction. Quantize once so all three stages share exactly
-    // the same integer identity and avoid repeating float division/rounding.
-    TArray<FDDGIProbeCellKey> ProbeCellKeys;
-    ProbeCellKeys.SetNumUninitialized(ActiveProbeCount);
-    for (int32 ProbeIndex = 0; ProbeIndex < ActiveProbeCount; ++ProbeIndex)
-    {
-        const FVector4& Position = Config.ProbePositions[ProbeIndex];
-        const int32 ProbeLevel = FMath::RoundToInt(Position.W);
-        if (ProbeLevel < 0 || ProbeLevel > 7 ||
-            !FMath::IsNearlyEqual(Position.W, static_cast<float>(ProbeLevel), 1.0e-3f))
-        {
-            DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
-            UE_LOG(LogTemp, Error,
-                TEXT("Radiance Cascades: probe %d has invalid spatial level %.3f; supported levels are integer values 0..7."),
-                ProbeIndex, Position.W);
-            return;
-        }
-
-        const int32 LevelCellStep = 1 << ProbeLevel;
-        const FIntVector Cell(
-            FMath::RoundToInt(Position.X / SafeProbeSpacing),
-            FMath::RoundToInt(Position.Y / SafeProbeSpacing),
-            FMath::RoundToInt(Position.Z / SafeProbeSpacing));
-        ProbeCellKeys[ProbeIndex] = FDDGIProbeCellKey{
-            Cell, static_cast<uint32>(ProbeLevel) };
-        const bool bOnBaseLattice =
-            FMath::IsNearlyEqual(Position.X, static_cast<float>(Cell.X) * SafeProbeSpacing, LatticeTolerance) &&
-            FMath::IsNearlyEqual(Position.Y, static_cast<float>(Cell.Y) * SafeProbeSpacing, LatticeTolerance) &&
-            FMath::IsNearlyEqual(Position.Z, static_cast<float>(Cell.Z) * SafeProbeSpacing, LatticeTolerance);
-        const bool bAlignedToLevel =
-            (Cell.X % LevelCellStep) == 0 &&
-            (Cell.Y % LevelCellStep) == 0 &&
-            (Cell.Z % LevelCellStep) == 0;
-        if (!bOnBaseLattice || !bAlignedToLevel)
-        {
-            DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
-            UE_LOG(LogTemp, Error,
-                TEXT("Radiance Cascades: probe %d at (%.2f, %.2f, %.2f) is not aligned to level %d (base spacing %.2f cm)."),
-                ProbeIndex, Position.X, Position.Y, Position.Z, ProbeLevel, SafeProbeSpacing);
-            return;
-        }
-    }
-    // The subsystem computes this fingerprint only when rebuilding the lattice.
-    // Probe offsets are invariant under actor translation, so their texture
-    // needs uploading only when count, topology, spacing, or allocation changes.
+    // Probe identity is immutable for a published lattice. Check its snapshot
+    // before doing per-probe validation/quantization so steady-state scene
+    // updates reuse the cached integer keys instead of rebuilding them.
     const uint32 ProbeLayoutHash = Config.ProbeLayoutHash;
     const bool bProbePositionsMatch =
         Storage.ProbePositions.IsValid() &&
         Storage.UploadedProbeCount == ProbeCount &&
         Storage.UploadedProbeLayoutHash == ProbeLayoutHash &&
         FMath::IsNearlyEqual(Storage.UploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f);
-    // Capture the change before updating the uploaded snapshot below.
-    // Hash allocation success/failure is deliberately not part of layout identity.
     const bool bProbeLayoutChanged = !bProbePositionsMatch;
+
+    if (bProbeLayoutChanged)
+    {
+        const float LatticeTolerance = FMath::Max(0.01f, SafeProbeSpacing * 1.0e-4f);
+        Storage.ProbeCellKeys.SetNumUninitialized(ActiveProbeCount);
+        for (int32 ProbeIndex = 0; ProbeIndex < ActiveProbeCount; ++ProbeIndex)
+        {
+            const FVector4& Position = Config.ProbePositions[ProbeIndex];
+            const int32 ProbeLevel = FMath::RoundToInt(Position.W);
+            if (ProbeLevel < 0 || ProbeLevel > 7 ||
+                !FMath::IsNearlyEqual(Position.W, static_cast<float>(ProbeLevel), 1.0e-3f))
+            {
+                DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+                UE_LOG(LogTemp, Error,
+                    TEXT("Radiance Cascades: probe %d has invalid spatial level %.3f; supported levels are integer values 0..7."),
+                    ProbeIndex, Position.W);
+                return;
+            }
+
+            const int32 LevelCellStep = 1 << ProbeLevel;
+            const FIntVector Cell(
+                FMath::RoundToInt(Position.X / SafeProbeSpacing),
+                FMath::RoundToInt(Position.Y / SafeProbeSpacing),
+                FMath::RoundToInt(Position.Z / SafeProbeSpacing));
+            Storage.ProbeCellKeys[ProbeIndex] = FDDGIProbeCellKey{
+                Cell, static_cast<uint32>(ProbeLevel) };
+            const bool bOnBaseLattice =
+                FMath::IsNearlyEqual(Position.X, static_cast<float>(Cell.X) * SafeProbeSpacing, LatticeTolerance) &&
+                FMath::IsNearlyEqual(Position.Y, static_cast<float>(Cell.Y) * SafeProbeSpacing, LatticeTolerance) &&
+                FMath::IsNearlyEqual(Position.Z, static_cast<float>(Cell.Z) * SafeProbeSpacing, LatticeTolerance);
+            const bool bAlignedToLevel =
+                (Cell.X % LevelCellStep) == 0 &&
+                (Cell.Y % LevelCellStep) == 0 &&
+                (Cell.Z % LevelCellStep) == 0;
+            if (!bOnBaseLattice || !bAlignedToLevel)
+            {
+                DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+                UE_LOG(LogTemp, Error,
+                    TEXT("Radiance Cascades: probe %d at (%.2f, %.2f, %.2f) is not aligned to level %d (base spacing %.2f cm)."),
+                    ProbeIndex, Position.X, Position.Y, Position.Z, ProbeLevel, SafeProbeSpacing);
+                return;
+            }
+        }
+    }
+    else if (Storage.ProbeCellKeys.Num() != ActiveProbeCount)
+    {
+        // A matching uploaded snapshot without its CPU identity cache is an
+        // inconsistent state; fail closed rather than building lookup data
+        // from stale or incomplete keys.
+        DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+        UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: cached probe-cell identity count does not match the uploaded layout."));
+        return;
+    }
+    const TArray<FDDGIProbeCellKey>& ProbeCellKeys = Storage.ProbeCellKeys;
+    // Hash allocation success/failure is deliberately not part of layout identity.
     if (!bProbePositionsMatch)
     {
         const FSceneRenderTargetItem& ProbePositionItem =
