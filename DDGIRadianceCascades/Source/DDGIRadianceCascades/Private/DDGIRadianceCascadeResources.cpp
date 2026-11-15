@@ -257,6 +257,47 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const uint32 RequiredHashCapacity = FMath::RoundUpToPowerOfTwo(
         FMath::Max(2u, ProbeCountForHash * 2u));
     const float SafeProbeSpacing = FMath::Max(1.0f, Config.ProbeSpacing);
+
+    // Multi-resolution probes share one base-spacing hash. Validate the CPU/GPU
+    // contract before uploading positions or building either lookup structure:
+    // W must be an integer level and XYZ must lie on that level's base lattice.
+    const float LatticeTolerance = FMath::Max(0.01f, SafeProbeSpacing * 1.0e-4f);
+    for (int32 ProbeIndex = 0; ProbeIndex < ActiveProbeCount; ++ProbeIndex)
+    {
+        const FVector4& Position = Config.ProbePositions[ProbeIndex];
+        const int32 ProbeLevel = FMath::RoundToInt(Position.W);
+        if (ProbeLevel < 0 || ProbeLevel > 7 ||
+            !FMath::IsNearlyEqual(Position.W, static_cast<float>(ProbeLevel), 1.0e-3f))
+        {
+            DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+            UE_LOG(LogTemp, Error,
+                TEXT("Radiance Cascades: probe %d has invalid spatial level %.3f; supported levels are integer values 0..7."),
+                ProbeIndex, Position.W);
+            return;
+        }
+
+        const int32 LevelCellStep = 1 << ProbeLevel;
+        const FIntVector Cell(
+            FMath::RoundToInt(Position.X / SafeProbeSpacing),
+            FMath::RoundToInt(Position.Y / SafeProbeSpacing),
+            FMath::RoundToInt(Position.Z / SafeProbeSpacing));
+        const bool bOnBaseLattice =
+            FMath::IsNearlyEqual(Position.X, static_cast<float>(Cell.X) * SafeProbeSpacing, LatticeTolerance) &&
+            FMath::IsNearlyEqual(Position.Y, static_cast<float>(Cell.Y) * SafeProbeSpacing, LatticeTolerance) &&
+            FMath::IsNearlyEqual(Position.Z, static_cast<float>(Cell.Z) * SafeProbeSpacing, LatticeTolerance);
+        const bool bAlignedToLevel =
+            (Cell.X % LevelCellStep) == 0 &&
+            (Cell.Y % LevelCellStep) == 0 &&
+            (Cell.Z % LevelCellStep) == 0;
+        if (!bOnBaseLattice || !bAlignedToLevel)
+        {
+            DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+            UE_LOG(LogTemp, Error,
+                TEXT("Radiance Cascades: probe %d at (%.2f, %.2f, %.2f) is not aligned to level %d (base spacing %.2f cm)."),
+                ProbeIndex, Position.X, Position.Y, Position.Z, ProbeLevel, SafeProbeSpacing);
+            return;
+        }
+    }
     // The subsystem computes this fingerprint only when rebuilding the lattice.
     // Probe offsets are invariant under actor translation, so their texture
     // needs uploading only when count, topology, spacing, or allocation changes.
