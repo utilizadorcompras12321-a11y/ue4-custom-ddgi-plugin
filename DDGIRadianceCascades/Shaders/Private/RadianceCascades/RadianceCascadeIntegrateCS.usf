@@ -48,12 +48,22 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             NextCascadeStorageOffset +
             LocalRayIndex * SafeSplitFactor;
 
+        // Child records are contiguous in linear texture order. Convert the
+        // first address once, then advance coordinates with a row-wrap check
+        // instead of performing integer divide/modulo for every child sample.
+        uint2 ChildPixel = uint2(
+            ChildLinearIndexBase % TextureWidth,
+            ChildLinearIndexBase / TextureWidth);
         [loop]
         for (uint ChildIndex = 0u; ChildIndex < SafeSplitFactor; ++ChildIndex)
         {
-            uint ChildLinearIndex = ChildLinearIndexBase + ChildIndex;
-            uint2 ChildPixel = uint2(ChildLinearIndex % TextureWidth, ChildLinearIndex / TextureWidth);
             IntegratedRadiance += InputRadianceTexture.Load(int3(ChildPixel, 0)).rgb;
+            ++ChildPixel.x;
+            if (ChildPixel.x >= TextureWidth)
+            {
+                ChildPixel.x = 0u;
+                ++ChildPixel.y;
+            }
         }
 
         Result = float4(IntegratedRadiance / (float)SafeSplitFactor, 1.0f);
