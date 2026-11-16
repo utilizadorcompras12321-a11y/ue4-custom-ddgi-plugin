@@ -348,7 +348,7 @@ namespace
 		for (int32 Level = 0; Level < ClipmapLevelCount; ++Level)
 		{
 			const int64 Step = 1ll << Level;
-			const double HalfExtent = SafeSpacing * 8.0 * static_cast<double>(Step);
+			const double HalfExtent = SafeSpacing * 6.0 * static_cast<double>(Step);
 			const int64 CenterX = DDGISafeRoundCell(static_cast<double>(CenterCell.X) / static_cast<double>(Step)) * Step;
 			const int64 CenterY = DDGISafeRoundCell(static_cast<double>(CenterCell.Y) / static_cast<double>(Step)) * Step;
 			const int64 CenterZ = DDGISafeRoundCell(static_cast<double>(CenterCell.Z) / static_cast<double>(Step)) * Step;
