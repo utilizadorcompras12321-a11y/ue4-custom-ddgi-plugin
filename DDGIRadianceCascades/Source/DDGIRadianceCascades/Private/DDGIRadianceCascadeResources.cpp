@@ -134,6 +134,9 @@ namespace
 		int32 RayLayoutCascadeCount = 0;
 		int32 RayLayoutBaseRayCount = 0;
 		int32 RayLayoutSplitFactor = 0;
+		float RayLayoutBaseSegmentLength = 0.0f;
+		float RayLayoutCascadeScale = 0.0f;
+		float RayLayoutMaxTraceDistance = 0.0f;
 		int32 RayProbeCapacity = 0;
 		FIntPoint ProbePositionDimensions = FIntPoint::ZeroValue;
 		// Cache validated lattice identities across scene updates. Re-quantizing every
@@ -199,6 +202,9 @@ namespace
 			RayLayoutCascadeCount = 0;
 			RayLayoutBaseRayCount = 0;
 			RayLayoutSplitFactor = 0;
+			RayLayoutBaseSegmentLength = 0.0f;
+			RayLayoutCascadeScale = 0.0f;
+			RayLayoutMaxTraceDistance = 0.0f;
 			bNeedsInitialization = true;
 			bNeedsDirectionInitialization = true;
 			bInvalidateAllPhysicalSlots = false;
@@ -258,8 +264,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         GDDGIRadianceCascadeTextureWidth;
 
     // Account for complete allocated rows, not only logically active ray records.
-    // Per-probe history uses five textures (32 bytes/texel): radiance,
-    // two radiance ping-pong targets, hit distance, and hit-triangle index.
+    // Per-probe history uses five textures (28 bytes/texel): raw radiance,
+    // gather scratch, packed final radiance, hit distance and hit-triangle index.
     // The direction texture has its own row padding and is shared per ray layout.
     const int64 AllocatedRayTexels = Height64 * GDDGIRadianceCascadeTextureWidth;
     const int64 DirectionHeight64 =
@@ -291,6 +297,22 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const int32 RequestedRayLayoutCascadeCount = Config.RadianceCascades.GetSafeCascadeCount();
     const int32 RequestedRayLayoutBaseRayCount = FMath::Clamp(Config.RadianceCascades.BaseRayCount, 1, 64);
     const int32 RequestedRayLayoutSplitFactor = FMath::Clamp(Config.RadianceCascades.RaySplitFactor, 1, 4);
+    const float RequestedBaseSegmentLength = FMath::Max(1.0f, Config.RadianceCascades.BaseSegmentLength);
+    const float RequestedCascadeScale = FMath::Max(1.01f, Config.RadianceCascades.CascadeScale);
+    const float RequestedMaxTraceDistance = FMath::Max(1.0f, Config.RadianceCascades.MaxTraceDistance);
+    const bool bCascadeIntervalsChanged =
+        Storage.TotalRaysPerProbe > 0 &&
+        (!FMath::IsNearlyEqual(Storage.RayLayoutBaseSegmentLength, RequestedBaseSegmentLength, 1.0e-4f) ||
+         !FMath::IsNearlyEqual(Storage.RayLayoutCascadeScale, RequestedCascadeScale, 1.0e-4f) ||
+         !FMath::IsNearlyEqual(Storage.RayLayoutMaxTraceDistance, RequestedMaxTraceDistance, 1.0e-3f));
+    if (bCascadeIntervalsChanged)
+    {
+        // Existing radiance and hit distances were traced against different
+        // cascade intervals. Invalidate every retained physical slot without
+        // reallocating textures or regenerating the shared direction table.
+        Storage.bInvalidateAllPhysicalSlots = true;
+        Storage.bNeedsInitialization = true;
+    }
     const bool bRayLayoutChanged =
         Storage.TotalRaysPerProbe != 0 &&
         (Storage.TotalRaysPerProbe != Config.TotalRaysPerProbe ||
@@ -366,6 +388,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.RayLayoutCascadeCount = 0;
         Storage.RayLayoutBaseRayCount = 0;
         Storage.RayLayoutSplitFactor = 0;
+        Storage.RayLayoutBaseSegmentLength = 0.0f;
+        Storage.RayLayoutCascadeScale = 0.0f;
+        Storage.RayLayoutMaxTraceDistance = 0.0f;
         Storage.RayProbeCapacity = 0;
         Storage.bNeedsInitialization = true;
         Storage.bNeedsDirectionInitialization = true;
@@ -428,6 +453,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.RayLayoutCascadeCount = RequestedRayLayoutCascadeCount;
         Storage.RayLayoutBaseRayCount = RequestedRayLayoutBaseRayCount;
         Storage.RayLayoutSplitFactor = RequestedRayLayoutSplitFactor;
+        Storage.RayLayoutBaseSegmentLength = RequestedBaseSegmentLength;
+        Storage.RayLayoutCascadeScale = RequestedCascadeScale;
+        Storage.RayLayoutMaxTraceDistance = RequestedMaxTraceDistance;
         // The final texture row is fully allocated, even when the active ray
         // count does not fill it. Count every complete probe-sized range that
         // physically fits in the allocated texture, not only active probes.
@@ -779,8 +807,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     if (Storage.bInvalidateAllPhysicalSlots)
     {
         Storage.NewlyAllocatedPhysicalSlotsCPU.Reset();
-        // Logical-to-physical mapping is one-to-one, so every slot appears once.
-        Storage.NewlyAllocatedPhysicalSlotsCPU.Append(Storage.LogicalToPhysicalSlotCPU);
+        // Invalidate active and retained identities. An inactive probe can
+        // return before its retention slot expires, so clearing only the
+        // current logical map would allow it to resurrect stale radiance.
+        Storage.NewlyAllocatedPhysicalSlotsCPU.Reserve(Storage.ProbeCellToPhysicalSlot.Num());
+        for (const auto& Pair : Storage.ProbeCellToPhysicalSlot)
+        {
+            Storage.NewlyAllocatedPhysicalSlotsCPU.Add(Pair.Value.PhysicalSlot);
+        }
         Storage.bInvalidateAllPhysicalSlots = false;
         Storage.bPendingPhysicalSlotsUpload = true;
     }
