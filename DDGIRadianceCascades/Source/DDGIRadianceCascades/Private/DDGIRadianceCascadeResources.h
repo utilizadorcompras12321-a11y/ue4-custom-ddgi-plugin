@@ -18,6 +18,9 @@ void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Sce
 
 /** Claims this scene's DDGI update slot for the supplied render frame. */
 bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber);
+/** Returns and advances the deterministic round-robin trace cursor by the scheduled batch size. */
+uint32 DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
+	const FSceneInterface* Scene, uint32 ProbeCount, uint32 TraceProbeCount);
 
 bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
     FRDGBuilder& GraphBuilder,
