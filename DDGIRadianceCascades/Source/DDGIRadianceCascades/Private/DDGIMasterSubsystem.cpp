@@ -757,6 +757,24 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 				}
 			}
 		}
+		// Keep the highest-contribution lights first. The shader deliberately
+		// shadows only a small prefix per hit to bound software-BVH traversal cost.
+		CachedLocalLights.Sort([](
+			const TWeakObjectPtr<UPointLightComponent>& A,
+			const TWeakObjectPtr<UPointLightComponent>& B)
+		{
+			const UPointLightComponent* LightA = A.Get();
+			const UPointLightComponent* LightB = B.Get();
+			const float ScoreA = IsValid(LightA)
+				? LightA->Intensity * FMath::Max(0.0f, LightA->IndirectLightingIntensity) *
+					FMath::Max(1.0f, LightA->AttenuationRadius)
+				: -1.0f;
+			const float ScoreB = IsValid(LightB)
+				? LightB->Intensity * FMath::Max(0.0f, LightB->IndirectLightingIntensity) *
+					FMath::Max(1.0f, LightB->AttenuationRadius)
+				: -1.0f;
+			return ScoreA > ScoreB;
+		});
 		LastLocalLightDiscoveryFrame = GFrameCounter;
 		bHasSearchedLocalLights = true;
 	}
