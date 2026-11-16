@@ -236,7 +236,8 @@ float3 DDGIProbeDiffuseIrradiance(
                 int3(VisibilityPixel, 0));
             if (OccluderDistance >= 0.0f)
             {
-                float VisibilityBias = max(2.0f, ReceiverDistance * 0.015f);
+                // Keep the bias in world centimetres small enough not to skip thin walls.
+                float VisibilityBias = clamp(ReceiverDistance * 0.0015f, 1.0f, 5.0f);
                 // A hit at the receiver distance is the receiver surface,
                 // not an occluder. Only a hit clearly before the receiver fades
                 // the probe contribution.
