@@ -32,7 +32,7 @@ static TAutoConsoleVariable<float> CVarDDGISurfaceProbeSpatialCellSize(
 static TAutoConsoleVariable<int32> CVarDDGISurfaceProbeTraceBudget(
     TEXT("r.DDGI.SurfaceProbeTraceBudget"),
     64,
-    TEXT("Maximum retained surface probes scheduled for tracing per frame (0 disables surface-probe tracing schedule)."),
+    TEXT("Maximum retained surface probes scheduled for tracing per frame (0 disables the entire surface-probe pipeline)."),
     ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
@@ -841,7 +841,8 @@ static void DDGIScheduleSurfaceProbeCapture(
     const FSceneInterface* Scene,
     FDDGISurfaceProbeAllocatorRDGResources& OutResources)
 {
-    if (!Scene || !View.Family || !Inputs.SceneTextures.SceneTextures || !SceneColor.IsValid())
+    if (!Scene || !View.Family || !Inputs.SceneTextures.SceneTextures || !SceneColor.IsValid() ||
+        CVarDDGISurfaceProbeTraceBudget.GetValueOnRenderThread() <= 0)
     {
         return;
     }
@@ -1138,13 +1139,15 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	const FSceneInterface* Scene = View.Family->Scene;
 	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
 	FDDGISurfaceProbeAllocatorRDGResources SurfaceProbeResources;
-	if (Config && Config->bEnableDynamicGI)
+	const bool bEnableSurfaceProbes = Config && Config->bEnableDynamicGI &&
+		CVarDDGISurfaceProbeTraceBudget.GetValueOnRenderThread() > 0;
+	if (bEnableSurfaceProbes)
 	{
 		DDGIScheduleSurfaceProbeCapture(
 			GraphBuilder, View, Inputs, SceneColor, Scene, SurfaceProbeResources);
 	}
 	uint32 SurfaceProbeSpatialHashCapacity = 0u;
-	FRDGBufferRef SurfaceProbeSpatialHash = Config && Config->bEnableDynamicGI
+	FRDGBufferRef SurfaceProbeSpatialHash = bEnableSurfaceProbes
 		? DDGIScheduleSurfaceProbeSpatialHash(
 			GraphBuilder, View, *Config, SurfaceProbeResources, SurfaceProbeSpatialHashCapacity)
 		: nullptr;
