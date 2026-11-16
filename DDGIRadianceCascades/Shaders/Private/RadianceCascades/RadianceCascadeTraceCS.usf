@@ -6,8 +6,6 @@ uint TotalTexels;
 uint DispatchGroupsX;
 uint ProbeCount;
 uint TotalRaysPerProbe;
-uint UpdateProbeStart;
-uint UpdateProbeCount;
 uint NodeCount;
 uint TriangleCount;
 uint CascadeCount;
@@ -677,14 +675,6 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
     uint PackedRayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
-
-    // Only the scheduled probe window is retraced this frame. All other
-    // physical slots keep their previous radiance and hit-distance history.
-    uint ProbeUpdateOffset = (ProbeIndex + ProbeCount - UpdateProbeStart) % ProbeCount;
-    if (ProbeUpdateOffset >= UpdateProbeCount)
-    {
-        return;
-    }
 
     uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
     uint PhysicalLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
