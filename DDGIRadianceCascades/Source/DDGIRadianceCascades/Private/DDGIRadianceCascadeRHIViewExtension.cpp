@@ -211,6 +211,7 @@ public:
 		DirectionalLightColor.Bind(Initializer.ParameterMap, TEXT("DirectionalLightColor"));
 		DirectionalLightIntensity.Bind(Initializer.ParameterMap, TEXT("DirectionalLightIntensity"));
 		bHasDirectionalLight.Bind(Initializer.ParameterMap, TEXT("bHasDirectionalLight"));
+		bDirectionalLightCastsShadows.Bind(Initializer.ParameterMap, TEXT("bDirectionalLightCastsShadows"));
 		LocalLightCount.Bind(Initializer.ParameterMap, TEXT("LocalLightCount"));
 		LocalLightPositionAndRadius.Bind(Initializer.ParameterMap, TEXT("LocalLightPositionAndRadius"));
 		LocalLightDirectionAndCosOuter.Bind(Initializer.ParameterMap, TEXT("LocalLightDirectionAndCosOuter"));
@@ -266,6 +267,7 @@ public:
 		const FVector4& InDirectionalLightColor,
 		float InDirectionalLightIntensity,
 		uint32 bInHasDirectionalLight,
+		uint32 bInDirectionalLightCastsShadows,
 		const TArray<FVector4>& InLocalLightPositionAndRadius,
 		const TArray<FVector4>& InLocalLightDirectionAndCosOuter,
 		const TArray<FVector4>& InLocalLightColorAndIntensity,
@@ -298,6 +300,7 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, DirectionalLightColor, InDirectionalLightColor);
 		SetShaderValue(RHICmdList, ShaderRHI, DirectionalLightIntensity, InDirectionalLightIntensity);
 		SetShaderValue(RHICmdList, ShaderRHI, bHasDirectionalLight, bInHasDirectionalLight);
+		SetShaderValue(RHICmdList, ShaderRHI, bDirectionalLightCastsShadows, bInDirectionalLightCastsShadows);
 		SetShaderValue(RHICmdList, ShaderRHI, LocalLightCount, FMath::Min(InLocalLightCount, 32u));
 		check(InLocalLightPositionAndRadius.Num() >= 32);
 		check(InLocalLightDirectionAndCosOuter.Num() >= 32);
@@ -357,6 +360,7 @@ private:
 	LAYOUT_FIELD(FShaderParameter, DirectionalLightColor);
 	LAYOUT_FIELD(FShaderParameter, DirectionalLightIntensity);
 	LAYOUT_FIELD(FShaderParameter, bHasDirectionalLight);
+	LAYOUT_FIELD(FShaderParameter, bDirectionalLightCastsShadows);
 	LAYOUT_FIELD(FShaderParameter, LocalLightCount);
 	LAYOUT_FIELD(FShaderParameter, LocalLightPositionAndRadius);
 	LAYOUT_FIELD(FShaderParameter, LocalLightDirectionAndCosOuter);
@@ -1192,6 +1196,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		FVector4(Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B, 0.0f),
 		Config->DirectionalLightIntensity,
 		Config->bHasDirectionalLight ? 1u : 0u,
+		Config->bDirectionalLightCastsShadows ? 1u : 0u,
 		Config->LocalLightPositionAndRadius,
 		Config->LocalLightDirectionAndCosOuter,
 		Config->LocalLightColorAndIntensity,
