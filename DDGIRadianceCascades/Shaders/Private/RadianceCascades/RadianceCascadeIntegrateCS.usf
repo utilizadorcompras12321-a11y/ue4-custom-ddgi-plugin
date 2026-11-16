@@ -42,14 +42,14 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // storage. Subsequent dispatches integrate parent levels in place.
     if (bCopyGatherToFinal != 0u)
     {
-        RadianceUAV[Pixel] = DDGIPackRGB9E5(GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
+        RadianceUAV[Pixel] = DDGIPackR11G11B10(GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
         return;
     }
 
     // A hit terminates transport. Preserve the gathered surface radiance.
     if (HitDistanceTexture.Load(int3(Pixel, 0)) >= 0.0f)
     {
-        RadianceUAV[Pixel] = DDGIPackRGB9E5(GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
+        RadianceUAV[Pixel] = DDGIPackR11G11B10(GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
         return;
     }
 
@@ -70,7 +70,7 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     [loop]
     for (uint ChildIndex = 0u; ChildIndex < SafeSplitFactor; ++ChildIndex)
     {
-        IntegratedRadiance += DDGIUnpackRGB9E5(RadianceUAV[ChildPixel]);
+        IntegratedRadiance += DDGIUnpackR11G11B10(RadianceUAV[ChildPixel]);
         ++ChildPixel.x;
         if (ChildPixel.x >= TextureWidth)
         {
@@ -79,5 +79,5 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         }
     }
 
-    RadianceUAV[Pixel] = DDGIPackRGB9E5(IntegratedRadiance / (float)SafeSplitFactor);
+    RadianceUAV[Pixel] = DDGIPackR11G11B10(IntegratedRadiance / (float)SafeSplitFactor);
 }
