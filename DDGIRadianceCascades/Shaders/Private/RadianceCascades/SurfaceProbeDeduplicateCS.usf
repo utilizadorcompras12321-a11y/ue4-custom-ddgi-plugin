@@ -91,24 +91,31 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         if (ExistingSlot == 0u)
         {
-            // The exact stable key is absent. Before allocating a second probe,
-            // look for the same quantized normal in the 26 adjacent 50 cm cells.
-            // This catches small surface motion across a cell boundary without
-            // treating a nearby, differently oriented surface as the same probe.
+            // The exact stable key is absent. Search only adjacent cells
+            // whose shared boundary is within the 5 cm reuse tolerance.
+            // Most candidates therefore inspect one or two neighbor keys, not all 26.
             uint NeighborBucket = 0xffffffffu;
             uint NeighborSlot = 0xffffffffu;
             uint NeighborBucketValue = 0u;
             uint3 NeighborCellBitsSelected = uint3(0u, 0u, 0u);
             float NeighborDistanceSquared = 3.402823466e+38f;
+            float3 CellLocalPosition =
+                CandidatePosition.xyz - float3(QuantizedCell) * DDGI_SURFACE_CELL_SIZE;
+            int MinNeighborX = CellLocalPosition.x <= 5.0f ? -1 : 0;
+            int MaxNeighborX = CellLocalPosition.x >= (DDGI_SURFACE_CELL_SIZE - 5.0f) ? 1 : 0;
+            int MinNeighborY = CellLocalPosition.y <= 5.0f ? -1 : 0;
+            int MaxNeighborY = CellLocalPosition.y >= (DDGI_SURFACE_CELL_SIZE - 5.0f) ? 1 : 0;
+            int MinNeighborZ = CellLocalPosition.z <= 5.0f ? -1 : 0;
+            int MaxNeighborZ = CellLocalPosition.z >= (DDGI_SURFACE_CELL_SIZE - 5.0f) ? 1 : 0;
 
             [loop]
-            for (int NeighborZ = -1; NeighborZ <= 1; ++NeighborZ)
+            for (int NeighborZ = MinNeighborZ; NeighborZ <= MaxNeighborZ; ++NeighborZ)
             {
                 [loop]
-                for (int NeighborY = -1; NeighborY <= 1; ++NeighborY)
+                for (int NeighborY = MinNeighborY; NeighborY <= MaxNeighborY; ++NeighborY)
                 {
                     [loop]
-                    for (int NeighborX = -1; NeighborX <= 1; ++NeighborX)
+                    for (int NeighborX = MinNeighborX; NeighborX <= MaxNeighborX; ++NeighborX)
                     {
                         if (NeighborX == 0 && NeighborY == 0 && NeighborZ == 0)
                         {
