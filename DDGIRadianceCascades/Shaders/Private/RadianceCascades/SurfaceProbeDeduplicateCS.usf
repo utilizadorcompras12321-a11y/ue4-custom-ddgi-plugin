@@ -1,0 +1,143 @@
+#include "/Engine/Public/Platform.ush"
+
+StructuredBuffer<float4> SurfaceProbeCandidatePositions;
+StructuredBuffer<float4> SurfaceProbeCandidateNormals;
+
+RWStructuredBuffer<float4> SurfaceProbePositions;
+RWStructuredBuffer<float4> SurfaceProbeNormals;
+RWStructuredBuffer<uint4> SurfaceProbeStableKeys;
+RWStructuredBuffer<uint> SurfaceProbeLastSeenFrames;
+RWStructuredBuffer<uint> SurfaceProbeActiveIndices;
+RWStructuredBuffer<uint4> SurfaceProbeHash;
+RWStructuredBuffer<uint> SurfaceProbeCounters;
+
+uint ProbeCapacity;
+uint HashCapacity;
+uint FrameNumber;
+
+static const uint DDGI_HASH_LOCKED = 0xffffffffu;
+static const float DDGI_SURFACE_CELL_SIZE = 50.0f;
+
+uint DDGIHashSurfaceKey(uint3 Cell, uint NormalKey)
+{
+    uint Hash = Cell.x * 0x8DA6B343u;
+    Hash ^= Cell.y * 0xD8163841u;
+    Hash ^= Cell.z * 0xCB1AB31Fu;
+    Hash ^= NormalKey * 0x9E3779B9u;
+    Hash ^= Hash >> 16;
+    Hash *= 0x7FEB352Du;
+    Hash ^= Hash >> 15;
+    Hash *= 0x846CA68Bu;
+    Hash ^= Hash >> 16;
+    return Hash;
+}
+
+uint DDGIEncodeNormal(float3 Normal)
+{
+    Normal /= max(abs(Normal.x) + abs(Normal.y) + abs(Normal.z), 1.0e-6f);
+    float2 Oct = Normal.xy;
+    if (Normal.z < 0.0f)
+    {
+        Oct = (1.0f - abs(Oct.yx)) * (Oct.xy >= 0.0f ? 1.0f : -1.0f);
+    }
+    uint2 Quantized = (uint2)round(saturate(Oct * 0.5f + 0.5f) * 255.0f);
+    return Quantized.x | (Quantized.y << 8);
+}
+
+[numthreads(64, 1, 1)]
+void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint CandidateIndex = DispatchThreadID.x;
+    uint CandidateCount = SurfaceProbeCounters[0];
+    if (CandidateIndex >= CandidateCount)
+    {
+        return;
+    }
+
+    float4 CandidatePosition = SurfaceProbeCandidatePositions[CandidateIndex];
+    float4 CandidateNormal = SurfaceProbeCandidateNormals[CandidateIndex];
+    if (CandidatePosition.w <= 0.5f || CandidateNormal.w <= 0.5f)
+    {
+        return;
+    }
+
+    int3 QuantizedCell = (int3)floor(CandidatePosition.xyz / DDGI_SURFACE_CELL_SIZE);
+    uint3 CellBits = asuint(QuantizedCell);
+    uint NormalKey = DDGIEncodeNormal(normalize(CandidateNormal.xyz));
+    uint4 Key = uint4(CellBits, NormalKey);
+    uint Bucket = DDGIHashSurfaceKey(CellBits, NormalKey) & (HashCapacity - 1u);
+
+    [loop]
+    for (uint Probe = 0u; Probe < HashCapacity; ++Probe)
+    {
+        uint BucketIndex = (Bucket + Probe) & (HashCapacity - 1u);
+        uint ExistingSlot = SurfaceProbeHash[BucketIndex].w;
+
+        if (ExistingSlot == DDGI_HASH_LOCKED)
+        {
+            bool bResolved = false;
+            [loop]
+            for (uint Spin = 0u; Spin < 64u; ++Spin)
+            {
+                DeviceMemoryBarrier();
+                ExistingSlot = SurfaceProbeHash[BucketIndex].w;
+                if (ExistingSlot != DDGI_HASH_LOCKED)
+                {
+                    bResolved = true;
+                    break;
+                }
+            }
+            if (!bResolved)
+            {
+                return;
+            }
+        }
+
+        if (ExistingSlot == 0u)
+        {
+            uint OriginalSlot;
+            InterlockedCompareExchange(
+                SurfaceProbeHash[BucketIndex].w, 0u, DDGI_HASH_LOCKED, OriginalSlot);
+            if (OriginalSlot != 0u)
+            {
+                continue;
+            }
+
+            uint NewSlot;
+            InterlockedAdd(SurfaceProbeCounters[4], 1u, NewSlot);
+            if (NewSlot >= ProbeCapacity)
+            {
+                InterlockedAdd(SurfaceProbeCounters[5], 1u);
+                DeviceMemoryBarrier();
+                SurfaceProbeHash[BucketIndex].w = 0u;
+                return;
+            }
+
+            SurfaceProbePositions[NewSlot] = CandidatePosition;
+            SurfaceProbeNormals[NewSlot] = CandidateNormal;
+            SurfaceProbeStableKeys[NewSlot] = Key;
+            SurfaceProbeLastSeenFrames[NewSlot] = FrameNumber;
+            SurfaceProbeActiveIndices[NewSlot] = NewSlot;
+            SurfaceProbeHash[BucketIndex].xyz = CellBits;
+            DeviceMemoryBarrier();
+            SurfaceProbeHash[BucketIndex].w = NewSlot + 1u;
+            return;
+        }
+
+        uint ExistingProbeSlot = ExistingSlot - 1u;
+        if (ExistingProbeSlot < ProbeCapacity)
+        {
+            uint4 ExistingKey = SurfaceProbeStableKeys[ExistingProbeSlot];
+            if (all(SurfaceProbeHash[BucketIndex].xyz == CellBits) &&
+                ExistingKey.w == NormalKey)
+            {
+                SurfaceProbePositions[ExistingProbeSlot] = CandidatePosition;
+                SurfaceProbeNormals[ExistingProbeSlot] = CandidateNormal;
+                SurfaceProbeLastSeenFrames[ExistingProbeSlot] = FrameNumber;
+                return;
+            }
+        }
+    }
+
+    InterlockedAdd(SurfaceProbeCounters[5], 1u);
+}
