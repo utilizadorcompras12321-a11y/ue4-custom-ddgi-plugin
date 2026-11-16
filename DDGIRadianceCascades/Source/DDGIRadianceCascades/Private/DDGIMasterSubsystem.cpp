@@ -679,9 +679,13 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 			LightActor->GetComponents<UDirectionalLightComponent>(DirectionalLights);
 			for (UDirectionalLightComponent* Candidate : DirectionalLights)
 			{
-				if (IsValid(Candidate) && Candidate->IsVisible() && Candidate->bAffectDynamicIndirectLighting && Candidate->Intensity > StrongestIntensity)
+				const float CandidateIndirectIntensity = IsValid(Candidate)
+					? Candidate->Intensity * FMath::Max(0.0f, Candidate->IndirectLightingIntensity)
+					: 0.0f;
+				if (IsValid(Candidate) && Candidate->IsVisible() && Candidate->bAffectDynamicIndirectLighting &&
+					CandidateIndirectIntensity > StrongestIntensity)
 				{
-					StrongestIntensity = Candidate->Intensity;
+					StrongestIntensity = CandidateIndirectIntensity;
 					Light = Candidate;
 				}
 			}
@@ -773,7 +777,8 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 	{
 		UPointLightComponent* Light = WeakLight.Get();
 		if (!IsValid(Light) || !Light->IsVisible() || !Light->bAffectDynamicIndirectLighting ||
-			Light->Intensity <= 0.0f || Light->AttenuationRadius <= 1.0f)
+			Light->Intensity <= 0.0f || Light->IndirectLightingIntensity <= 0.0f ||
+			Light->AttenuationRadius <= 1.0f)
 		{
 			continue;
 		}
