@@ -235,8 +235,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         GDDGIRadianceCascadeTextureWidth;
 
     // Account for complete allocated rows, not only logically active ray records.
-    // Per-probe history uses four textures (24 bytes/texel); the direction
-    // texture has its own row padding and is allocated only once per ray layout.
+    // Per-probe history uses five textures (32 bytes/texel): radiance,
+    // two radiance ping-pong targets, hit distance, and hit-triangle index.
+    // The direction texture has its own row padding and is shared per ray layout.
     const int64 AllocatedRayTexels = Height64 * GDDGIRadianceCascadeTextureWidth;
     const int64 DirectionHeight64 =
         (static_cast<int64>(Config.TotalRaysPerProbe) + GDDGIRadianceCascadeTextureWidth - 1) /
