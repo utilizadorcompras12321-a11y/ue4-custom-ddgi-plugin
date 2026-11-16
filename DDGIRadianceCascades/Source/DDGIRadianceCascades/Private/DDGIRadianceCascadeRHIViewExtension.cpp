@@ -642,6 +642,46 @@ IMPLEMENT_GLOBAL_SHADER(
     "SurfaceProbeDeduplicateCS",
     SF_Compute);
 
+class FDDGISurfaceProbeTraceCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeTraceCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeTraceCS, FGlobalShader);
+
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbePositions)
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbeNormals)
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, SurfaceProbeTraceIndices)
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, SurfaceProbeCounters)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeIntegratedRadiance)
+        SHADER_PARAMETER_SRV(StructuredBuffer<float4>, BVHNodes)
+        SHADER_PARAMETER_SRV(StructuredBuffer<float4>, BVHTriangles)
+        SHADER_PARAMETER(FVector4, BVHWorldOrigin)
+        SHADER_PARAMETER(uint32, NodeCount)
+        SHADER_PARAMETER(uint32, TriangleCount)
+        SHADER_PARAMETER(uint32, SurfaceProbeFrameNumber)
+        SHADER_PARAMETER(float, MaxTraceDistance)
+        SHADER_PARAMETER(float, GIIntensity)
+        SHADER_PARAMETER(FVector4, StaticBackgroundColor)
+        SHADER_PARAMETER(float, StaticBackgroundIntensity)
+        SHADER_PARAMETER(uint32, bEnableStaticBackground)
+        SHADER_PARAMETER(FVector4, DirectionalLightDirection)
+        SHADER_PARAMETER(FVector4, DirectionalLightColor)
+        SHADER_PARAMETER(float, DirectionalLightIntensity)
+        SHADER_PARAMETER(uint32, bHasDirectionalLight)
+    END_SHADER_PARAMETER_STRUCT()
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+    FDDGISurfaceProbeTraceCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeTraceCS.usf",
+    "SurfaceProbeTraceCS",
+    SF_Compute);
+
 class FDDGISurfaceProbeCaptureCS : public FGlobalShader
 {
     DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeCaptureCS);
@@ -858,6 +898,64 @@ static void DDGIScheduleSurfaceProbeCapture(
         ScheduleTraceShader,
         ScheduleTraceParameters,
         FIntVector(1, 1, 1));
+
+    // Trace only the bounded round-robin batch. The shader reads the actual
+    // scheduled count from Counters[7], so no CPU readback or synchronization
+    // is needed between the scheduler and the trace pass.
+    const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
+    const uint32 TraceDispatchBudget = static_cast<uint32>(
+        FMath::Clamp(CVarDDGISurfaceProbeTraceBudget.GetValueOnRenderThread(), 0, GDDGISurfaceProbeMaxTraceBudget));
+    FShaderResourceViewRHIRef BVHNodesSRV;
+    FShaderResourceViewRHIRef BVHTrianglesSRV;
+    uint32 BVHNodeCount = 0u;
+    uint32 BVHTriangleCount = 0u;
+    if (Config && Config->SoftwareBVH.IsValid() && TraceDispatchBudget > 0u &&
+        DDGIGetSoftwareBVHResources_RenderThread(
+            Scene, BVHNodesSRV, BVHTrianglesSRV, BVHNodeCount, BVHTriangleCount) &&
+        BVHNodesSRV.IsValid() && BVHTrianglesSRV.IsValid() &&
+        BVHNodeCount > 0u && BVHTriangleCount > 0u)
+    {
+        FDDGISurfaceProbeTraceCS::FParameters* TraceParameters =
+            GraphBuilder.AllocParameters<FDDGISurfaceProbeTraceCS::FParameters>();
+        TraceParameters->SurfaceProbePositions = GraphBuilder.CreateSRV(Resources.Positions);
+        TraceParameters->SurfaceProbeNormals = GraphBuilder.CreateSRV(Resources.Normals);
+        TraceParameters->SurfaceProbeTraceIndices = GraphBuilder.CreateSRV(Resources.TraceIndices);
+        TraceParameters->SurfaceProbeCounters = GraphBuilder.CreateSRV(Resources.Counters);
+        TraceParameters->SurfaceProbeIntegratedRadiance = GraphBuilder.CreateUAV(Resources.IntegratedRadiance);
+        TraceParameters->BVHNodes = BVHNodesSRV;
+        TraceParameters->BVHTriangles = BVHTrianglesSRV;
+        TraceParameters->BVHWorldOrigin = FVector4(
+            Config->SoftwareBVH->WorldOrigin.X,
+            Config->SoftwareBVH->WorldOrigin.Y,
+            Config->SoftwareBVH->WorldOrigin.Z,
+            0.0f);
+        TraceParameters->NodeCount = BVHNodeCount;
+        TraceParameters->TriangleCount = BVHTriangleCount;
+        TraceParameters->SurfaceProbeFrameNumber = View.Family->FrameNumber;
+        TraceParameters->MaxTraceDistance = FMath::Max(1.0f, Config->RadianceCascades.MaxTraceDistance);
+        TraceParameters->GIIntensity = Config->GIIntensity;
+        TraceParameters->StaticBackgroundColor = FVector4(
+            Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G,
+            Config->StaticBackgroundColor.B, Config->StaticBackgroundColor.A);
+        TraceParameters->StaticBackgroundIntensity = Config->StaticBackgroundIntensity;
+        TraceParameters->bEnableStaticBackground = Config->bEnableStaticBackground ? 1u : 0u;
+        TraceParameters->DirectionalLightDirection = FVector4(
+            Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y,
+            Config->DirectionalLightDirection.Z, 0.0f);
+        TraceParameters->DirectionalLightColor = FVector4(
+            Config->DirectionalLightColor.R, Config->DirectionalLightColor.G,
+            Config->DirectionalLightColor.B, 0.0f);
+        TraceParameters->DirectionalLightIntensity = Config->DirectionalLightIntensity;
+        TraceParameters->bHasDirectionalLight = Config->bHasDirectionalLight ? 1u : 0u;
+
+        TShaderMapRef<FDDGISurfaceProbeTraceCS> TraceShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+        FComputeShaderUtils::AddPass(
+            GraphBuilder,
+            RDG_EVENT_NAME("DDGI Trace Surface Probes ({0} max)", TraceDispatchBudget),
+            TraceShader,
+            TraceParameters,
+            FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(TraceDispatchBudget), 64), 1, 1));
+    }
 }
 
 IMPLEMENT_GLOBAL_SHADER(
