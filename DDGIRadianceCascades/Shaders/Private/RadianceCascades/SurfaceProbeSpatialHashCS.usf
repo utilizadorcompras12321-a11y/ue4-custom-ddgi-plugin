@@ -75,9 +75,10 @@ void SurfaceProbeSpatialHashBuildCS(uint3 DispatchThreadID : SV_DispatchThreadID
         uint ExistingSlot = SurfaceProbeSpatialHash[Bucket].w;
         if (ExistingSlot == DDGI_SURFACE_SPATIAL_HASH_LOCKED)
         {
-            // Another insertion owns this bucket. Drop this insertion rather
-            // than spin on a GPU lock; the next frame rebuilds the full table.
-            return;
+            // Skip the bucket currently being published. Its owner completes
+            // the slot before the build pass ends, and this insertion continues
+            // into the same linear-probing cluster instead of dropping a probe.
+            continue;
         }
 
         if (ExistingSlot == 0u)
