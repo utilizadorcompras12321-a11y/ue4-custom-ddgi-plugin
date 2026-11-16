@@ -71,11 +71,11 @@ namespace
 {
 	static const int32 GDDGIRadianceCascadeTextureWidth = 4096;
 	static const int32 GDDGIRadianceCascadeMaxTextureDimension = 16384;
-	// Five per-probe ray textures consume 32 bytes per ray record.
+	// Five per-probe ray textures consume 28 bytes per ray record.
 	// Directions are stored once per ray layout (8 bytes per direction), shared
 	// by all probes. Bound this subsystem independently of RHI texture limits.
 	static const int64 GDDGIRadianceCascadeMaxRayStorageBytes = 512ll * 1024ll * 1024ll;
-	static const int64 GDDGIRadianceCascadeBytesPerProbeRay = 32ll;
+	static const int64 GDDGIRadianceCascadeBytesPerProbeRay = 28ll;
 	static const int64 GDDGIRadianceCascadeBytesPerSharedDirection = 8ll;
 
 	struct FDDGIRadianceCascadeGPUStorage
@@ -389,6 +389,12 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         const FPooledRenderTargetDesc RadianceDesc = FPooledRenderTargetDesc::Create2DDesc(
             RequiredDimensions, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_None,
             TexCreate_ShaderResource | TexCreate_UAV, false);
+        // Persistent integrated radiance is packed into R32_UINT (RGB9E5).
+        // Typed UAV loads for R32_UINT are required by DX11.0; half-float typed
+        // UAV loads are optional and cannot be assumed on SM5 hardware.
+        const FPooledRenderTargetDesc IntegratedRadianceDesc = FPooledRenderTargetDesc::Create2DDesc(
+            RequiredDimensions, PF_R32_UINT, FClearValueBinding::Black, TexCreate_None,
+            TexCreate_ShaderResource | TexCreate_UAV, false);
         const FPooledRenderTargetDesc DistanceDesc = FPooledRenderTargetDesc::Create2DDesc(
             RequiredDimensions, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_None,
             TexCreate_ShaderResource | TexCreate_UAV, false);
@@ -402,7 +408,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             TEXT("DDGIRadianceCascade_Radiance"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, RadianceDesc, Storage.RadianceScratch,
             TEXT("DDGIRadianceCascade_RadianceScratch"), ERenderTargetTransience::NonTransient);
-        GRenderTargetPool.FindFreeElement(RHICmdList, RadianceDesc, Storage.RadianceIntegrationScratch,
+        GRenderTargetPool.FindFreeElement(RHICmdList, IntegratedRadianceDesc, Storage.RadianceIntegrationScratch,
             TEXT("DDGIRadianceCascade_RadianceIntegrationScratch"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, DistanceDesc, Storage.HitDistance,
             TEXT("DDGIRadianceCascade_HitDistance"), ERenderTargetTransience::NonTransient);
