@@ -2,7 +2,7 @@
 
 #include "Engine/World.h"
 #include "Engine/Level.h"
-#include "Engine/Model.h"
+#include "Model.h"
 #include "Components/ModelComponent.h"
 #include "EngineUtils.h"
 #include "Engine/StaticMesh.h"
