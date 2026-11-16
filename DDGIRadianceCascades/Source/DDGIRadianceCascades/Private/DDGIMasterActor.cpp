@@ -43,7 +43,8 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 			const FDDGIMasterConfig& CurrentConfig = Subsystem->GetConfig();
 			if (CurrentConfig.bEnableDynamicGI != bEnableDynamicGI ||
 				CurrentConfig.bEnableStaticBackground != bEnableStaticBackground ||
-				CurrentConfig.ProbeUpdateBudget != FMath::Max(0, ProbeUpdateBudget))
+				CurrentConfig.ProbeUpdateBudget != FMath::Max(0, ProbeUpdateBudget) ||
+				!FMath::IsNearlyEqual(CurrentConfig.LocalLightGIIntensityScale, LocalLightGIIntensityScale, 1.0e-4f))
 			{
 				Subsystem->RefreshConfig(this);
 			}
