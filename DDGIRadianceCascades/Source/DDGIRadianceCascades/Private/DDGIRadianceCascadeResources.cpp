@@ -273,18 +273,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
-    ++Storage.ProbeUpdateSerial;
-    if (Storage.ProbeUpdateSerial == 0u)
-    {
-        // Avoid a zero serial after uint32 wrap; reset retained ages without
-        // changing physical slot identities or their GPU history.
-        Storage.ProbeUpdateSerial = 1u;
-        for (auto It = Storage.ProbeCellToPhysicalSlot.CreateIterator(); It; ++It)
-        {
-            It.Value().LastSeenUpdate = 1u;
-        }
-    }
-
     // Ray textures are a grow-only capacity pool. A smaller active window must
     // not shrink/recreate the textures: doing so discards every probe's history.
     // A ray-layout change still requires new storage, but must not evict the
@@ -1218,6 +1206,21 @@ bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, u
 	// The render thread serializes these callbacks, so claiming the frame here
 	// prevents stereo eyes and additional views from dispatching the same GI work.
 	Storage->LastRadianceUpdateFrameNumber = FrameNumber;
+
+	// Retention age is measured in rendered DDGI frames, not config publishes.
+	// Resource updates are only published when the active probe window recenters,
+	// which can be much less frequent than the render loop.
+	++Storage->ProbeUpdateSerial;
+	if (Storage->ProbeUpdateSerial == 0u)
+	{
+		// Avoid zero after uint32 wrap without changing physical slot identities
+		// or their accumulated GPU history.
+		Storage->ProbeUpdateSerial = 1u;
+		for (auto It = Storage->ProbeCellToPhysicalSlot.CreateIterator(); It; ++It)
+		{
+			It.Value().LastSeenUpdate = 1u;
+		}
+	}
 	return true;
 }
 
