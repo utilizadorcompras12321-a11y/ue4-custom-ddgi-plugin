@@ -113,22 +113,9 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             ExistingSlot = OriginalSlot;
             if (ExistingSlot == DDGI_HASH_LOCKED)
             {
-                bool bResolvedAfterClaim = false;
-                [loop]
-                for (uint SpinAfterClaim = 0u; SpinAfterClaim < 64u; ++SpinAfterClaim)
-                {
-                    DeviceMemoryBarrier();
-                    ExistingSlot = SurfaceProbeHash[BucketIndex].w;
-                    if (ExistingSlot != DDGI_HASH_LOCKED)
-                    {
-                        bResolvedAfterClaim = true;
-                        break;
-                    }
-                }
-                if (!bResolvedAfterClaim || ExistingSlot == 0u)
-                {
-                    return;
-                }
+                // Another thread owns this bucket. Do not wait on it; waiting
+                // can deadlock under GPU wave scheduling constraints.
+                return;
             }
         }
 
