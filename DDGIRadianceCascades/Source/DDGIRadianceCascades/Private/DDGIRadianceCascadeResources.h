@@ -38,7 +38,7 @@ struct FDDGISurfaceProbeAllocatorRHIResources
     FUnorderedAccessViewRHIRef TraceIndicesUAV;
     FShaderResourceViewRHIRef HashSRV;
     FUnorderedAccessViewRHIRef HashUAV;
-    // Counters: [4] allocated-slot high-water mark, [5] allocator errors, [6] active-list count.
+    // Counters: [4] allocated-slot high-water mark, [5] allocator errors, [6] active-list count, [7] scheduled trace count, [8] next physical-slot cursor.
     FShaderResourceViewRHIRef CountersSRV;
     FUnorderedAccessViewRHIRef CountersUAV;
     uint32 ProbeCapacity = 0u;
