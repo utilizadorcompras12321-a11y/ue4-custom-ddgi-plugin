@@ -7,7 +7,6 @@ RWStructuredBuffer<float4> SurfaceProbePositions;
 RWStructuredBuffer<float4> SurfaceProbeNormals;
 RWStructuredBuffer<uint4> SurfaceProbeStableKeys;
 RWStructuredBuffer<uint> SurfaceProbeLastSeenFrames;
-RWStructuredBuffer<uint> SurfaceProbeActiveIndices;
 RWStructuredBuffer<uint4> SurfaceProbeHash;
 RWStructuredBuffer<uint> SurfaceProbeCounters;
 
@@ -123,7 +122,6 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
                 SurfaceProbeNormals[ReusableSlot] = CandidateNormal;
                 SurfaceProbeStableKeys[ReusableSlot] = Key;
                 SurfaceProbeLastSeenFrames[ReusableSlot] = FrameNumber;
-                SurfaceProbeActiveIndices[ReusableSlot] = ReusableSlot;
                 SurfaceProbeHash[ReusableBucket].xyz = CellBits;
                 DeviceMemoryBarrier();
                 SurfaceProbeHash[ReusableBucket].w = ReusableSlot + 1u;
@@ -153,7 +151,6 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             SurfaceProbeNormals[NewSlot] = CandidateNormal;
             SurfaceProbeStableKeys[NewSlot] = Key;
             SurfaceProbeLastSeenFrames[NewSlot] = FrameNumber;
-            SurfaceProbeActiveIndices[NewSlot] = NewSlot;
             SurfaceProbeHash[BucketIndex].xyz = CellBits;
             DeviceMemoryBarrier();
             SurfaceProbeHash[BucketIndex].w = NewSlot + 1u;
@@ -235,7 +232,6 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         SurfaceProbeNormals[ReusableSlot] = CandidateNormal;
         SurfaceProbeStableKeys[ReusableSlot] = Key;
         SurfaceProbeLastSeenFrames[ReusableSlot] = FrameNumber;
-        SurfaceProbeActiveIndices[ReusableSlot] = ReusableSlot;
         SurfaceProbeHash[ReusableBucket].xyz = CellBits;
         DeviceMemoryBarrier();
         SurfaceProbeHash[ReusableBucket].w = ReusableSlot + 1u;
