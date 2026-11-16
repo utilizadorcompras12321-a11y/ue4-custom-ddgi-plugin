@@ -39,3 +39,28 @@ void SurfaceProbeBuildActiveListCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         SurfaceProbeActiveIndices[ActiveIndex] = PhysicalSlot;
     }
 }
+
+[numthreads(1, 1, 1)]
+void SurfaceProbeScheduleTraceCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint ActiveCount = min(SurfaceProbeCounters[6], ProbeCapacity);
+    uint TraceBudget = min(TraceProbeBudget, ActiveCount);
+    uint Cursor = ActiveCount > 0u ? (SurfaceProbeCounters[8] % ActiveCount) : 0u;
+
+    SurfaceProbeCounters[7] = 0u;
+    if (ActiveCount == 0u || TraceBudget == 0u)
+    {
+        SurfaceProbeCounters[8] = 0u;
+        return;
+    }
+
+    [loop]
+    for (uint Scheduled = 0u; Scheduled < TraceBudget; ++Scheduled)
+    {
+        uint ActiveListIndex = (Cursor + Scheduled) % ActiveCount;
+        SurfaceProbeTraceIndices[Scheduled] = SurfaceProbeActiveIndices[ActiveListIndex];
+    }
+
+    SurfaceProbeCounters[7] = TraceBudget;
+    SurfaceProbeCounters[8] = (Cursor + TraceBudget) % ActiveCount;
+}
