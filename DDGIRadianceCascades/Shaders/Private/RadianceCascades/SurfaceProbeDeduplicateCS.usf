@@ -107,6 +107,16 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
                     return;
                 }
 
+                // Recheck after acquiring the lock: a matching candidate may
+                // have refreshed this entry after our initial stale-age read.
+                uint LockedLastSeenFrame = SurfaceProbeLastSeenFrames[ReusableSlot];
+                if ((FrameNumber - LockedLastSeenFrame) <= DDGI_SURFACE_PROBE_RETENTION_FRAMES)
+                {
+                    DeviceMemoryBarrier();
+                    SurfaceProbeHash[ReusableBucket].w = ReusableBucketValue;
+                    return;
+                }
+
                 // Reuse the physical slot in-place. Keeping the bucket
                 // occupied preserves the collision chain for all other keys.
                 SurfaceProbePositions[ReusableSlot] = CandidatePosition;
@@ -208,6 +218,16 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         if (OriginalSlot != ReusableBucketValue)
         {
+            return;
+        }
+
+        // As above, validate the age while holding the bucket lock so a
+        // concurrent refresh cannot be overwritten by stale-slot recycling.
+        uint LockedLastSeenFrame = SurfaceProbeLastSeenFrames[ReusableSlot];
+        if ((FrameNumber - LockedLastSeenFrame) <= DDGI_SURFACE_PROBE_RETENTION_FRAMES)
+        {
+            DeviceMemoryBarrier();
+            SurfaceProbeHash[ReusableBucket].w = ReusableBucketValue;
             return;
         }
 
