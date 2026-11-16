@@ -54,6 +54,8 @@ namespace
 		}
 	};
 
+	// Four uints reserved for the quantized surface identity; the exact key
+	// encoding is owned by the capture/dedup compute stages, not the lattice hash.
 	struct FDDGISurfaceProbeStableKey
 	{
 		uint32 X;
@@ -63,6 +65,8 @@ namespace
 	};
 	static_assert(sizeof(FDDGISurfaceProbeStableKey) == 4u * sizeof(uint32), "Surface probe stable key must match HLSL uint4 stride.");
 
+	// Slot == 0 means empty; occupied buckets store physical slot + 1 so slot 0
+	// remains representable without a separate occupancy allocation.
 	struct FDDGISurfaceProbeHashEntry
 	{
 		uint32 X;
@@ -72,6 +76,7 @@ namespace
 	};
 	static_assert(sizeof(FDDGISurfaceProbeHashEntry) == 4u * sizeof(uint32), "Surface probe hash entry must match HLSL uint4 stride.");
 
+	// A 0.5 maximum hash load factor bounds linear-probe insertion cost.
 	static const uint32 GDDGISurfaceProbeCapacity = 32768u;
 	static const uint32 GDDGISurfaceProbeHashCapacity = 65536u;
 
