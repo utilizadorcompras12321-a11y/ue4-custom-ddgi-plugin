@@ -25,7 +25,7 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
     TEXT("r.DDGI.DebugApply"),
     0,
-    TEXT("DDGI apply debug view (0=off, 1=probe coverage, 2=raw irradiance, 3=solid magenta output test)."),
+    TEXT("DDGI apply debug view (0=off, 1=probe coverage, 2=raw irradiance, 3=solid magenta, 4-7=spatial-level irradiance, 8=L0 spatial support, 9=L3 spatial support)."),
     ECVF_RenderThreadSafe);
 
 static void DDGITransitionTexture(
@@ -774,7 +774,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		Config->SoftwareBVH->WorldOrigin.Y,
 		Config->SoftwareBVH->WorldOrigin.Z, 0.0f);
 	PassParameters->ShouldUsePreExposure = 1u;
-	PassParameters->DebugMode = static_cast<uint32>(FMath::Clamp(CVarDDGIDebugApply.GetValueOnRenderThread(), 0, 7));
+	PassParameters->DebugMode = static_cast<uint32>(FMath::Clamp(CVarDDGIDebugApply.GetValueOnRenderThread(), 0, 9));
 
 	TShaderMapRef<FDDGIApplyRadianceCascadesLightingCS> ComputeShader(
 		GetGlobalShaderMap(View.GetFeatureLevel()));
