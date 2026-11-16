@@ -436,7 +436,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.ProbePositions.SafeRelease();
         const FPooledRenderTargetDesc ProbePositionDesc = FPooledRenderTargetDesc::Create2DDesc(
             ProbePositionDimensions, PF_A32B32G32R32F, FClearValueBinding::Black, TexCreate_None,
-            TexCreate_ShaderResource, false);
+            TexCreate_ShaderResource | TexCreate_UAV, false);
         GRenderTargetPool.FindFreeElement(RHICmdList, ProbePositionDesc, Storage.ProbePositions,
             TEXT("DDGIRadianceCascade_ProbePositions"), ERenderTargetTransience::NonTransient);
         if (!Storage.ProbePositions.IsValid())
