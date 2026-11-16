@@ -484,9 +484,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         }
     }
 
-    // Keep grid-relative probe offsets in a separate float4 texture. A pure
-    // Master Actor translation changes only ProbeGridOrigin and does not require
-    // rewriting this texture.
+    // Keep immutable world-lattice probe positions in a separate full-precision
+    // float4 texture. ProbeGridOrigin converts them to BVH-local coordinates
+    // during shading; camera motion does not rewrite this texture.
     const int32 ProbeTextureWidth = 4096;
     // Probe positions are metadata, not ray history. Grow this texture only
     // when the active window exceeds its previous high-water mark; never reserve
@@ -936,7 +936,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     // Build a deterministic open-addressed spatial hash for sparse probe cells.
-    // Probe offsets are integer-lattice-relative and remain stable on translation.
+    // Probe positions are world-lattice coordinates and remain stable as the camera moves.
 
     // The active window is camera-selected, but every probe remains on the
     // immutable world-origin lattice. Rebuild logical lookup data when its
