@@ -81,9 +81,9 @@ namespace
 	struct FDDGIRadianceCascadeGPUStorage
 	{
 		TRefCountPtr<IPooledRenderTarget> Directions;
-		TRefCountPtr<IPooledRenderTarget> Radiance;
-		TRefCountPtr<IPooledRenderTarget> RadianceScratch;
-		TRefCountPtr<IPooledRenderTarget> RadianceIntegrationScratch;
+		TRefCountPtr<IPooledRenderTarget> Radiance; // Immutable raw trace radiance.
+		TRefCountPtr<IPooledRenderTarget> RadianceScratch; // Gathered raw radiance for the scheduled batch.
+		TRefCountPtr<IPooledRenderTarget> RadianceIntegrationScratch; // Persistent final integrated radiance.
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> HitTriangleIndex;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
