@@ -16,67 +16,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
 void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Scene);
 
-/** GPU-resident storage reserved for the surface-probe allocator. */
-struct FDDGISurfaceProbeAllocatorRHIResources
-{
-    FShaderResourceViewRHIRef PositionsSRV;
-    FUnorderedAccessViewRHIRef PositionsUAV;
-    FShaderResourceViewRHIRef IntegratedRadianceSRV;
-    FUnorderedAccessViewRHIRef IntegratedRadianceUAV;
-    FShaderResourceViewRHIRef CandidatePositionsSRV;
-    FUnorderedAccessViewRHIRef CandidatePositionsUAV;
-    FShaderResourceViewRHIRef NormalsSRV;
-    FUnorderedAccessViewRHIRef NormalsUAV;
-    FShaderResourceViewRHIRef CandidateNormalsSRV;
-    FUnorderedAccessViewRHIRef CandidateNormalsUAV;
-    FShaderResourceViewRHIRef StableKeysSRV;
-    FUnorderedAccessViewRHIRef StableKeysUAV;
-    FShaderResourceViewRHIRef LastSeenFramesSRV;
-    FUnorderedAccessViewRHIRef LastSeenFramesUAV;
-    // Compact list: ActiveIndices[0..Counters[6]) contains retained physical slots.
-    FShaderResourceViewRHIRef ActiveIndicesSRV;
-    FUnorderedAccessViewRHIRef ActiveIndicesUAV;
-    FShaderResourceViewRHIRef TraceIndicesSRV;
-    FUnorderedAccessViewRHIRef TraceIndicesUAV;
-    FShaderResourceViewRHIRef HashSRV;
-    FUnorderedAccessViewRHIRef HashUAV;
-    // Counters: [4] allocated-slot high-water mark, [5] allocator errors, [6] active-list count, [7] scheduled trace count, [8] next physical-slot cursor.
-    FShaderResourceViewRHIRef CountersSRV;
-    FUnorderedAccessViewRHIRef CountersUAV;
-    uint32 ProbeCapacity = 0u;
-    uint32 HashCapacity = 0u;
-};
-
-bool DDGIGetSurfaceProbeAllocatorResources_RenderThread(
-    const FSceneInterface* Scene,
-    FDDGISurfaceProbeAllocatorRHIResources& OutResources);
-
-/** RDG views of the persistent surface-probe allocator buffers. */
-struct FDDGISurfaceProbeAllocatorRDGResources
-{
-    FRDGBufferRef Positions = nullptr;
-    FRDGBufferRef IntegratedRadiance = nullptr;
-    FRDGBufferRef Normals = nullptr;
-    FRDGBufferRef CandidatePositions = nullptr;
-    FRDGBufferRef CandidateNormals = nullptr;
-    FRDGBufferRef StableKeys = nullptr;
-    FRDGBufferRef LastSeenFrames = nullptr;
-    FRDGBufferRef ActiveIndices = nullptr;
-    FRDGBufferRef TraceIndices = nullptr;
-    FRDGBufferRef Hash = nullptr;
-    FRDGBufferRef Counters = nullptr;
-    uint32 ProbeCapacity = 0u;
-    uint32 HashCapacity = 0u;
-};
-
-bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
-    FRDGBuilder& GraphBuilder,
-    const FSceneInterface* Scene,
-    FDDGISurfaceProbeAllocatorRDGResources& OutResources);
-
-/** Claims the per-scene surface capture slot for this render frame. */
-bool DDGIBeginSurfaceProbeCapture_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber);
-
 /** Claims this scene's DDGI update slot for the supplied render frame. */
 bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber);
 
