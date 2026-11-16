@@ -1,43 +1,83 @@
-// RGB9E5 shared-exponent packing for persistent integrated radiance.
-// The output is stored as R32_UINT so typed UAV loads are guaranteed on
-// Direct3D 11.0 SM5 hardware; R16G16B16A16_FLOAT UAV loads are optional.
+// Packed unsigned R11G11B10 float radiance stored in an R32_UINT texture.
+// R32_UINT typed UAV loads are mandatory on D3D11.0 SM5 hardware. The three
+// channels have independent exponents, avoiding shared-exponent colour loss.
 
-uint DDGIPackRGB9E5(float3 Radiance)
+uint DDGIPackUnsignedFloat(float Value, uint MantissaBits)
 {
-    float3 SafeRadiance = max(Radiance, 0.0f);
-    float MaxComponent = min(max(SafeRadiance.r, max(SafeRadiance.g, SafeRadiance.b)), 65408.0f);
-    if (MaxComponent <= 0.0f)
+    if (Value <= 0.0f)
     {
         return 0u;
     }
 
-    int SharedExponent = clamp((int)floor(log2(MaxComponent)) + 16, 0, 31);
-    float Scale = exp2((float)(SharedExponent - 24));
-    uint3 Mantissa = (uint3)floor(SafeRadiance / Scale + 0.5f);
-    uint MaxMantissa = max(Mantissa.x, max(Mantissa.y, Mantissa.z));
+    const uint MantissaMask = (1u << MantissaBits) - 1u;
+    const float MantissaScale = (float)(1u << MantissaBits);
+    const float MinNormal = exp2(-14.0f);
+    const float MaxFinite = (2.0f - 1.0f / MantissaScale) * exp2(15.0f);
 
-    // Rounding the largest component to 512 requires the next shared exponent.
-    if (MaxMantissa > 511u && SharedExponent < 31)
+    if (Value >= MaxFinite)
     {
-        ++SharedExponent;
-        Scale *= 2.0f;
-        Mantissa = (uint3)floor(SafeRadiance / Scale + 0.5f);
+        return (30u << MantissaBits) | MantissaMask;
     }
 
-    Mantissa = min(Mantissa, 511u);
-    return (Mantissa.x) |
-        (Mantissa.y << 9u) |
-        (Mantissa.z << 18u) |
-        ((uint)SharedExponent << 27u);
+    if (Value < MinNormal)
+    {
+        uint SubnormalMantissa = (uint)floor(
+            Value / (MinNormal / MantissaScale) + 0.5f);
+        return min(SubnormalMantissa, MantissaMask);
+    }
+
+    float UnbiasedExponent = floor(log2(Value));
+    int BiasedExponent = (int)UnbiasedExponent + 15;
+    float NormalizedMantissa = Value * exp2(-UnbiasedExponent) - 1.0f;
+    uint Mantissa = (uint)floor(
+        NormalizedMantissa * MantissaScale + 0.5f);
+
+    if (Mantissa > MantissaMask)
+    {
+        Mantissa = 0u;
+        ++BiasedExponent;
+    }
+
+    if (BiasedExponent >= 31)
+    {
+        return (30u << MantissaBits) | MantissaMask;
+    }
+
+    return ((uint)max(BiasedExponent, 1) << MantissaBits) | Mantissa;
 }
 
-float3 DDGIUnpackRGB9E5(uint PackedRadiance)
+float DDGIUnpackUnsignedFloat(uint PackedValue, uint MantissaBits)
 {
-    uint3 Mantissa = uint3(
-        PackedRadiance & 0x1ffu,
-        (PackedRadiance >> 9u) & 0x1ffu,
-        (PackedRadiance >> 18u) & 0x1ffu);
-    uint SharedExponent = (PackedRadiance >> 27u) & 0x1fu;
-    float Scale = exp2((float)SharedExponent - 24.0f);
-    return (float3)Mantissa * Scale;
+    const uint MantissaMask = (1u << MantissaBits) - 1u;
+    const uint Exponent = PackedValue >> MantissaBits;
+    const uint Mantissa = PackedValue & MantissaMask;
+    const float MantissaScale = (float)(1u << MantissaBits);
+
+    if (Exponent == 0u)
+    {
+        return (float)Mantissa * exp2(-14.0f) / MantissaScale;
+    }
+
+    return (1.0f + (float)Mantissa / MantissaScale) *
+        exp2((float)Exponent - 15.0f);
+}
+
+uint DDGIPackR11G11B10(float3 Radiance)
+{
+    float3 SafeRadiance = max(Radiance, 0.0f);
+    uint R = DDGIPackUnsignedFloat(SafeRadiance.r, 6u);
+    uint G = DDGIPackUnsignedFloat(SafeRadiance.g, 6u);
+    uint B = DDGIPackUnsignedFloat(SafeRadiance.b, 5u);
+    return R | (G << 11u) | (B << 22u);
+}
+
+float3 DDGIUnpackR11G11B10(uint PackedRadiance)
+{
+    uint R = PackedRadiance & 0x7ffu;
+    uint G = (PackedRadiance >> 11u) & 0x7ffu;
+    uint B = (PackedRadiance >> 22u) & 0x3ffu;
+    return float3(
+        DDGIUnpackUnsignedFloat(R, 6u),
+        DDGIUnpackUnsignedFloat(G, 6u),
+        DDGIUnpackUnsignedFloat(B, 5u));
 }
