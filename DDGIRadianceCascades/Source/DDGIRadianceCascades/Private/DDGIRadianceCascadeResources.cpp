@@ -53,6 +53,16 @@ namespace
 			return DDGIHashProbeCell(Key.Cell, Key.Level);
 		}
 	};
+
+	struct FDDGIRetainedPhysicalProbeSlot
+	{
+		uint32 PhysicalSlot = MAX_uint32;
+		uint32 LastSeenUpdate = 0u;
+	};
+
+	// Keep recently invisible lattice probes alive long enough for the camera
+	// window to move back without discarding their accumulated ray history.
+	static const uint32 GDDGIPhysicalProbeRetentionUpdates = 30u;
 }
 
 namespace
@@ -79,7 +89,8 @@ namespace
 		FShaderResourceViewRHIRef LogicalToPhysicalSlotsSRV;
 		FStructuredBufferRHIRef NewlyAllocatedPhysicalSlots;
 		FShaderResourceViewRHIRef NewlyAllocatedPhysicalSlotsSRV;
-		TMap<FDDGIProbeCellKey, uint32> ProbeCellToPhysicalSlot;
+		TMap<FDDGIProbeCellKey, FDDGIRetainedPhysicalProbeSlot> ProbeCellToPhysicalSlot;
+		uint32 ProbeUpdateSerial = 0u;
 		TArray<uint32> LogicalToPhysicalSlotCPU;
 		TArray<uint32> NewlyAllocatedPhysicalSlotsCPU;
 		TArray<uint32> FreePhysicalSlots;
@@ -147,6 +158,7 @@ namespace
 			NewlyAllocatedPhysicalSlots.SafeRelease();
 			NewlyAllocatedPhysicalSlotsSRV.SafeRelease();
 			ProbeCellToPhysicalSlot.Reset();
+			ProbeUpdateSerial = 0u;
 			LogicalToPhysicalSlotCPU.Reset();
 			NewlyAllocatedPhysicalSlotsCPU.Reset();
 			FreePhysicalSlots.Reset();
@@ -261,6 +273,17 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
+    ++Storage.ProbeUpdateSerial;
+    if (Storage.ProbeUpdateSerial == 0u)
+    {
+        // Avoid a zero serial after uint32 wrap; reset retained ages without
+        // changing physical slot identities or their GPU history.
+        Storage.ProbeUpdateSerial = 1u;
+        for (auto It = Storage.ProbeCellToPhysicalSlot.CreateIterator(); It; ++It)
+        {
+            It.Value().LastSeenUpdate = 1u;
+        }
+    }
 
     // Ray textures are a grow-only capacity pool. A smaller active window must
     // not shrink/recreate the textures: doing so discards every probe's history.
@@ -583,12 +606,24 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             ActiveKeys.Add(Key);
         }
 
+        // Refresh visible identities and expire only probes that have remained
+        // outside the active window for the retention period. Their physical
+        // slots and ray history remain untouched while they are retained.
         for (auto It = Storage.ProbeCellToPhysicalSlot.CreateIterator(); It; ++It)
         {
-            if (!ActiveKeys.Contains(It.Key()))
+            if (ActiveKeys.Contains(It.Key()))
             {
-                Storage.FreePhysicalSlots.Add(It.Value());
-                if (Storage.NewlyAllocatedPhysicalSlotsCPU.Remove(It.Value()) > 0)
+                It.Value().LastSeenUpdate = Storage.ProbeUpdateSerial;
+                continue;
+            }
+
+            const uint32 UpdatesSinceVisible =
+                Storage.ProbeUpdateSerial - It.Value().LastSeenUpdate;
+            if (UpdatesSinceVisible > GDDGIPhysicalProbeRetentionUpdates)
+            {
+                const uint32 ExpiredSlot = It.Value().PhysicalSlot;
+                Storage.FreePhysicalSlots.AddUnique(ExpiredSlot);
+                if (Storage.NewlyAllocatedPhysicalSlotsCPU.Remove(ExpiredSlot) > 0)
                 {
                     Storage.bPendingPhysicalSlotsUpload = true;
                 }
@@ -600,20 +635,56 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         for (int32 LogicalIndex = 0; LogicalIndex < ActiveProbeCount; ++LogicalIndex)
         {
             const FDDGIProbeCellKey& Key = ProbeCellKeys[LogicalIndex];
-            if (const uint32* ExistingSlot = Storage.ProbeCellToPhysicalSlot.Find(Key))
+            if (FDDGIRetainedPhysicalProbeSlot* ExistingSlot =
+                Storage.ProbeCellToPhysicalSlot.Find(Key))
             {
-                Storage.LogicalToPhysicalSlotCPU[LogicalIndex] = *ExistingSlot;
+                ExistingSlot->LastSeenUpdate = Storage.ProbeUpdateSerial;
+                Storage.LogicalToPhysicalSlotCPU[LogicalIndex] = ExistingSlot->PhysicalSlot;
                 continue;
             }
-            if (Storage.FreePhysicalSlots.Num() == 0)
+
+            uint32 NewPhysicalSlot = MAX_uint32;
+            if (Storage.FreePhysicalSlots.Num() > 0)
             {
-                Storage.Release();
-                UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: active probes exhausted the physical slot pool."));
-                return;
+                NewPhysicalSlot = Storage.FreePhysicalSlots.Pop(false);
+            }
+            else
+            {
+                // Capacity is bounded by the ray texture pool. If it is full,
+                // evict the least-recently-visible inactive identity; never
+                // evict a probe in the current active set.
+                FDDGIProbeCellKey OldestKey;
+                uint32 OldestUpdate = MAX_uint32;
+                bool bFoundEvictionCandidate = false;
+                for (auto It = Storage.ProbeCellToPhysicalSlot.CreateIterator(); It; ++It)
+                {
+                    if (ActiveKeys.Contains(It.Key()))
+                    {
+                        continue;
+                    }
+                    if (!bFoundEvictionCandidate ||
+                        It.Value().LastSeenUpdate < OldestUpdate)
+                    {
+                        OldestKey = It.Key();
+                        OldestUpdate = It.Value().LastSeenUpdate;
+                        NewPhysicalSlot = It.Value().PhysicalSlot;
+                        bFoundEvictionCandidate = true;
+                    }
+                }
+
+                if (!bFoundEvictionCandidate)
+                {
+                    Storage.Release();
+                    UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: active probes exhausted the physical slot pool; no inactive probe can be evicted."));
+                    return;
+                }
+                Storage.ProbeCellToPhysicalSlot.Remove(OldestKey);
             }
 
-            const uint32 NewPhysicalSlot = Storage.FreePhysicalSlots.Pop(false);
-            Storage.ProbeCellToPhysicalSlot.Add(Key, NewPhysicalSlot);
+            FDDGIRetainedPhysicalProbeSlot NewSlot;
+            NewSlot.PhysicalSlot = NewPhysicalSlot;
+            NewSlot.LastSeenUpdate = Storage.ProbeUpdateSerial;
+            Storage.ProbeCellToPhysicalSlot.Add(Key, NewSlot);
             Storage.LogicalToPhysicalSlotCPU[LogicalIndex] = NewPhysicalSlot;
             Storage.NewlyAllocatedPhysicalSlotsCPU.AddUnique(NewPhysicalSlot);
             Storage.bPendingPhysicalSlotsUpload = true;
