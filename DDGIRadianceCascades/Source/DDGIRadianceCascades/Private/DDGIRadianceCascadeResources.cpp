@@ -54,6 +54,15 @@ namespace
 		}
 	};
 
+	struct FDDGISurfaceProbeStableKey
+	{
+		uint32 X;
+		uint32 Y;
+		uint32 Z;
+		uint32 W;
+	};
+	static_assert(sizeof(FDDGISurfaceProbeStableKey) == 4u * sizeof(uint32), "Surface probe stable key must match HLSL uint4 stride.");
+
 	struct FDDGISurfaceProbeHashEntry
 	{
 		uint32 X;
@@ -388,7 +397,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         const bool bSurfaceBuffersCreated =
             DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_Positions"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbePositions, Storage.SurfaceProbePositionsSRV, Storage.SurfaceProbePositionsUAV) &&
             DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_Normals"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeNormals, Storage.SurfaceProbeNormalsSRV, Storage.SurfaceProbeNormalsUAV) &&
-            DDGICreateSurfaceProbeBuffer<FIntVector4>(TEXT("DDGISurfaceProbe_StableKeys"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeStableKeys, Storage.SurfaceProbeStableKeysSRV, Storage.SurfaceProbeStableKeysUAV) &&
+            DDGICreateSurfaceProbeBuffer<FDDGISurfaceProbeStableKey>(TEXT("DDGISurfaceProbe_StableKeys"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeStableKeys, Storage.SurfaceProbeStableKeysSRV, Storage.SurfaceProbeStableKeysUAV) &&
             DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_LastSeenFrames"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeLastSeenFrames, Storage.SurfaceProbeLastSeenFramesSRV, Storage.SurfaceProbeLastSeenFramesUAV) &&
             DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_ActiveIndices"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeActiveIndices, Storage.SurfaceProbeActiveIndicesSRV, Storage.SurfaceProbeActiveIndicesUAV) &&
             DDGICreateSurfaceProbeBuffer<FDDGISurfaceProbeHashEntry>(TEXT("DDGISurfaceProbe_Hash"), GDDGISurfaceProbeHashCapacity, Storage.SurfaceProbeHash, Storage.SurfaceProbeHashSRV, Storage.SurfaceProbeHashUAV) &&
