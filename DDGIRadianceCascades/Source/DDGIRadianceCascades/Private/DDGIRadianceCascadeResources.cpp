@@ -223,7 +223,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     // Disabling Dynamic GI releases every persistent GPU allocation, including
-    // surface-probe buffers, ray histories, lookup hashes and the software BVH.
+    // ray histories, lookup hashes and the software BVH.
     // Re-enabling will recreate them through the normal validated path.
     if (!Config.bEnableDynamicGI)
     {
