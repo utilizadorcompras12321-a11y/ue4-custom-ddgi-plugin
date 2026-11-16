@@ -537,10 +537,9 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     // Every in-bounds pixel is written exactly once. The UAV is not assumed
     // to contain initialized data from a previous frame or allocation.
     float4 SceneColor = SceneColorTexture.Load(int3(BufferPixelIndex, 0));
-    // DDGIProbeDiffuseIrradiance returns hemispherical irradiance E.
-    // Lambertian outgoing diffuse radiance is albedo * E / PI; omitting
-    // this factor makes the indirect diffuse term approximately PI times too bright.
-    const float InvPi = 0.3183098861837907f;
+    // DDGIProbeDiffuseIrradiance includes the 1/PI normalization:
+    // equal-solid-angle quadrature uses 4*PI/N, then Lambertian BRDF
+    // normalization divides by PI, leaving the factor 4/N in the shader.
     SceneColorOutputUAV[BufferPixelIndex] =
-        SceneColor + float4(Irradiance * Albedo * InvPi * PreExposure, 0.0f);
+        SceneColor + float4(Irradiance * Albedo * PreExposure, 0.0f);
 }
