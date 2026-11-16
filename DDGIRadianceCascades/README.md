@@ -23,6 +23,7 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - Unreal Engine 4.27.2 source build.
 - Windows 64-bit, deferred renderer, SM5-capable GPU.
 - The current tracing backend is software BVH; it does not use DXR or hardware ray tracing.
+- Static-mesh diffuse material input supports explicit `DDGI_BaseColor` and `DDGI_EmissiveRadiance` vector parameters, optional `DDGI_Metallic` scalar energy reduction, and opt-in `DDGI_UseVertexColor` (triangle-centroid average of CPU-readable LOD0 vertex colors). These are explicit overrides, not general Material Graph evaluation.
 - The current BVH is built from supported static geometry, including static ISM/HISM instances. Movable components and movable instances are skipped; they are not represented in indirect lighting.
 - Direct-light injection supports the strongest visible directional light plus up to 32 captured point/spot lights. The eight strongest local lights are shadow-tested at primary hits and the four strongest at secondary-bounce hits to bound BVH traversal cost. Local-light transforms, intensity, radius and spot cones are refreshed at runtime; attenuation is an approximation of UE4's light falloff.
 - This is a custom experimental renderer feature. GPU cost and image quality depend on scene triangle count, active probe count, cascade settings and trace budget. A fixed 60 FPS guarantee is not possible without profiling on the target scene and GPU.
@@ -67,6 +68,6 @@ The plugin includes an Unreal Automation Test for cascade packing, interval cove
 
 ## Important limitations
 
-This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, SkyLight/RectLight or IES evaluation, complete material evaluation, textured albedo, or a temporal denoiser. Lighting changes invalidate the complete retained radiance cache; with a bounded trace budget this can temporarily reduce indirect lighting until probes are refreshed. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
+This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, SkyLight/RectLight or IES evaluation, arbitrary Material Graph evaluation, texture sampling, opacity-mask evaluation, translucency, or a temporal denoiser. Lighting changes invalidate the complete retained radiance cache; with a bounded trace budget this can temporarily reduce indirect lighting until probes are refreshed. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
 
 Do not treat the presence of the plugin or a successful C++ build as proof of production-ready GI. Validate the output with moving cameras, thin walls, corners, enclosed rooms, emissive surfaces and changing directional and local lights. Profile GPU time at the target resolution and on the target hardware.
