@@ -777,7 +777,13 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 				? LightB->Intensity * FMath::Max(0.0f, LightB->IndirectLightingIntensity) *
 					FMath::Max(1.0f, LightB->AttenuationRadius)
 				: -1.0f;
-			return ScoreA > ScoreB;
+			if (ScoreA != ScoreB)
+			{
+				return ScoreA > ScoreB;
+			}
+			if (!IsValid(LightA)) return false;
+			if (!IsValid(LightB)) return true;
+			return LightA->GetUniqueID() < LightB->GetUniqueID();
 		});
 
 	static const uint32 MaxLocalLights = 32u;
