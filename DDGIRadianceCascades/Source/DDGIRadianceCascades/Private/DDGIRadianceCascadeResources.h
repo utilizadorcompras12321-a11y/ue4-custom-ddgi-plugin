@@ -21,6 +21,8 @@ struct FDDGISurfaceProbeAllocatorRHIResources
 {
     FShaderResourceViewRHIRef PositionsSRV;
     FUnorderedAccessViewRHIRef PositionsUAV;
+    FShaderResourceViewRHIRef IntegratedRadianceSRV;
+    FUnorderedAccessViewRHIRef IntegratedRadianceUAV;
     FShaderResourceViewRHIRef CandidatePositionsSRV;
     FUnorderedAccessViewRHIRef CandidatePositionsUAV;
     FShaderResourceViewRHIRef NormalsSRV;
@@ -53,6 +55,7 @@ bool DDGIGetSurfaceProbeAllocatorResources_RenderThread(
 struct FDDGISurfaceProbeAllocatorRDGResources
 {
     FRDGBufferRef Positions = nullptr;
+    FRDGBufferRef IntegratedRadiance = nullptr;
     FRDGBufferRef Normals = nullptr;
     FRDGBufferRef CandidatePositions = nullptr;
     FRDGBufferRef CandidateNormals = nullptr;
