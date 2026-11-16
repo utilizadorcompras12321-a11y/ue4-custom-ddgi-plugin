@@ -419,12 +419,12 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             break;
         }
 
-        if (ClipmapDistance <= ClipmapExtent)
-        {
-            const float TransitionWidth = min(
-                max(ProbeSpacing * 2.0f, ClipmapExtent * 0.05f),
-                max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.5f));
+        const float TransitionWidth = min(
+            max(ProbeSpacing * 2.0f, ClipmapExtent * 0.05f),
+            max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.5f));
 
+        if (ClipmapDistance <= ClipmapExtent + TransitionWidth)
+        {
             if (ClipmapLevel < 3u && ClipmapDistance > ClipmapExtent - TransitionWidth)
             {
                 const float T = smoothstep(
@@ -443,14 +443,17 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
                 }
             }
 
-            bool bCurrentLevelValid = false;
-            const float3 CurrentLevelIrradiance = DDGISampleLevelValue(
-                LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid);
-            if (bCurrentLevelValid)
+            if (ClipmapDistance <= ClipmapExtent)
             {
-                Irradiance = CurrentLevelIrradiance;
-                bHasIrradiance = true;
-                break;
+                bool bCurrentLevelValid = false;
+                const float3 CurrentLevelIrradiance = DDGISampleLevelValue(
+                    LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid);
+                if (bCurrentLevelValid)
+                {
+                    Irradiance = CurrentLevelIrradiance;
+                    bHasIrradiance = true;
+                    break;
+                }
             }
         }
 
