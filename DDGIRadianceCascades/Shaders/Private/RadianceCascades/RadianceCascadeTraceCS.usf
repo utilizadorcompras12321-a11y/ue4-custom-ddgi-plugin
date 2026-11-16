@@ -841,8 +841,7 @@ void SurfaceProbeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
     uint ScheduledProbeIndex = DispatchThreadId.x;
     uint ScheduledProbeCount = min(SurfaceProbeCounters[7], 512u);
-    if (ScheduledProbeIndex >= ScheduledProbeCount ||
-        NodeCount == 0u || TriangleCount == 0u)
+    if (ScheduledProbeIndex >= ScheduledProbeCount)
     {
         return;
     }
