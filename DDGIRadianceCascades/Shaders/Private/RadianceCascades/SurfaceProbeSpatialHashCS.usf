@@ -99,3 +99,15 @@ void SurfaceProbeSpatialHashBuildCS(uint3 DispatchThreadID : SV_DispatchThreadID
         }
     }
 }
+RWStructuredBuffer<uint> SurfaceProbeFallbackCounters;
+uint CounterCount;
+
+[numthreads(64, 1, 1)]
+void SurfaceProbeFallbackCounterResetCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint CounterIndex = DispatchThreadID.x;
+    if (CounterIndex < CounterCount)
+    {
+        SurfaceProbeFallbackCounters[CounterIndex] = 0u;
+    }
+}
