@@ -164,6 +164,7 @@ namespace
 		FUnorderedAccessViewRHIRef SurfaceProbeCountersUAV;
 		uint32 SurfaceProbeCapacity = 0u;
 		uint32 SurfaceProbeHashCapacity = 0u;
+		uint32 SurfaceProbeRetryCountdown = 0u;
 		FStructuredBufferRHIRef ProbeSpatialHash;
 		FShaderResourceViewRHIRef ProbeSpatialHashSRV;
 		FStructuredBufferRHIRef ProbeNeighborIndices;
@@ -255,6 +256,7 @@ namespace
 			SurfaceProbeCountersUAV.SafeRelease();
 			SurfaceProbeCapacity = 0u;
 			SurfaceProbeHashCapacity = 0u;
+			SurfaceProbeRetryCountdown = 0u;
 			ProbeSpatialHash.SafeRelease();
 			ProbeSpatialHashSRV.SafeRelease();
 			ProbeNeighborIndices.SafeRelease();
@@ -365,7 +367,11 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
-    if (Storage.SurfaceProbeCapacity != GDDGISurfaceProbeCapacity ||
+    if (Storage.SurfaceProbeRetryCountdown > 0u)
+    {
+        --Storage.SurfaceProbeRetryCountdown;
+    }
+    else if (Storage.SurfaceProbeCapacity != GDDGISurfaceProbeCapacity ||
         Storage.SurfaceProbeHashCapacity != GDDGISurfaceProbeHashCapacity ||
         !Storage.SurfaceProbePositionsUAV.IsValid() || !Storage.SurfaceProbeNormalsUAV.IsValid() ||
         !Storage.SurfaceProbeStableKeysUAV.IsValid() || !Storage.SurfaceProbeLastSeenFramesUAV.IsValid() ||
@@ -426,6 +432,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.SurfaceProbeCountersSRV.SafeRelease();
             Storage.SurfaceProbeCountersUAV.SafeRelease();
             UE_LOG(LogTemp, Warning, TEXT("DDGI: GPU surface-probe storage allocation failed; regular lattice probes remain available."));
+            Storage.SurfaceProbeRetryCountdown = 60u;
         }
         else
         {
