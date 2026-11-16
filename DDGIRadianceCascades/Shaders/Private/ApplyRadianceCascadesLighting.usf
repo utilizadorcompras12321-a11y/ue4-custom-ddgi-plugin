@@ -142,10 +142,14 @@ float3 DDGIProbeDiffuseIrradiance(
         ? ProbeToReceiver / ReceiverDistance : Normal;
     float BestBaseAlignment = -1.0f;
     uint BestBaseRay = 0u;
+    bool bFoundBaseRegion = false;
+    float ReceiverPhi = atan2(ReceiverDirection.z, ReceiverDirection.x);
+    if (ReceiverPhi < 0.0f) ReceiverPhi += 6.283185307179586f;
     uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
 
-    // The base-ray loop performs irradiance accumulation and selects the
-    // angular parent for visibility reconstruction in one pass.
+    // The base-ray loop performs irradiance accumulation and identifies the
+    // angular cell that actually contains the receiver direction. Selecting
+    // the nearest cell center is not equivalent for unequal spherical cells.
     [loop]
     for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
     {
@@ -154,11 +158,19 @@ float3 DDGIProbeDiffuseIrradiance(
             RayIndex / DDGI_RC_TEXTURE_WIDTH);
         float3 Direction = normalize(
             DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
-        float Alignment = dot(Direction, ReceiverDirection);
-        if (Alignment > BestBaseAlignment)
+        float4 BaseRegion = DDGIRadianceCascadeBaseRegion(
+            RayIndex, SafeRayCount);
+        float RegionPhi = ReceiverPhi;
+        if (RegionPhi < BaseRegion.x) RegionPhi += 6.283185307179586f;
+        bool bContainsDirection =
+            RegionPhi >= BaseRegion.x && RegionPhi <= BaseRegion.y &&
+            ReceiverDirection.y >= BaseRegion.z &&
+            ReceiverDirection.y <= BaseRegion.w;
+        if (bContainsDirection)
         {
-            BestBaseAlignment = Alignment;
             BestBaseRay = RayIndex;
+            BestBaseAlignment = dot(Direction, ReceiverDirection);
+            bFoundBaseRegion = true;
         }
 
         float Cosine = saturate(dot(Normal, -Direction));
@@ -176,7 +188,7 @@ float3 DDGIProbeDiffuseIrradiance(
     if (ReceiverDistance > 1.0f &&
         ReceiverDistance <= max(MaxTraceDistance, 1.0f) &&
         CascadeCount > 0u &&
-        BestBaseAlignment > 0.45f)
+        bFoundBaseRegion)
     {
         uint SelectedCascade = CascadeCount - 1u;
         [loop]
