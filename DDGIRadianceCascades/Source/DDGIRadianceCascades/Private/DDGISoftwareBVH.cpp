@@ -799,7 +799,6 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 					if (Node.NumVertices < 3 || !Model->Surfs.IsValidIndex(Node.iSurf) || (Model->Surfs[Node.iSurf].PolyFlags & PF_Invisible) != 0) continue;
 					for (int32 FanIndex = 1; FanIndex < Node.NumVertices - 1; ++FanIndex)
 					{
-						if (Triangles.Num() >= MaxTriangleCount) { bTriangleLimitReached = true; break; }
 						const int32 CornerIndices[3] = { 0, FanIndex, FanIndex + 1 };
 						FVector P[3];
 						bool bValid = true;
@@ -817,6 +816,9 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 						const FVector E1 = P[2] - P[0];
 						const float Scale = FMath::Max(FMath::Max(FMath::Max(FMath::Abs(E0.X),FMath::Abs(E0.Y)),FMath::Abs(E0.Z)),FMath::Max(FMath::Max(FMath::Abs(E1.X),FMath::Abs(E1.Y)),FMath::Abs(E1.Z)));
 						if (!FMath::IsFinite(Scale) || Scale <= 0.0f || FVector::CrossProduct(E0 / Scale, E1 / Scale).SizeSquared() <= 1.0e-12f) { ++OutStats.SkippedInvalidTriangles; continue; }
+						// Match the static-mesh path: only report truncation after finding
+						// one additional finite, non-degenerate, blocking triangle.
+						if (Triangles.Num() >= MaxTriangleCount) { bTriangleLimitReached = true; break; }
 						FDDGISoftwareTriangle& Triangle = Triangles.AddDefaulted_GetRef();
 						Triangle.OriginalIndex = Triangles.Num() - 1;
 						Triangle.A = P[0]; Triangle.B = P[1]; Triangle.C = P[2];
