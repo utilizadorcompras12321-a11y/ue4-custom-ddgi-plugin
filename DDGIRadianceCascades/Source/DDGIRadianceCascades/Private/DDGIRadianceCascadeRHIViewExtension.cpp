@@ -621,7 +621,6 @@ class FDDGISurfaceProbeCaptureCS : public FGlobalShader
         SHADER_PARAMETER(uint32, CaptureGridWidth)
         SHADER_PARAMETER(uint32, CaptureGridHeight)
         SHADER_PARAMETER(uint32, CandidateCount)
-        SHADER_PARAMETER(uint32, FrameNumber)
     END_SHADER_PARAMETER_STRUCT()
 
     static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -703,7 +702,6 @@ static void DDGIScheduleSurfaceProbeCapture(
     PassParameters->CaptureGridWidth = CaptureGridWidth;
     PassParameters->CaptureGridHeight = CaptureGridHeight;
     PassParameters->CandidateCount = CandidateCount;
-    PassParameters->FrameNumber = View.Family->FrameNumber;
 
     TShaderMapRef<FDDGISurfaceProbeCaptureCS> ComputeShader(GetGlobalShaderMap(View.GetFeatureLevel()));
     FComputeShaderUtils::AddPass(
