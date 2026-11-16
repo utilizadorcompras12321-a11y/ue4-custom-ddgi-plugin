@@ -646,6 +646,13 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 };
 
 
+IMPLEMENT_GLOBAL_SHADER(
+	FDDGIApplyRadianceCascadesLightingCS,
+	"/Plugin/DDGIRadianceCascades/Private/ApplyRadianceCascadesLighting.usf",
+	"MainCS",
+	SF_Compute);
+
+
 static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	FRDGBuilder& GraphBuilder,
 	const FSceneView& View,
