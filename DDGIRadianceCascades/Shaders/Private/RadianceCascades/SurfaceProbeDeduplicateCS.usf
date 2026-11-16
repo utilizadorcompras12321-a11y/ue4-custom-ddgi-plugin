@@ -5,6 +5,7 @@ StructuredBuffer<float4> SurfaceProbeCandidateNormals;
 
 RWStructuredBuffer<float4> SurfaceProbePositions;
 RWStructuredBuffer<float4> SurfaceProbeNormals;
+RWStructuredBuffer<float4> SurfaceProbeIntegratedRadiance;
 RWStructuredBuffer<uint4> SurfaceProbeStableKeys;
 RWStructuredBuffer<uint> SurfaceProbeLastSeenFrames;
 RWStructuredBuffer<uint4> SurfaceProbeHash;
@@ -120,6 +121,7 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
                 // occupied preserves the collision chain for all other keys.
                 SurfaceProbePositions[ReusableSlot] = CandidatePosition;
                 SurfaceProbeNormals[ReusableSlot] = CandidateNormal;
+            SurfaceProbeIntegratedRadiance[ReusableSlot] = 0.0f;
                 SurfaceProbeStableKeys[ReusableSlot] = Key;
                 SurfaceProbeLastSeenFrames[ReusableSlot] = FrameNumber;
                 SurfaceProbeHash[ReusableBucket].xyz = CellBits;
@@ -149,6 +151,7 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
             SurfaceProbePositions[NewSlot] = CandidatePosition;
             SurfaceProbeNormals[NewSlot] = CandidateNormal;
+            SurfaceProbeIntegratedRadiance[NewSlot] = 0.0f;
             SurfaceProbeStableKeys[NewSlot] = Key;
             SurfaceProbeLastSeenFrames[NewSlot] = FrameNumber;
             SurfaceProbeHash[BucketIndex].xyz = CellBits;
@@ -230,6 +233,7 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         SurfaceProbePositions[ReusableSlot] = CandidatePosition;
         SurfaceProbeNormals[ReusableSlot] = CandidateNormal;
+            SurfaceProbeIntegratedRadiance[ReusableSlot] = 0.0f;
         SurfaceProbeStableKeys[ReusableSlot] = Key;
         SurfaceProbeLastSeenFrames[ReusableSlot] = FrameNumber;
         SurfaceProbeHash[ReusableBucket].xyz = CellBits;
