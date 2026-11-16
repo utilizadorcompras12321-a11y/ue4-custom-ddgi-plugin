@@ -1,6 +1,9 @@
 #include "DDGISoftwareBVH.h"
 
 #include "Engine/World.h"
+#include "Engine/Level.h"
+#include "Engine/Model.h"
+#include "Components/ModelComponent.h"
 #include "EngineUtils.h"
 #include "Engine/StaticMesh.h"
 #include "Components/StaticMeshComponent.h"
@@ -416,6 +419,26 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 	// an external caller supplies an extreme Blueprint/config value.
 	MaxTriangleCount = FMath::Min(MaxTriangleCount, GDDGISoftwareBVHHardTriangleLimit);
 
+	// Protect 25% of the global budget for BSP when BSP components exist.
+	// Static meshes can use the full budget in worlds without BSP.
+	bool bHasVisibleBSP = false;
+	for (ULevel* Level : World->GetLevels())
+	{
+		if (!IsValid(Level)) continue;
+		for (UModelComponent* ModelComponent : Level->ModelComponents)
+		{
+			if (IsValid(ModelComponent) && ModelComponent->IsVisible() && !ModelComponent->bHiddenInGame &&
+				ModelComponent->GetModel() && ModelComponent->GetElements().Num() > 0)
+			{
+				bHasVisibleBSP = true;
+				break;
+			}
+		}
+		if (bHasVisibleBSP) break;
+	}
+	const int32 StaticMeshTriangleBudget = bHasVisibleBSP ? (MaxTriangleCount * 3) / 4 : MaxTriangleCount;
+	bool bStaticMeshBudgetReached = false;
+
 	TArray<FDDGISoftwareTriangle> Triangles;
 	Triangles.Reserve(FMath::Min(MaxTriangleCount, 65536));
 	// Material interfaces are often shared by many static-mesh components.
@@ -657,9 +680,9 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				}
 
 				// Only flag truncation after finding one more eligible triangle.
-				if (Triangles.Num() >= MaxTriangleCount)
+				if (Triangles.Num() >= StaticMeshTriangleBudget)
 				{
-					bTriangleLimitReached = true;
+					bStaticMeshBudgetReached = true;
 					break;
 				}
 
@@ -693,16 +716,112 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				++OutStats.IncludedComponents;
 			}
 
-			if (bTriangleLimitReached)
+			if (bStaticMeshBudgetReached)
 			{
 				break;
 			}
 		}
 
-		if (bTriangleLimitReached)
+		if (bStaticMeshBudgetReached)
 		{
 			break;
 		}
+	}
+
+	// BSP polygons are convex; triangulate each visible opaque polygon as a fan.
+	// The CPU BVH has no opacity-mask/transmittance representation, so masked and
+	// blended materials are excluded just like their static-mesh equivalents.
+	for (ULevel* Level : World->GetLevels())
+	{
+		if (!IsValid(Level)) continue;
+		for (UModelComponent* ModelComponent : Level->ModelComponents)
+		{
+			if (!IsValid(ModelComponent) || !ModelComponent->IsVisible() || ModelComponent->bHiddenInGame) continue;
+			UModel* Model = ModelComponent->GetModel();
+			if (!Model) continue;
+			const FTransform ComponentTransform = ModelComponent->GetComponentTransform();
+			if (!bHasWorldOrigin)
+			{
+				OutWorldOrigin = ComponentTransform.GetLocation();
+				bHasWorldOrigin = true;
+			}
+			const FVector ComponentRelativeLocation = ComponentTransform.GetLocation() - OutWorldOrigin;
+			bool bAddedBSPTriangle = false;
+			const TIndirectArray<FModelElement>& Elements = ModelComponent->GetElements();
+			for (const FModelElement& Element : Elements)
+			{
+				UMaterialInterface* Material = Element.Material;
+				if (!Material) continue;
+				FDDGISoftwareMaterialData* CachedData = MaterialDataCache.Find(Material);
+				if (!CachedData)
+				{
+					FDDGISoftwareMaterialData NewData;
+					const EBlendMode BlendMode = Material->GetBlendMode();
+					NewData.bBlocksDDGI = BlendMode == BLEND_Opaque;
+					NewData.bIsMasked = BlendMode == BLEND_Masked;
+					FLinearColor EmissiveColor = FLinearColor::Black;
+					Material->GetVectorParameterValue(FMaterialParameterInfo(FName(TEXT("DDGI_EmissiveRadiance"))), EmissiveColor);
+					NewData.EmissiveRadiance = FVector(FMath::Max(0.0f,EmissiveColor.R),FMath::Max(0.0f,EmissiveColor.G),FMath::Max(0.0f,EmissiveColor.B));
+					FLinearColor BaseColorValue = FLinearColor::White;
+					NewData.bUsesDefaultBaseColor = !Material->GetVectorParameterValue(FMaterialParameterInfo(FName(TEXT("DDGI_BaseColor"))), BaseColorValue);
+					if (!NewData.bUsesDefaultBaseColor) NewData.BaseColor = FVector(FMath::Max(0.0f,BaseColorValue.R),FMath::Max(0.0f,BaseColorValue.G),FMath::Max(0.0f,BaseColorValue.B));
+					CachedData = &MaterialDataCache.Add(Material, NewData);
+				}
+				if (!CachedData->bBlocksDDGI)
+				{
+					if (CachedData->bIsMasked)
+					{
+						for (uint16 NodeIndex : Element.Nodes)
+							if (Model->Nodes.IsValidIndex(NodeIndex) && Model->Nodes[NodeIndex].NumVertices >= 3)
+								OutStats.SkippedMaskedTriangles += Model->Nodes[NodeIndex].NumVertices - 2;
+					}
+					continue;
+				}
+				if (CachedData->bUsesDefaultBaseColor) ++OutStats.MaterialsUsingDefaultBaseColor;
+				for (uint16 NodeIndex : Element.Nodes)
+				{
+					if (!Model->Nodes.IsValidIndex(NodeIndex)) { ++OutStats.SkippedInvalidTriangles; continue; }
+					const FBspNode& Node = Model->Nodes[NodeIndex];
+					if (Node.NumVertices < 3 || !Model->Surfs.IsValidIndex(Node.iSurf) || (Model->Surfs[Node.iSurf].PolyFlags & PF_Invisible) != 0) continue;
+					for (int32 FanIndex = 1; FanIndex < Node.NumVertices - 1; ++FanIndex)
+					{
+						if (Triangles.Num() >= MaxTriangleCount) { bTriangleLimitReached = true; break; }
+						const int32 CornerIndices[3] = { 0, FanIndex, FanIndex + 1 };
+						FVector P[3];
+						bool bValid = true;
+						for (int32 Corner = 0; Corner < 3; ++Corner)
+						{
+							const int64 VertIndex = static_cast<int64>(Node.iVertPool) + CornerIndices[Corner];
+							if (!Model->Verts.IsValidIndex(VertIndex)) { bValid = false; break; }
+							const int32 PointIndex = Model->Verts[VertIndex].pVertex;
+							if (!Model->Points.IsValidIndex(PointIndex)) { bValid = false; break; }
+							P[Corner] = ComponentTransform.TransformVector(Model->Points[PointIndex]) + ComponentRelativeLocation;
+							if (!IsFiniteVector(P[Corner])) { bValid = false; break; }
+						}
+						if (!bValid) { ++OutStats.SkippedInvalidTriangles; continue; }
+						const FVector E0 = P[1] - P[0];
+						const FVector E1 = P[2] - P[0];
+						const float Scale = FMath::Max(FMath::Max(FMath::Max(FMath::Abs(E0.X),FMath::Abs(E0.Y)),FMath::Abs(E0.Z)),FMath::Max(FMath::Max(FMath::Abs(E1.X),FMath::Abs(E1.Y)),FMath::Abs(E1.Z)));
+						if (!FMath::IsFinite(Scale) || Scale <= 0.0f || FVector::CrossProduct(E0 / Scale, E1 / Scale).SizeSquared() <= 1.0e-12f) { ++OutStats.SkippedInvalidTriangles; continue; }
+						FDDGISoftwareTriangle& Triangle = Triangles.AddDefaulted_GetRef();
+						Triangle.OriginalIndex = Triangles.Num() - 1;
+						Triangle.A = P[0]; Triangle.B = P[1]; Triangle.C = P[2];
+						Triangle.Centroid = P[0] / 3.0f + P[1] / 3.0f + P[2] / 3.0f;
+						Triangle.EmissiveRadiance = CachedData->EmissiveRadiance;
+						Triangle.BaseColor = CachedData->BaseColor;
+						Triangle.BoundsMin = FVector(FLT_MAX,FLT_MAX,FLT_MAX);
+						Triangle.BoundsMax = FVector(-FLT_MAX,-FLT_MAX,-FLT_MAX);
+						IncludePoint(Triangle.BoundsMin,Triangle.BoundsMax,P[0]); IncludePoint(Triangle.BoundsMin,Triangle.BoundsMax,P[1]); IncludePoint(Triangle.BoundsMin,Triangle.BoundsMax,P[2]);
+						bAddedBSPTriangle = true;
+					}
+					if (bTriangleLimitReached) break;
+				}
+				if (bTriangleLimitReached) break;
+			}
+			if (bAddedBSPTriangle) ++OutStats.IncludedBSPComponents;
+			if (bTriangleLimitReached) break;
+		}
+		if (bTriangleLimitReached) break;
 	}
 
 	// The cap is only considered reached when an additional valid, blocking
