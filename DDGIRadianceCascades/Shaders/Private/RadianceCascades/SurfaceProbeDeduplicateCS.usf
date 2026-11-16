@@ -32,6 +32,27 @@ uint DDGIHashSurfaceKey(uint3 Cell, uint NormalKey)
     return Hash;
 }
 
+bool DDGITryAllocateSurfaceProbeSlot(out uint OutSlot)
+{
+    [loop]
+    for (uint Attempt = 0u; Attempt < 64u; ++Attempt)
+    {
+        uint CurrentCount = SurfaceProbeCounters[4];
+        if (CurrentCount >= ProbeCapacity)
+        {
+            return false;
+        }
+        uint OriginalCount;
+        InterlockedCompareExchange(
+            SurfaceProbeCounters[4], CurrentCount, CurrentCount + 1u, OriginalCount);
+        if (OriginalCount == CurrentCount)
+        {
+            OutSlot = CurrentCount;
+            return true;
+        }
+    }
+    return false;
+}
 uint DDGIEncodeNormal(float3 Normal)
 {
     Normal /= max(abs(Normal.x) + abs(Normal.y) + abs(Normal.z), 1.0e-6f);
@@ -99,30 +120,47 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             uint OriginalSlot;
             InterlockedCompareExchange(
                 SurfaceProbeHash[BucketIndex].w, 0u, DDGI_HASH_LOCKED, OriginalSlot);
-            if (OriginalSlot != 0u)
+            if (OriginalSlot == 0u)
             {
-                continue;
-            }
+                uint NewSlot;
+                if (!DDGITryAllocateSurfaceProbeSlot(NewSlot))
+                {
+                    InterlockedAdd(SurfaceProbeCounters[5], 1u);
+                    DeviceMemoryBarrier();
+                    SurfaceProbeHash[BucketIndex].w = 0u;
+                    return;
+                }
 
-            uint NewSlot;
-            InterlockedAdd(SurfaceProbeCounters[4], 1u, NewSlot);
-            if (NewSlot >= ProbeCapacity)
-            {
-                InterlockedAdd(SurfaceProbeCounters[5], 1u);
+                SurfaceProbePositions[NewSlot] = CandidatePosition;
+                SurfaceProbeNormals[NewSlot] = CandidateNormal;
+                SurfaceProbeStableKeys[NewSlot] = Key;
+                SurfaceProbeLastSeenFrames[NewSlot] = FrameNumber;
+                SurfaceProbeActiveIndices[NewSlot] = NewSlot;
+                SurfaceProbeHash[BucketIndex].xyz = CellBits;
                 DeviceMemoryBarrier();
-                SurfaceProbeHash[BucketIndex].w = 0u;
+                SurfaceProbeHash[BucketIndex].w = NewSlot + 1u;
                 return;
             }
-
-            SurfaceProbePositions[NewSlot] = CandidatePosition;
-            SurfaceProbeNormals[NewSlot] = CandidateNormal;
-            SurfaceProbeStableKeys[NewSlot] = Key;
-            SurfaceProbeLastSeenFrames[NewSlot] = FrameNumber;
-            SurfaceProbeActiveIndices[NewSlot] = NewSlot;
-            SurfaceProbeHash[BucketIndex].xyz = CellBits;
-            DeviceMemoryBarrier();
-            SurfaceProbeHash[BucketIndex].w = NewSlot + 1u;
-            return;
+            ExistingSlot = OriginalSlot;
+            if (ExistingSlot == DDGI_HASH_LOCKED)
+            {
+                bool bResolvedAfterClaim = false;
+                [loop]
+                for (uint SpinAfterClaim = 0u; SpinAfterClaim < 64u; ++SpinAfterClaim)
+                {
+                    DeviceMemoryBarrier();
+                    ExistingSlot = SurfaceProbeHash[BucketIndex].w;
+                    if (ExistingSlot != DDGI_HASH_LOCKED)
+                    {
+                        bResolvedAfterClaim = true;
+                        break;
+                    }
+                }
+                if (!bResolvedAfterClaim || ExistingSlot == 0u)
+                {
+                    return;
+                }
+            }
         }
 
         uint ExistingProbeSlot = ExistingSlot - 1u;
