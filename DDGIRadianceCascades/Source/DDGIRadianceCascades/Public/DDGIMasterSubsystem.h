@@ -37,7 +37,6 @@ struct FDDGIMasterConfig
 	GENERATED_BODY()
 
 	UPROPERTY() bool bEnableDynamicGI = true;
-	UPROPERTY() bool bEnableSurfaceProbes = true;
 	UPROPERTY() float GIIntensity = 1.0f;
 	UPROPERTY() bool bHasDirectionalLight = false;
 	UPROPERTY() FVector DirectionalLightDirection = FVector(0.0f, 0.0f, -1.0f);
