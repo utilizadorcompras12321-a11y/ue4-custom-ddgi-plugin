@@ -466,7 +466,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_Counters"), 8u, Storage.SurfaceProbeCounters, Storage.SurfaceProbeCountersSRV, Storage.SurfaceProbeCountersUAV);
         if (!bSurfaceBuffersCreated)
         {
-        Storage.SurfaceProbePositionsPooled.SafeRelease();
+            Storage.SurfaceProbeCandidatePositionsPooled.SafeRelease();
+            Storage.SurfaceProbeCandidateNormalsPooled.SafeRelease();
+            Storage.SurfaceProbePositionsPooled.SafeRelease();
         Storage.SurfaceProbeNormalsPooled.SafeRelease();
         Storage.SurfaceProbeStableKeysPooled.SafeRelease();
         Storage.SurfaceProbeLastSeenFramesPooled.SafeRelease();
