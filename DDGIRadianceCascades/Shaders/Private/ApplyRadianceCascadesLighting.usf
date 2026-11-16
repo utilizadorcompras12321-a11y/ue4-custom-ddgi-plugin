@@ -399,55 +399,81 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
-    float GridRadius = max(ProbeGridDistance, 1.0f);
-    float GridDistance = length(LocalPosition - ActiveWindowCenter.xyz);
-    float TransitionWidth = max(ProbeSpacing * 2.0f, GridRadius * 0.05f);
-    float Boundary0 = GridRadius * 0.25f;
-    float Boundary1 = GridRadius * 0.50f;
-    float Boundary2 = GridRadius * 0.75f;
-    // Only evaluate the active level, or the two adjacent levels while
-    // crossing a transition. This keeps the interpolation smooth without
-    // paying for all four spatial levels on every shaded pixel.
+    const float GridRadius = max(ProbeGridDistance, 1.0f);
+    const float3 ClipmapOffset = abs(LocalPosition - ActiveWindowCenter.xyz);
+    const float ClipmapDistance = max(ClipmapOffset.x, max(ClipmapOffset.y, ClipmapOffset.z));
+
+    // Spatial levels are nested clipmaps with 16 cells per axis. Their
+    // half-extents double with each level; only the finest level covering the
+    // receiver is sampled, with a narrow overlap at each clipmap boundary.
     float3 Irradiance = 0.0f;
     bool bHasIrradiance = false;
-    if (GridDistance < Boundary0 - TransitionWidth)
+    float PreviousClipmapExtent = 0.0f;
+    [unroll]
+    for (uint ClipmapLevel = 0u; ClipmapLevel < 4u; ++ClipmapLevel)
     {
-        Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 0u, bHasIrradiance);
-        if (!bHasIrradiance)
-            Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 1u, bHasIrradiance);
+        const float LevelScale = exp2((float)ClipmapLevel);
+        const float ClipmapExtent = min(GridRadius, max(1.0f, ProbeSpacing) * 8.0f * LevelScale);
+        if (ClipmapExtent <= PreviousClipmapExtent + 0.5f)
+        {
+            break;
+        }
+
+        if (ClipmapDistance <= ClipmapExtent)
+        {
+            const float TransitionWidth = min(
+                max(ProbeSpacing * 2.0f, ClipmapExtent * 0.05f),
+                max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.5f));
+
+            if (ClipmapLevel < 3u && ClipmapDistance > ClipmapExtent - TransitionWidth)
+            {
+                const float T = smoothstep(
+                    ClipmapExtent - TransitionWidth,
+                    ClipmapExtent + TransitionWidth,
+                    ClipmapDistance);
+                bool bTransitionValid = false;
+                const float3 TransitionIrradiance = DDGIInterpolateLevelPair(
+                    LocalPosition, Normal, ClipmapLevel, ClipmapLevel + 1u,
+                    T, bTransitionValid);
+                if (bTransitionValid)
+                {
+                    Irradiance = TransitionIrradiance;
+                    bHasIrradiance = true;
+                    break;
+                }
+            }
+
+            bool bCurrentLevelValid = false;
+            const float3 CurrentLevelIrradiance = DDGISampleLevelValue(
+                LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid);
+            if (bCurrentLevelValid)
+            {
+                Irradiance = CurrentLevelIrradiance;
+                bHasIrradiance = true;
+                break;
+            }
+        }
+
+        PreviousClipmapExtent = ClipmapExtent;
     }
-    else if (GridDistance < Boundary0 + TransitionWidth)
+
+    // A missing fine-level sample must not create a dark hole at a clipmap
+    // seam. Fall back through coarser levels in a fixed, deterministic order.
+    if (!bHasIrradiance)
     {
-        const float T = smoothstep(Boundary0 - TransitionWidth, Boundary0 + TransitionWidth, GridDistance);
-        Irradiance = DDGIInterpolateLevelPair(LocalPosition, Normal, 0u, 1u, T, bHasIrradiance);
-    }
-    else if (GridDistance < Boundary1 - TransitionWidth)
-    {
-        Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 1u, bHasIrradiance);
-        if (!bHasIrradiance)
-            Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 0u, bHasIrradiance);
-    }
-    else if (GridDistance < Boundary1 + TransitionWidth)
-    {
-        const float T = smoothstep(Boundary1 - TransitionWidth, Boundary1 + TransitionWidth, GridDistance);
-        Irradiance = DDGIInterpolateLevelPair(LocalPosition, Normal, 1u, 2u, T, bHasIrradiance);
-    }
-    else if (GridDistance < Boundary2 - TransitionWidth)
-    {
-        Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 2u, bHasIrradiance);
-        if (!bHasIrradiance)
-            Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 1u, bHasIrradiance);
-    }
-    else if (GridDistance < Boundary2 + TransitionWidth)
-    {
-        const float T = smoothstep(Boundary2 - TransitionWidth, Boundary2 + TransitionWidth, GridDistance);
-        Irradiance = DDGIInterpolateLevelPair(LocalPosition, Normal, 2u, 3u, T, bHasIrradiance);
-    }
-    else
-    {
-        Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 3u, bHasIrradiance);
-        if (!bHasIrradiance)
-            Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 2u, bHasIrradiance);
+        [unroll]
+        for (uint FallbackLevel = 0u; FallbackLevel < 4u; ++FallbackLevel)
+        {
+            bool bFallbackValid = false;
+            const float3 FallbackIrradiance = DDGISampleLevelValue(
+                LocalPosition, Normal, FallbackLevel, bFallbackValid);
+            if (bFallbackValid)
+            {
+                Irradiance = FallbackIrradiance;
+                bHasIrradiance = true;
+                break;
+            }
+        }
     }
 
     // Surface probes provide a local, view-sampled correction to the
