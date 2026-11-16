@@ -1081,7 +1081,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 			NewBVH->SkippedInstanced, NewBVH->SkippedInvalidTriangles, BuildStats.SkippedMaskedTriangles, BuildStats.MaterialsUsingDefaultBaseColor);
 		if (BuildStats.SkippedInstanced > 0)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI: Skipped %d ISM/HISM components containing %d instances. Their geometry is not currently included in the software BVH."),
+			UE_LOG(LogTemp, Warning, TEXT("DDGI: Skipped %d movable ISM/HISM components containing %d instances. Static instances are included in the software BVH; movable instance transforms require a BVH refresh and are currently excluded."),
 				BuildStats.SkippedInstanced, BuildStats.SkippedInstancedInstances);
 		}
 		if (BuildStats.bTriangleLimitReached)
