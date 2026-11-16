@@ -736,15 +736,17 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ClosestTriangleB,
         ClosestTriangleC);
 
-    // Cascades own disjoint ray-distance intervals. A hit before this
-    // interval means an earlier surface blocks the ray; a hit beyond it
-    // belongs to a farther cascade.
+    // Cascades own disjoint ray-distance intervals, but every ray still
+    // represents a real direction from this probe. If its first surface is
+    // before this interval, that surface blocks all farther contributions;
+    // it must still carry its radiance instead of becoming a zero-radiance hit.
     bool bBlockedByEarlierSurface = bHit && ClosestHit < CascadeStartDistance;
     bool bHitInThisInterval = bHit &&
         ClosestHit >= CascadeStartDistance &&
         ClosestHit <= CascadeEndDistance;
-    HitDistanceUAV[Pixel] = bHitInThisInterval || bBlockedByEarlierSurface ? ClosestHit : -1.0f;
-    HitTriangleIndexUAV[Pixel] = bHitInThisInterval ? (ClosestTriangleIndex + 1u) : 0u;
+    bool bHasSurfaceHit = bHitInThisInterval || bBlockedByEarlierSurface;
+    HitDistanceUAV[Pixel] = bHasSurfaceHit ? ClosestHit : -1.0f;
+    HitTriangleIndexUAV[Pixel] = bHasSurfaceHit ? (ClosestTriangleIndex + 1u) : 0u;
 
     // The static environment is injected only by the farthest cascade.
     // Injecting it into every interval would count the same environment many times.
@@ -761,7 +763,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 HitEmissiveRadiance = 0.0f;
     float3 HitDirectRadiance = 0.0f;
     float3 HitIndirectRadiance = 0.0f;
-    if (bHitInThisInterval)
+    if (bHasSurfaceHit)
     {
         uint HitTriangleBase = ClosestTriangleIndex * 4u;
         // The shared traversal already returned the hit vertices.
@@ -819,7 +821,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 
     RadianceUAV[Pixel] = float4(
-        bHitInThisInterval
+        bHasSurfaceHit
             ? (HitEmissiveRadiance + HitDirectRadiance + HitIndirectRadiance)
             : BackgroundRadiance,
         1.0f);
