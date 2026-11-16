@@ -286,7 +286,7 @@ namespace
 			bInvalidateAllPhysicalSlots = false;
 			bPendingPhysicalSlotsUpload = false;
 			LastRadianceUpdateFrameNumber = MAX_uint32;
-		NextTraceProbeIndex = 0u;
+			NextTraceProbeIndex = 0u;
 			LightingFingerprint = 0u;
 			bHasLightingFingerprint = false;
 		}
