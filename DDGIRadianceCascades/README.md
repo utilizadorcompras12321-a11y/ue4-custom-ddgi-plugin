@@ -23,7 +23,7 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - Unreal Engine 4.27.2 source build.
 - Windows 64-bit, deferred renderer, SM5-capable GPU.
 - The current tracing backend is software BVH; it does not use DXR or hardware ray tracing.
-- Static-mesh diffuse material input supports explicit `DDGI_BaseColor` and `DDGI_EmissiveRadiance` vector parameters, optional `DDGI_Metallic` scalar energy reduction, and opt-in `DDGI_UseVertexColor` (triangle-centroid average of CPU-readable LOD0 vertex colors). These are explicit overrides, not general Material Graph evaluation.
+- Material input uses four explicit parameters: vector `DDGI_BaseColor`, vector `DDGI_EmissiveRadiance`, scalar `DDGI_Metallic`, and scalar `DDGI_UseVertexColor`. They are read when the static BVH is rebuilt, not every frame. See [MATERIAL_PARAMETERS.md](MATERIAL_PARAMETERS.md) for defaults, setup and limitations. These are explicit overrides, not general Material Graph evaluation.
 - The current BVH is built from supported static geometry, including static ISM/HISM instances. Movable components and movable instances are skipped; they are not represented in indirect lighting.
 - Direct-light injection supports the strongest visible directional light plus up to 32 captured point/spot lights. The eight strongest local lights are shadow-tested at primary hits and the four strongest at secondary-bounce hits to bound BVH traversal cost. Local-light transforms, intensity, radius and spot cones are refreshed at runtime; attenuation is an approximation of UE4's light falloff.
 - This is a custom experimental renderer feature. GPU cost and image quality depend on scene triangle count, active probe count, cascade settings and trace budget. A fixed 60 FPS guarantee is not possible without profiling on the target scene and GPU.
@@ -34,10 +34,14 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 2. Enable **DDGI Radiance Cascades** in the Plugins window and restart the editor.
 3. Place one **Radiance Cascades Master Actor** in the level.
 4. Ensure the project uses the deferred rendering path and SM5.
-5. Build/rebuild the static geometry BVH after changing static scene geometry by calling `RebuildStaticGeometryBVH` on the Master Actor (or its Blueprint-callable function).
+5. Build/rebuild the static geometry BVH after changing static scene geometry or DDGI material parameter values by calling `RebuildStaticGeometryBVH` on the Master Actor (or its Blueprint-callable function).
 6. Set `bEnableDynamicGI` on the Master Actor to enable or disable the feature.
 
 The plugin accepts one Master Actor per world. Additional actors are ignored.
+
+## Material parameters
+
+The four supported material parameters are documented in [MATERIAL_PARAMETERS.md](MATERIAL_PARAMETERS.md). Their values are captured into the static BVH at rebuild time; Material Instance changes require another rebuild.
 
 ## Main controls
 
