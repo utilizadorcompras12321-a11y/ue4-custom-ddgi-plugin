@@ -5,8 +5,8 @@ Texture2D<float4> NormalTexture;
 Texture2D<float> DepthTexture;
 SamplerState PointClampSampler;
 
-RWStructuredBuffer<float4> SurfaceProbePositions;
-RWStructuredBuffer<float4> SurfaceProbeNormals;
+RWStructuredBuffer<float4> SurfaceProbeCandidatePositions;
+RWStructuredBuffer<float4> SurfaceProbeCandidateNormals;
 RWStructuredBuffer<uint> SurfaceProbeLastSeenFrames;
 RWStructuredBuffer<uint> SurfaceProbeActiveIndices;
 RWStructuredBuffer<uint> SurfaceProbeCounters;
@@ -45,8 +45,8 @@ void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (PixelIndex.x >= (int)ScaledViewSizeAndInvSize.x ||
         PixelIndex.y >= (int)ScaledViewSizeAndInvSize.y)
     {
-        SurfaceProbePositions[CandidateIndex] = 0.0f;
-        SurfaceProbeNormals[CandidateIndex] = 0.0f;
+        SurfaceProbeCandidatePositions[CandidateIndex] = 0.0f;
+        SurfaceProbeCandidateNormals[CandidateIndex] = 0.0f;
         SurfaceProbeActiveIndices[CandidateIndex] = 0xffffffffu;
         SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
         return;
@@ -68,8 +68,8 @@ void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     if (DeviceZ <= 0.000001f)
     {
-        SurfaceProbePositions[CandidateIndex] = 0.0f;
-        SurfaceProbeNormals[CandidateIndex] = 0.0f;
+        SurfaceProbeCandidatePositions[CandidateIndex] = 0.0f;
+        SurfaceProbeCandidateNormals[CandidateIndex] = 0.0f;
         SurfaceProbeActiveIndices[CandidateIndex] = 0xffffffffu;
         SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
         return;
@@ -79,8 +79,8 @@ void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         NormalTexture.SampleLevel(PointClampSampler, BufferUV, 0).xyz));
     if (any(isnan(Normal)) || any(isinf(Normal)) || dot(Normal, Normal) < 0.5f)
     {
-        SurfaceProbePositions[CandidateIndex] = 0.0f;
-        SurfaceProbeNormals[CandidateIndex] = 0.0f;
+        SurfaceProbeCandidatePositions[CandidateIndex] = 0.0f;
+        SurfaceProbeCandidateNormals[CandidateIndex] = 0.0f;
         SurfaceProbeActiveIndices[CandidateIndex] = 0xffffffffu;
         SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
         return;
@@ -91,8 +91,8 @@ void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     // This is a screen-sampled staging set, not yet the stable world-space
     // probe set. The following deduplication pass must assign persistent slots.
-    SurfaceProbePositions[CandidateIndex] = float4(WorldPosition, 1.0f);
-    SurfaceProbeNormals[CandidateIndex] = float4(Normal, 1.0f);
+    SurfaceProbeCandidatePositions[CandidateIndex] = float4(WorldPosition, 1.0f);
+    SurfaceProbeCandidateNormals[CandidateIndex] = float4(Normal, 1.0f);
     SurfaceProbeActiveIndices[CandidateIndex] = CandidateIndex;
     SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
 }
