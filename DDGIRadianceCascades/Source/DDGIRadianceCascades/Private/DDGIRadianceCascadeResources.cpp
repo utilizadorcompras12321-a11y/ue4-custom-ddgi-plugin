@@ -1887,3 +1887,39 @@ void DDGIMarkRadianceCascadeInitializationScheduled_RenderThread(const FSceneInt
         Storage->bNeedsInitialization = false;
     }
 }
+bool DDGIGetSurfaceProbeAllocatorResources_RenderThread(
+    const FSceneInterface* Scene,
+    FDDGISurfaceProbeAllocatorRHIResources& OutResources)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutResources = FDDGISurfaceProbeAllocatorRHIResources();
+    const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || Storage->SurfaceProbeCapacity == 0u || Storage->SurfaceProbeHashCapacity == 0u ||
+        !Storage->SurfaceProbePositionsSRV.IsValid() || !Storage->SurfaceProbePositionsUAV.IsValid() ||
+        !Storage->SurfaceProbeNormalsSRV.IsValid() || !Storage->SurfaceProbeNormalsUAV.IsValid() ||
+        !Storage->SurfaceProbeStableKeysSRV.IsValid() || !Storage->SurfaceProbeStableKeysUAV.IsValid() ||
+        !Storage->SurfaceProbeLastSeenFramesSRV.IsValid() || !Storage->SurfaceProbeLastSeenFramesUAV.IsValid() ||
+        !Storage->SurfaceProbeActiveIndicesSRV.IsValid() || !Storage->SurfaceProbeActiveIndicesUAV.IsValid() ||
+        !Storage->SurfaceProbeHashSRV.IsValid() || !Storage->SurfaceProbeHashUAV.IsValid() ||
+        !Storage->SurfaceProbeCountersSRV.IsValid() || !Storage->SurfaceProbeCountersUAV.IsValid())
+    {
+        return false;
+    }
+    OutResources.PositionsSRV = Storage->SurfaceProbePositionsSRV;
+    OutResources.PositionsUAV = Storage->SurfaceProbePositionsUAV;
+    OutResources.NormalsSRV = Storage->SurfaceProbeNormalsSRV;
+    OutResources.NormalsUAV = Storage->SurfaceProbeNormalsUAV;
+    OutResources.StableKeysSRV = Storage->SurfaceProbeStableKeysSRV;
+    OutResources.StableKeysUAV = Storage->SurfaceProbeStableKeysUAV;
+    OutResources.LastSeenFramesSRV = Storage->SurfaceProbeLastSeenFramesSRV;
+    OutResources.LastSeenFramesUAV = Storage->SurfaceProbeLastSeenFramesUAV;
+    OutResources.ActiveIndicesSRV = Storage->SurfaceProbeActiveIndicesSRV;
+    OutResources.ActiveIndicesUAV = Storage->SurfaceProbeActiveIndicesUAV;
+    OutResources.HashSRV = Storage->SurfaceProbeHashSRV;
+    OutResources.HashUAV = Storage->SurfaceProbeHashUAV;
+    OutResources.CountersSRV = Storage->SurfaceProbeCountersSRV;
+    OutResources.CountersUAV = Storage->SurfaceProbeCountersUAV;
+    OutResources.ProbeCapacity = Storage->SurfaceProbeCapacity;
+    OutResources.HashCapacity = Storage->SurfaceProbeHashCapacity;
+    return true;
+}
