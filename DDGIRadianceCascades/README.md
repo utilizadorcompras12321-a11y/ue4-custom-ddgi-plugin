@@ -57,6 +57,10 @@ The plugin accepts one Master Actor per world. Additional actors are ignored.
 - `r.DDGI.UsePrecomputedProbeNeighbors`: `1` uses the precomputed neighbor list; `0` uses the spatial hash fallback.
 - `r.DDGI.DebugApply`: `0` normal output; `1` probe coverage; `2` raw irradiance; `3` output-path magenta test; `4`–`7` individual spatial clipmap levels.
 
+## Validation
+
+The plugin includes an Unreal Automation Test for cascade packing, interval coverage and GPU storage estimates: run `Automation RunTests DDGI.RadianceCascades.Layout` in the editor or automation framework. This is a CPU-side layout test; it does not replace shader compilation, GPU validation or scene profiling.
+
 ## Important limitations
 
 This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, complete material evaluation, multiple direct-light types, or a temporal denoiser. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
