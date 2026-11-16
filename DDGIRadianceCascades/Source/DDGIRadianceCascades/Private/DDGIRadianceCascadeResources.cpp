@@ -178,6 +178,7 @@ namespace
 		uint32 SurfaceProbeCapacity = 0u;
 		uint32 SurfaceProbeHashCapacity = 0u;
 		uint32 SurfaceProbeRetryCountdown = 0u;
+		uint32 LastSurfaceProbeCaptureFrameNumber = MAX_uint32;
 		FStructuredBufferRHIRef ProbeSpatialHash;
 		FShaderResourceViewRHIRef ProbeSpatialHashSRV;
 		FStructuredBufferRHIRef ProbeNeighborIndices;
@@ -277,6 +278,7 @@ namespace
 			SurfaceProbeCapacity = 0u;
 			SurfaceProbeHashCapacity = 0u;
 			SurfaceProbeRetryCountdown = 0u;
+			LastSurfaceProbeCaptureFrameNumber = MAX_uint32;
 			ProbeSpatialHash.SafeRelease();
 			ProbeSpatialHashSRV.SafeRelease();
 			ProbeNeighborIndices.SafeRelease();
@@ -2020,4 +2022,23 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
     OutResources.HashCapacity = Storage->SurfaceProbeHashCapacity;
     return OutResources.Positions && OutResources.Normals && OutResources.StableKeys &&
         OutResources.LastSeenFrames && OutResources.ActiveIndices && OutResources.Hash && OutResources.Counters;
+}
+
+bool DDGIBeginSurfaceProbeCapture_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    if (!Scene)
+    {
+        return false;
+    }
+
+    FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || Storage->SurfaceProbeCapacity == 0u ||
+        Storage->LastSurfaceProbeCaptureFrameNumber == FrameNumber)
+    {
+        return false;
+    }
+
+    Storage->LastSurfaceProbeCaptureFrameNumber = FrameNumber;
+    return true;
 }
