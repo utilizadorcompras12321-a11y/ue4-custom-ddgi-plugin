@@ -218,11 +218,11 @@ float3 DDGIProbeDiffuseIrradiance(
         uint CascadeRayIndex = CascadeStorageOffset +
             BestBaseRay * ChildrenPerParent +
             min(DescendantIndex, ChildrenPerParent - 1u);
-        uint2 VisibilityDirectionPixel = uint2(
-            CascadeRayIndex % DDGI_RC_TEXTURE_WIDTH,
-            CascadeRayIndex / DDGI_RC_TEXTURE_WIDTH);
-        float3 VisibilityRayDirection = normalize(
-            DirectionsTexture.Load(int3(VisibilityDirectionPixel, 0)).xyz);
+        // AngularRegion has been split along the exact same deterministic
+        // path used to build the direction texture. Its center is therefore
+        // the ray direction without another texture fetch.
+        float3 VisibilityRayDirection =
+            DDGIRadianceCascadeRegionDirection(AngularRegion);
         if (dot(VisibilityRayDirection, ReceiverDirection) > 0.55f)
         {
             uint VisibilityLinearIndex =
