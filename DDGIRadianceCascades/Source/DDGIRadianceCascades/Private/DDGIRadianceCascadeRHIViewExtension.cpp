@@ -22,6 +22,12 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
     TEXT("Use precomputed probe neighbors in DDGI spatial gather (0=spatial hash, 1=precomputed list; default 1)."),
     ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarDDGISurfaceProbeTraceBudget(
+    TEXT("r.DDGI.SurfaceProbeTraceBudget"),
+    64,
+    TEXT("Maximum retained surface probes scheduled for tracing per frame (0 disables surface-probe tracing schedule)."),
+    ECVF_RenderThreadSafe);
+
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
     TEXT("r.DDGI.DebugApply"),
     0,
@@ -712,6 +718,32 @@ IMPLEMENT_GLOBAL_SHADER(
     "SurfaceProbeBuildActiveListCS",
     SF_Compute);
 
+class FDDGISurfaceProbeScheduleTraceCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeScheduleTraceCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeScheduleTraceCS, FGlobalShader);
+
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, SurfaceProbeActiveIndices)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeTraceIndices)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeCounters)
+        SHADER_PARAMETER(uint32, ProbeCapacity)
+        SHADER_PARAMETER(uint32, TraceProbeBudget)
+    END_SHADER_PARAMETER_STRUCT()
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+    FDDGISurfaceProbeScheduleTraceCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeBuildActiveList.usf",
+    "SurfaceProbeScheduleTraceCS",
+    SF_Compute);
+
+
 
 static void DDGIScheduleSurfaceProbeCapture(
     FRDGBuilder& GraphBuilder,
@@ -842,6 +874,25 @@ static void DDGIScheduleSurfaceProbeCapture(
         BuildActiveListShader,
         BuildActiveListParameters,
         FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(Resources.ProbeCapacity), 64), 1, 1));
+ 
+    // Schedule a bounded round-robin subset. The compact list contains physical
+    // slots; this second list is the per-frame work queue consumed by future tracing.
+    FDDGISurfaceProbeScheduleTraceCS::FParameters* ScheduleTraceParameters =
+        GraphBuilder.AllocParameters<FDDGISurfaceProbeScheduleTraceCS::FParameters>();
+    ScheduleTraceParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateSRV(Resources.ActiveIndices);
+    ScheduleTraceParameters->SurfaceProbeTraceIndices = GraphBuilder.CreateUAV(Resources.TraceIndices);
+    ScheduleTraceParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
+    ScheduleTraceParameters->ProbeCapacity = Resources.ProbeCapacity;
+    ScheduleTraceParameters->TraceProbeBudget = static_cast<uint32>(
+        FMath::Clamp(CVarDDGISurfaceProbeTraceBudget.GetValueOnRenderThread(), 0, static_cast<int32>(Resources.ProbeCapacity)));
+
+    TShaderMapRef<FDDGISurfaceProbeScheduleTraceCS> ScheduleTraceShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+    FComputeShaderUtils::AddPass(
+        GraphBuilder,
+        RDG_EVENT_NAME("DDGI Schedule Surface Probe Tracing"),
+        ScheduleTraceShader,
+        ScheduleTraceParameters,
+        FIntVector(1, 1, 1));
 }
 
 IMPLEMENT_GLOBAL_SHADER(
