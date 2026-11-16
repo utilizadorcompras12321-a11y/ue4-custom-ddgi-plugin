@@ -48,8 +48,8 @@ bool FDDGIRadianceCascadeLayoutTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Packed final slice offset"), Slices[4].StorageOffset, 90);
 	}
 
-	const int64 ExpectedBytes = 10ll * (186ll * 32ll + 16ll) + 186ll * 8ll;
-	TestEqual(TEXT("Storage estimate includes trace, gather, final and hit textures"),
+	const int64 ExpectedBytes = 10ll * (186ll * 28ll + 16ll) + 186ll * 8ll;
+	TestEqual(TEXT("Storage estimate includes raw, gather, packed final and hit textures"),
 		Config.GetEstimatedStorageBytes(10), ExpectedBytes);
 
 	Config.MaxTraceDistance = 1000.0f;
