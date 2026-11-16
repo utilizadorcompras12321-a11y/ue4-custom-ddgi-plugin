@@ -65,6 +65,6 @@ The plugin includes an Unreal Automation Test for cascade packing, interval cove
 
 ## Important limitations
 
-This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, complete material evaluation, textured albedo, or a temporal denoiser. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
+This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, SkyLight/RectLight or IES evaluation, complete material evaluation, textured albedo, or a temporal denoiser. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
 
 Do not treat the presence of the plugin or a successful C++ build as proof of production-ready GI. Validate the output with moving cameras, thin walls, corners, enclosed rooms, emissive surfaces and changing directional and local lights. Profile GPU time at the target resolution and on the target hardware.
