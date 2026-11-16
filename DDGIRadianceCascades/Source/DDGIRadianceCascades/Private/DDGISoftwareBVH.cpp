@@ -842,7 +842,9 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 
 	// The cap is only considered reached when an additional valid, blocking
 	// triangle exists beyond the accepted-triangle capacity.
-	OutStats.bTriangleLimitReached = bTriangleLimitReached;
+	// The static-mesh share can be exhausted before the global cap when BSP has a protected reservation.
+	// Report that truncation too, even if invalid BSP polygons leave part of the reservation unused.
+	OutStats.bTriangleLimitReached = bTriangleLimitReached || bStaticMeshBudgetReached;
 	OutStats.TriangleCount = Triangles.Num();
 	if (Triangles.Num() == 0)
 	{
