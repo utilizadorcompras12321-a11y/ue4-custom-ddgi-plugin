@@ -647,7 +647,6 @@ class FDDGISurfaceProbeDeduplicateCS : public FGlobalShader
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeNormals)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, SurfaceProbeStableKeys)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeLastSeenFrames)
-        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeActiveIndices)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, SurfaceProbeHash)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeCounters)
         SHADER_PARAMETER(uint32, ProbeCapacity)
@@ -666,6 +665,53 @@ IMPLEMENT_GLOBAL_SHADER(
     "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeDeduplicateCS.usf",
     "SurfaceProbeDeduplicateCS",
     SF_Compute);
+
+class FDDGISurfaceProbeResetActiveListCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeResetActiveListCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeResetActiveListCS, FGlobalShader);
+
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeCounters)
+    END_SHADER_PARAMETER_STRUCT()
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+    FDDGISurfaceProbeResetActiveListCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeBuildActiveList.usf",
+    "SurfaceProbeResetActiveListCS",
+    SF_Compute);
+
+class FDDGISurfaceProbeBuildActiveListCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeBuildActiveListCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeBuildActiveListCS, FGlobalShader);
+
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, SurfaceProbeLastSeenFrames)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeActiveIndices)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeCounters)
+        SHADER_PARAMETER(uint32, ProbeCapacity)
+        SHADER_PARAMETER(uint32, FrameNumber)
+    END_SHADER_PARAMETER_STRUCT()
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+    FDDGISurfaceProbeBuildActiveListCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeBuildActiveList.usf",
+    "SurfaceProbeBuildActiveListCS",
+    SF_Compute);
+
 
 static void DDGIScheduleSurfaceProbeCapture(
     FRDGBuilder& GraphBuilder,
@@ -753,7 +799,6 @@ static void DDGIScheduleSurfaceProbeCapture(
     DeduplicateParameters->SurfaceProbeNormals = GraphBuilder.CreateUAV(Resources.Normals);
     DeduplicateParameters->SurfaceProbeStableKeys = GraphBuilder.CreateUAV(Resources.StableKeys);
     DeduplicateParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateUAV(Resources.LastSeenFrames);
-    DeduplicateParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateUAV(Resources.ActiveIndices);
     DeduplicateParameters->SurfaceProbeHash = GraphBuilder.CreateUAV(Resources.Hash);
     DeduplicateParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
     DeduplicateParameters->ProbeCapacity = Resources.ProbeCapacity;
@@ -767,6 +812,36 @@ static void DDGIScheduleSurfaceProbeCapture(
         DeduplicateShader,
         DeduplicateParameters,
         FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(CandidateCount), 64), 1, 1));
+
+    // Build a compact list of retained physical slots after deduplication.
+    // The counter is reset in its own pass so no cross-group barrier is needed.
+    FDDGISurfaceProbeResetActiveListCS::FParameters* ResetActiveListParameters =
+        GraphBuilder.AllocParameters<FDDGISurfaceProbeResetActiveListCS::FParameters>();
+    ResetActiveListParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
+
+    TShaderMapRef<FDDGISurfaceProbeResetActiveListCS> ResetActiveListShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+    FComputeShaderUtils::AddPass(
+        GraphBuilder,
+        RDG_EVENT_NAME("DDGI Reset Surface Probe Active List"),
+        ResetActiveListShader,
+        ResetActiveListParameters,
+        FIntVector(1, 1, 1));
+
+    FDDGISurfaceProbeBuildActiveListCS::FParameters* BuildActiveListParameters =
+        GraphBuilder.AllocParameters<FDDGISurfaceProbeBuildActiveListCS::FParameters>();
+    BuildActiveListParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateSRV(Resources.LastSeenFrames);
+    BuildActiveListParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateUAV(Resources.ActiveIndices);
+    BuildActiveListParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
+    BuildActiveListParameters->ProbeCapacity = Resources.ProbeCapacity;
+    BuildActiveListParameters->FrameNumber = View.Family->FrameNumber;
+
+    TShaderMapRef<FDDGISurfaceProbeBuildActiveListCS> BuildActiveListShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+    FComputeShaderUtils::AddPass(
+        GraphBuilder,
+        RDG_EVENT_NAME("DDGI Build Surface Probe Active List"),
+        BuildActiveListShader,
+        BuildActiveListParameters,
+        FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(Resources.ProbeCapacity), 64), 1, 1));
 }
 
 IMPLEMENT_GLOBAL_SHADER(
