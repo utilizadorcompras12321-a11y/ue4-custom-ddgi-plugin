@@ -115,11 +115,8 @@ float3 DDGIProbeDiffuseIrradiance(uint ProbeIndex, float3 Normal)
 uint DDGIGetSpatialLevelStep(uint Level)
 {
     // Keep in sync with DDGIGetSpatialLevelStep in DDGIRadianceCascadeResources.cpp
-    // and LevelSteps in DDGIMasterSubsystem.cpp.
-    if (Level == 0u) return 1u;
-    if (Level == 1u) return 2u;
-    if (Level == 2u) return 3u;
-    return 4u;
+    // and the deterministic clipmap builder in DDGIMasterSubsystem.cpp.
+    return 1u << min(Level, 3u);
 }
 
 float3 DDGISampleProbeLevel(
