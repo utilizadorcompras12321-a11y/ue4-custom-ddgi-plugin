@@ -148,6 +148,7 @@ namespace
 		// Persistent surface-probe allocator buffers. These are deliberately
 		// separate from the regular lattice hash and physical ray-history slots.
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbePositionsPooled;
+		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeIntegratedRadiancePooled;
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeCandidatePositionsPooled;
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeCandidateNormalsPooled;
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeNormalsPooled;
@@ -158,6 +159,9 @@ namespace
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeHashPooled;
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeCountersPooled;
 		FStructuredBufferRHIRef SurfaceProbePositions;
+		FStructuredBufferRHIRef SurfaceProbeIntegratedRadiance;
+		FShaderResourceViewRHIRef SurfaceProbeIntegratedRadianceSRV;
+		FUnorderedAccessViewRHIRef SurfaceProbeIntegratedRadianceUAV;
 		FStructuredBufferRHIRef SurfaceProbeCandidatePositions;
 		FShaderResourceViewRHIRef SurfaceProbeCandidatePositionsSRV;
 		FUnorderedAccessViewRHIRef SurfaceProbeCandidatePositionsUAV;
@@ -260,6 +264,7 @@ namespace
 			FreePhysicalSlots.Reset();
 			PhysicalSlotCapacity = 0;
 			SurfaceProbePositionsPooled.SafeRelease();
+			SurfaceProbeIntegratedRadiancePooled.SafeRelease();
 			SurfaceProbeCandidatePositionsPooled.SafeRelease();
 			SurfaceProbeCandidateNormalsPooled.SafeRelease();
 			SurfaceProbeNormalsPooled.SafeRelease();
@@ -270,6 +275,9 @@ namespace
 			SurfaceProbeHashPooled.SafeRelease();
 			SurfaceProbeCountersPooled.SafeRelease();
 			SurfaceProbePositions.SafeRelease();
+			SurfaceProbeIntegratedRadiance.SafeRelease();
+			SurfaceProbeIntegratedRadianceSRV.SafeRelease();
+			SurfaceProbeIntegratedRadianceUAV.SafeRelease();
 			SurfaceProbeCandidatePositions.SafeRelease();
 			SurfaceProbeCandidatePositionsSRV.SafeRelease();
 			SurfaceProbeCandidatePositionsUAV.SafeRelease();
@@ -419,13 +427,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
     else if (Storage.SurfaceProbeCapacity != GDDGISurfaceProbeCapacity ||
         Storage.SurfaceProbeHashCapacity != GDDGISurfaceProbeHashCapacity ||
-        !Storage.SurfaceProbePositionsUAV.IsValid() || !Storage.SurfaceProbeCandidatePositionsUAV.IsValid() ||
+        !Storage.SurfaceProbePositionsUAV.IsValid() || !Storage.SurfaceProbeIntegratedRadianceUAV.IsValid() || !Storage.SurfaceProbeCandidatePositionsUAV.IsValid() ||
         !Storage.SurfaceProbeCandidateNormalsUAV.IsValid() || !Storage.SurfaceProbeNormalsUAV.IsValid() ||
         !Storage.SurfaceProbeStableKeysUAV.IsValid() || !Storage.SurfaceProbeLastSeenFramesUAV.IsValid() ||
         !Storage.SurfaceProbeActiveIndicesUAV.IsValid() || !Storage.SurfaceProbeTraceIndicesUAV.IsValid() || !Storage.SurfaceProbeHashUAV.IsValid() ||
         !Storage.SurfaceProbeCountersUAV.IsValid())
     {
         Storage.SurfaceProbePositionsPooled.SafeRelease();
+        Storage.SurfaceProbeIntegratedRadiancePooled.SafeRelease();
         Storage.SurfaceProbeCandidatePositionsPooled.SafeRelease();
         Storage.SurfaceProbeCandidateNormalsPooled.SafeRelease();
         Storage.SurfaceProbeNormalsPooled.SafeRelease();
@@ -442,6 +451,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.SurfaceProbeCandidateNormalsSRV.SafeRelease();
         Storage.SurfaceProbeCandidateNormalsUAV.SafeRelease();
         Storage.SurfaceProbePositions.SafeRelease();
+        Storage.SurfaceProbeIntegratedRadiance.SafeRelease();
+        Storage.SurfaceProbeIntegratedRadianceSRV.SafeRelease();
+        Storage.SurfaceProbeIntegratedRadianceUAV.SafeRelease();
         Storage.SurfaceProbePositionsSRV.SafeRelease();
         Storage.SurfaceProbePositionsUAV.SafeRelease();
         Storage.SurfaceProbeNormals.SafeRelease();
@@ -468,6 +480,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
         const bool bSurfaceBuffersCreated =
             DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_Positions"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbePositions, Storage.SurfaceProbePositionsSRV, Storage.SurfaceProbePositionsUAV) &&
+            DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_IntegratedRadiance"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeIntegratedRadiance, Storage.SurfaceProbeIntegratedRadianceSRV, Storage.SurfaceProbeIntegratedRadianceUAV) &&
             DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_CandidatePositions"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeCandidatePositions, Storage.SurfaceProbeCandidatePositionsSRV, Storage.SurfaceProbeCandidatePositionsUAV) &&
             DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_CandidateNormals"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeCandidateNormals, Storage.SurfaceProbeCandidateNormalsSRV, Storage.SurfaceProbeCandidateNormalsUAV) &&
             DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_Normals"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeNormals, Storage.SurfaceProbeNormalsSRV, Storage.SurfaceProbeNormalsUAV) &&
@@ -1992,6 +2005,7 @@ bool DDGIGetSurfaceProbeAllocatorResources_RenderThread(
     const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || Storage->SurfaceProbeCapacity == 0u || Storage->SurfaceProbeHashCapacity == 0u ||
         !Storage->SurfaceProbePositionsSRV.IsValid() || !Storage->SurfaceProbePositionsUAV.IsValid() ||
+        !Storage->SurfaceProbeIntegratedRadianceSRV.IsValid() || !Storage->SurfaceProbeIntegratedRadianceUAV.IsValid() ||
         !Storage->SurfaceProbeCandidatePositionsSRV.IsValid() || !Storage->SurfaceProbeCandidatePositionsUAV.IsValid() ||
         !Storage->SurfaceProbeCandidateNormalsSRV.IsValid() || !Storage->SurfaceProbeCandidateNormalsUAV.IsValid() ||
         !Storage->SurfaceProbeNormalsSRV.IsValid() || !Storage->SurfaceProbeNormalsUAV.IsValid() ||
@@ -2005,6 +2019,8 @@ bool DDGIGetSurfaceProbeAllocatorResources_RenderThread(
         return false;
     }
     OutResources.PositionsSRV = Storage->SurfaceProbePositionsSRV;
+    OutResources.IntegratedRadianceSRV = Storage->SurfaceProbeIntegratedRadianceSRV;
+    OutResources.IntegratedRadianceUAV = Storage->SurfaceProbeIntegratedRadianceUAV;
     OutResources.CandidatePositionsSRV = Storage->SurfaceProbeCandidatePositionsSRV;
     OutResources.CandidatePositionsUAV = Storage->SurfaceProbeCandidatePositionsUAV;
     OutResources.CandidateNormalsSRV = Storage->SurfaceProbeCandidateNormalsSRV;
@@ -2039,7 +2055,7 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
 
     FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage || Storage->SurfaceProbeCapacity == 0u || Storage->SurfaceProbeHashCapacity == 0u ||
-        !Storage->SurfaceProbePositions.IsValid() || !Storage->SurfaceProbeNormals.IsValid() ||
+        !Storage->SurfaceProbePositions.IsValid() || !Storage->SurfaceProbeIntegratedRadiance.IsValid() || !Storage->SurfaceProbeNormals.IsValid() ||
         !Storage->SurfaceProbeCandidatePositions.IsValid() || !Storage->SurfaceProbeCandidateNormals.IsValid() ||
         !Storage->SurfaceProbeStableKeys.IsValid() || !Storage->SurfaceProbeLastSeenFrames.IsValid() ||
         !Storage->SurfaceProbeActiveIndices.IsValid() || !Storage->SurfaceProbeTraceIndices.IsValid() || !Storage->SurfaceProbeHash.IsValid() ||
@@ -2070,6 +2086,8 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
         Storage->SurfaceProbeCandidateNormalsPooled = MakePooledBuffer(Storage->SurfaceProbeCandidateNormals, sizeof(FVector4), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_CandidateNormals"));
     if (!Storage->SurfaceProbePositionsPooled.IsValid())
         Storage->SurfaceProbePositionsPooled = MakePooledBuffer(Storage->SurfaceProbePositions, sizeof(FVector4), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_Positions"));
+    if (!Storage->SurfaceProbeIntegratedRadiancePooled.IsValid())
+        Storage->SurfaceProbeIntegratedRadiancePooled = MakePooledBuffer(Storage->SurfaceProbeIntegratedRadiance, sizeof(FVector4), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_IntegratedRadiance"));
     if (!Storage->SurfaceProbeNormalsPooled.IsValid())
         Storage->SurfaceProbeNormalsPooled = MakePooledBuffer(Storage->SurfaceProbeNormals, sizeof(FVector4), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_Normals"));
     if (!Storage->SurfaceProbeStableKeysPooled.IsValid())
@@ -2086,7 +2104,7 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
         Storage->SurfaceProbeCountersPooled = MakePooledBuffer(Storage->SurfaceProbeCounters, sizeof(uint32), 9u, TEXT("DDGISurfaceProbe_Counters"));
 
     if (!Storage->SurfaceProbeCandidatePositionsPooled.IsValid() || !Storage->SurfaceProbeCandidateNormalsPooled.IsValid() ||
-        !Storage->SurfaceProbePositionsPooled.IsValid() || !Storage->SurfaceProbeNormalsPooled.IsValid() ||
+        !Storage->SurfaceProbePositionsPooled.IsValid() || !Storage->SurfaceProbeIntegratedRadiancePooled.IsValid() || !Storage->SurfaceProbeNormalsPooled.IsValid() ||
         !Storage->SurfaceProbeStableKeysPooled.IsValid() || !Storage->SurfaceProbeLastSeenFramesPooled.IsValid() ||
         !Storage->SurfaceProbeActiveIndicesPooled.IsValid() || !Storage->SurfaceProbeTraceIndicesPooled.IsValid() || !Storage->SurfaceProbeHashPooled.IsValid() ||
         !Storage->SurfaceProbeCountersPooled.IsValid())
@@ -2097,6 +2115,7 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
     OutResources.CandidatePositions = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeCandidatePositionsPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
     OutResources.CandidateNormals = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeCandidateNormalsPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
     OutResources.Positions = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbePositionsPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
+    OutResources.IntegratedRadiance = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeIntegratedRadiancePooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
     OutResources.Normals = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeNormalsPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
     OutResources.StableKeys = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeStableKeysPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
     OutResources.LastSeenFrames = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeLastSeenFramesPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
@@ -2108,7 +2127,7 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
     OutResources.ProbeCapacity = Storage->SurfaceProbeCapacity;
     OutResources.HashCapacity = Storage->SurfaceProbeHashCapacity;
     return OutResources.CandidatePositions && OutResources.CandidateNormals &&
-        OutResources.Positions && OutResources.Normals && OutResources.StableKeys &&
+        OutResources.Positions && OutResources.IntegratedRadiance && OutResources.Normals && OutResources.StableKeys &&
         OutResources.LastSeenFrames && OutResources.ActiveIndices && OutResources.TraceIndices && OutResources.Hash && OutResources.Counters;
 }
 
