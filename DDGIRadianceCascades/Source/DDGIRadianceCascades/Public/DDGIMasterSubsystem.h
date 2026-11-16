@@ -106,6 +106,7 @@ private:
 	bool bHasActiveWindowCenterCell = false;
 	TWeakObjectPtr<UDirectionalLightComponent> ActiveDirectionalLight;
 	bool bHasSearchedDirectionalLights = false;
+	uint64 LastDirectionalLightDiscoveryFrame = 0;
 	bool UpdateDirectionalLighting(const ADDGIMasterActor* InActor);
 	TArray<TWeakObjectPtr<UPointLightComponent>> CachedLocalLights;
 	uint64 LastLocalLightDiscoveryFrame = 0;
