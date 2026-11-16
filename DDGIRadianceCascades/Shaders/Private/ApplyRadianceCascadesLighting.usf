@@ -26,6 +26,7 @@ uint TotalRaysPerProbe;
 uint BaseRayCount;
 uint HashCapacity;
 float ProbeSpacing;
+float BaseSegmentLength;
 float ProbeGridDistance;
 float4 ProbeGridOrigin;
 float4 ActiveWindowCenter;
@@ -108,7 +109,9 @@ float3 DDGIProbeDiffuseIrradiance(
     }
 
     float Visibility = 1.0f;
-    if (ReceiverDistance > 1.0f && BestAlignment > 0.70f)
+    if (ReceiverDistance > 1.0f &&
+        ReceiverDistance <= max(BaseSegmentLength, 1.0f) &&
+        BestAlignment > 0.70f)
     {
         uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
         uint VisibilityLinearIndex =
