@@ -657,9 +657,12 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 
 	UDirectionalLightComponent* Light = ActiveDirectionalLight.Get();
 	const bool bCachedLightBecameUnavailable = ActiveDirectionalLight.IsValid() &&
-		(!Light->IsVisible() || Light->Intensity <= 0.0f);
+		(!Light->IsVisible() || !Light->bAffectDynamicIndirectLighting || Light->Intensity <= 0.0f);
 	const bool bCachedLightWasDestroyed = !ActiveDirectionalLight.IsValid() && Config.bHasDirectionalLight;
-	if (!bHasSearchedDirectionalLights || bCachedLightBecameUnavailable || bCachedLightWasDestroyed)
+	const bool bRefreshDirectionalDiscovery =
+		!bHasSearchedDirectionalLights ||
+		GFrameCounter - LastDirectionalLightDiscoveryFrame >= 120u;
+	if (bRefreshDirectionalDiscovery || bCachedLightBecameUnavailable || bCachedLightWasDestroyed)
 	{
 		ActiveDirectionalLight.Reset();
 		Light = nullptr;
@@ -685,6 +688,7 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 		}
 		ActiveDirectionalLight = Light;
 		bHasSearchedDirectionalLights = true;
+		LastDirectionalLightDiscoveryFrame = GFrameCounter;
 	}
 
 	const bool bHadLight = Config.bHasDirectionalLight;
