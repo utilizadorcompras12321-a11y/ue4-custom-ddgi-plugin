@@ -951,7 +951,7 @@ static void DDGIScheduleSurfaceProbeCapture(
         TShaderMapRef<FDDGISurfaceProbeTraceCS> TraceShader(GetGlobalShaderMap(View.GetFeatureLevel()));
         FComputeShaderUtils::AddPass(
             GraphBuilder,
-            RDG_EVENT_NAME("DDGI Trace Surface Probes ({0} max)", TraceDispatchBudget),
+            RDG_EVENT_NAME("DDGI Trace Surface Probes"),
             TraceShader,
             TraceParameters,
             FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(TraceDispatchBudget), 64), 1, 1));
