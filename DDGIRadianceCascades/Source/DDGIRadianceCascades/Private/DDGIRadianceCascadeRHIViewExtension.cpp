@@ -781,6 +781,12 @@ class FDDGISurfaceProbeCaptureCS : public FGlobalShader
     }
 };
 
+IMPLEMENT_GLOBAL_SHADER(
+    FDDGISurfaceProbeCaptureCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeCaptureCS.usf",
+    "SurfaceProbeCaptureCS",
+    SF_Compute);
+
 class FDDGISurfaceProbeBuildActiveListCS : public FGlobalShader
 {
     DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeBuildActiveListCS);
