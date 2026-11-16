@@ -290,6 +290,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
+    const float PreviousUploadedProbeSpacing = Storage.UploadedProbeSpacing;
     // Ray textures are a grow-only capacity pool. A smaller active window must
     // not shrink/recreate the textures: doing so discards every probe's history.
     // A ray-layout change still requires new storage, but must not evict the
@@ -520,8 +521,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         FMath::Max(2u, ProbeCountForHash * 2u));
     const float SafeProbeSpacing = FMath::Max(1.0f, Config.ProbeSpacing);
     const bool bProbeSpacingChanged =
-        Storage.UploadedProbeSpacing > 0.0f &&
-        !FMath::IsNearlyEqual(Storage.UploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f);
+        PreviousUploadedProbeSpacing > 0.0f &&
+        !FMath::IsNearlyEqual(PreviousUploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f);
     if (bProbeSpacingChanged)
     {
         // Integer cell keys are expressed in units of ProbeSpacing. Reusing a
