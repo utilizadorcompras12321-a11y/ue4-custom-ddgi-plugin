@@ -975,6 +975,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		// A disabled master must stop CPU scene extraction as well as GPU work.
 		// Drop the CPU BVH and lattice so re-enabling forces a clean rebuild.
 		Config.bHasDirectionalLight = false;
+		Config.bDirectionalLightCastsShadows = false;
 		Config.DirectionalLightIntensity = 0.0f;
 		ActiveDirectionalLight.Reset();
 		bHasSearchedDirectionalLights = false;
