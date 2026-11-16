@@ -57,12 +57,6 @@ bool DDGIGetRadianceCascadeIntegrationScratchTexture_RenderThread(
     const FSceneInterface* Scene,
     FTexture2DRHIRef& OutRadianceIntegrationScratch);
 
-/** Promotes the Gather output when no integration dispatch is required. */
-void DDGISwapRadianceCascadeRadianceBuffers_RenderThread(const FSceneInterface* Scene);
-
-/** Promotes the alternate integration output when the final cascade result resides there. */
-void DDGISwapRadianceCascadeIntegrationBuffers_RenderThread(const FSceneInterface* Scene);
-
 /** Returns the uploaded static-scene BVH buffers for GPU traversal. */
 bool DDGIGetSoftwareBVHResources_RenderThread(
     const FSceneInterface* Scene,
