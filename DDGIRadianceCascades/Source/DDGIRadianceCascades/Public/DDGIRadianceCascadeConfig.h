@@ -171,11 +171,11 @@ struct FDDGIRadianceCascadeConfig
 		}
 	}
 
-	// Current GPU layout: radiance (8) + gather scratch (8) + integration scratch (8) +
-	// hit distance (4) + hit triangle index (4) = 32 bytes per ray per probe.
+	// Current GPU layout: raw radiance (8) + gather scratch (8) + packed final radiance (4) +
+	// hit distance (4) + hit triangle index (4) = 28 bytes per ray per probe.
 	// Direction (8 bytes) is stored once per ray layout and shared by every probe.
 	// Probe origins use a separate float4 (16 bytes per probe). Excludes BVH/hash buffers and padding.
-	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 32) const
+	FORCEINLINE int64 GetEstimatedStorageBytes(int32 ProbeCount, int32 BytesPerRay = 28) const
 	{
 		const int64 SafeProbeCount = static_cast<int64>(FMath::Max(0, ProbeCount));
 		const int64 SafeRayCount = static_cast<int64>(GetTotalRayCount());
