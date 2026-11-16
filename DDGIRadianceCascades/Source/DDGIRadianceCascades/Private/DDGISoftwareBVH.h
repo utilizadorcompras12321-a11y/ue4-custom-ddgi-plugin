@@ -8,6 +8,7 @@ class UWorld;
 struct FDDGISoftwareBVHBuildStats
 {
 	int32 IncludedComponents = 0;
+	int32 IncludedBSPComponents = 0;
 	int32 SkippedNoCPUAccess = 0;
 	int32 SkippedMovable = 0;
 	int32 SkippedInstanced = 0;
