@@ -820,6 +820,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.NewlyAllocatedPhysicalSlotsCPU.Add(Pair.Value.PhysicalSlot);
         }
         Storage.bInvalidateAllPhysicalSlots = false;
+        Storage.bNeedsInitialization = true;
         Storage.bPendingPhysicalSlotsUpload = true;
     }
 
@@ -927,6 +928,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     if (bProbeLayoutChanged)
     {
         Storage.bNeedsInitialization =
+            Storage.bNeedsInitialization ||
             Storage.bNeedsDirectionInitialization ||
             Storage.NewlyAllocatedPhysicalSlotsCPU.Num() > 0;
         // A different layout is a new allocation target, so do not inherit
