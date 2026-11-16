@@ -76,22 +76,10 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         if (ExistingSlot == DDGI_HASH_LOCKED)
         {
-            bool bResolved = false;
-            [loop]
-            for (uint Spin = 0u; Spin < 64u; ++Spin)
-            {
-                DeviceMemoryBarrier();
-                ExistingSlot = SurfaceProbeHash[BucketIndex].w;
-                if (ExistingSlot != DDGI_HASH_LOCKED)
-                {
-                    bResolved = true;
-                    break;
-                }
-            }
-            if (!bResolved)
-            {
-                return;
-            }
+            // Never spin on a GPU-side reservation: the owning wave may not be
+            // scheduled while this wave occupies the execution resources. Dropping
+            // this candidate is safe; a later frame can retry it.
+            return;
         }
 
         if (ExistingSlot == 0u)
@@ -149,11 +137,18 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         {
             uint4 ExistingKey = SurfaceProbeStableKeys[ExistingProbeSlot];
             if (all(SurfaceProbeHash[BucketIndex].xyz == CellBits) &&
+                all(ExistingKey.xyz == CellBits) &&
                 ExistingKey.w == NormalKey)
             {
-                SurfaceProbePositions[ExistingProbeSlot] = CandidatePosition;
-                SurfaceProbeNormals[ExistingProbeSlot] = CandidateNormal;
-                SurfaceProbeLastSeenFrames[ExistingProbeSlot] = FrameNumber;
+                // Keep the first position/normal for this stable key. Multiple
+                // candidates can resolve to the same slot in parallel; writing
+                // those float4 values concurrently would be an unordered UAV race.
+                // The timestamp is monotonic and therefore updated atomically.
+                uint PreviousLastSeenFrame;
+                InterlockedMax(
+                    SurfaceProbeLastSeenFrames[ExistingProbeSlot],
+                    FrameNumber,
+                    PreviousLastSeenFrame);
                 return;
             }
         }
