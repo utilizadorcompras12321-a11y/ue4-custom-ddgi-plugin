@@ -42,7 +42,8 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 			// the render thread too; editor property callbacks do not run here.
 			const FDDGIMasterConfig& CurrentConfig = Subsystem->GetConfig();
 			if (CurrentConfig.bEnableDynamicGI != bEnableDynamicGI ||
-				CurrentConfig.bEnableStaticBackground != bEnableStaticBackground)
+				CurrentConfig.bEnableStaticBackground != bEnableStaticBackground ||
+				CurrentConfig.ProbeUpdateBudget != FMath::Max(0, ProbeUpdateBudget))
 			{
 				Subsystem->RefreshConfig(this);
 			}
