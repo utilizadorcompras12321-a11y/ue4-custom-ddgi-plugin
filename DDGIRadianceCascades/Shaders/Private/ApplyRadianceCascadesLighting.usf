@@ -410,7 +410,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     for (uint ClipmapLevel = 0u; ClipmapLevel < 4u; ++ClipmapLevel)
     {
         const float LevelScale = exp2((float)ClipmapLevel);
-        const float ClipmapExtent = min(GridRadius, max(1.0f, ProbeSpacing) * 8.0f * LevelScale);
+        const float ClipmapExtent = min(GridRadius, max(1.0f, ProbeSpacing) * 6.0f * LevelScale);
         if (ClipmapExtent <= PreviousClipmapExtent + 0.5f)
         {
             break;
