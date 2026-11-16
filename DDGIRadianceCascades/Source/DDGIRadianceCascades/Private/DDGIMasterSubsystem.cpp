@@ -864,6 +864,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	}
 
 	Config.bEnableDynamicGI = InActor->bEnableDynamicGI;
+	Config.bEnableSurfaceProbes = InActor->bEnableSurfaceProbes;
 	Config.GIIntensity = FMath::Max(0.0f, InActor->GIIntensity);
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 
