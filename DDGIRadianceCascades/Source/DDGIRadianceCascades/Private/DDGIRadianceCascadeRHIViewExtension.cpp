@@ -613,8 +613,6 @@ class FDDGISurfaceProbeCaptureCS : public FGlobalShader
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeCandidatePositions)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeCandidateNormals)
-        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeLastSeenFrames)
-        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeActiveIndices)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeCounters)
         SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
         SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
@@ -658,7 +656,7 @@ static void DDGIScheduleSurfaceProbeCapture(
 
     FDDGISurfaceProbeAllocatorRDGResources Resources;
     if (!DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(GraphBuilder, Scene, Resources) ||
-        !Resources.Positions || !Resources.Normals || !Resources.LastSeenFrames || !Resources.ActiveIndices || !Resources.Counters)
+        !Resources.CandidatePositions || !Resources.CandidateNormals || !Resources.Counters)
     {
         return;
     }
@@ -693,8 +691,6 @@ static void DDGIScheduleSurfaceProbeCapture(
     PassParameters->DepthTexture = (*Inputs.SceneTextures.SceneTextures)->SceneDepthTexture;
     PassParameters->SurfaceProbeCandidatePositions = GraphBuilder.CreateUAV(Resources.CandidatePositions);
     PassParameters->SurfaceProbeCandidateNormals = GraphBuilder.CreateUAV(Resources.CandidateNormals);
-    PassParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateUAV(Resources.LastSeenFrames);
-    PassParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateUAV(Resources.ActiveIndices);
     PassParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
     PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
     PassParameters->ScaledViewSizeAndInvSize = FVector4(
