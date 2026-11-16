@@ -20,6 +20,7 @@ Supported direct-light injection:
 - Local-light position, direction, intensity, attenuation radius and spot
   cone are refreshed at runtime. The software tracer approximates UE4's
   attenuation and shadowing; it does not reproduce every light feature.
+- Changes to directional/local-light inputs or static-background settings invalidate retained probe radiance. The trace cursor then restarts at the nearest active probes; the bounded budget means full convergence still takes multiple frames.
 
 Geometry and material scope:
 - Opaque static mesh and BSP geometry with CPU-accessible mesh data.
