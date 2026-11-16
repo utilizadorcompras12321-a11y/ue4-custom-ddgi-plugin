@@ -5,7 +5,7 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 ## Current architecture
 
 - One GI path: sparse clipmap probe lattice + Radiance Cascades ray hierarchy.
-- Four spatial clipmap levels with power-of-two spacing (1, 2, 4, 8).
+- Up to four spatial clipmap levels with power-of-two spacing (1, 2, 4, 8), limited by the configured probe radius.
 - Deterministic equal-solid-angle ray directions and deterministic probe scheduling.
 - Software BVH traversal in SM5 compute shaders.
 - One secondary diffuse bounce.
