@@ -6,6 +6,7 @@
 #include "RenderTargetPool.h"
 #include "RenderGraph.h"
 #include "RenderGraphResources.h"
+#include "RenderGraphUtils.h"
 #include "PostProcess/SceneRenderTargets.h"
 #include "SceneInterface.h"
 #include "Containers/ResourceArray.h"
@@ -484,134 +485,17 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
     if (!Config.bEnableSurfaceProbes)
     {
-        // Unlike a zero trace budget, the explicit actor switch releases the
-        // persistent surface-probe allocation as well as stopping all passes.
         Storage.ReleaseSurfaceProbeAllocator();
     }
-    else if (Storage.SurfaceProbeRetryCountdown > 0u)
-    {
-        --Storage.SurfaceProbeRetryCountdown;
-    }
     else if (Storage.SurfaceProbeCapacity != GDDGISurfaceProbeCapacity ||
-        Storage.SurfaceProbeHashCapacity != GDDGISurfaceProbeHashCapacity ||
-        !Storage.SurfaceProbePositionsUAV.IsValid() || !Storage.SurfaceProbeIntegratedRadianceUAV.IsValid() || !Storage.SurfaceProbeCandidatePositionsUAV.IsValid() ||
-        !Storage.SurfaceProbeCandidateNormalsUAV.IsValid() || !Storage.SurfaceProbeNormalsUAV.IsValid() ||
-        !Storage.SurfaceProbeStableKeysUAV.IsValid() || !Storage.SurfaceProbeLastSeenFramesUAV.IsValid() ||
-        !Storage.SurfaceProbeActiveIndicesUAV.IsValid() || !Storage.SurfaceProbeTraceIndicesUAV.IsValid() || !Storage.SurfaceProbeHashUAV.IsValid() ||
-        !Storage.SurfaceProbeCountersUAV.IsValid())
+        Storage.SurfaceProbeHashCapacity != GDDGISurfaceProbeHashCapacity)
     {
-        Storage.SurfaceProbePositionsPooled.SafeRelease();
-        Storage.SurfaceProbeIntegratedRadiancePooled.SafeRelease();
-        Storage.SurfaceProbeCandidatePositionsPooled.SafeRelease();
-        Storage.SurfaceProbeCandidateNormalsPooled.SafeRelease();
-        Storage.SurfaceProbeNormalsPooled.SafeRelease();
-        Storage.SurfaceProbeStableKeysPooled.SafeRelease();
-        Storage.SurfaceProbeLastSeenFramesPooled.SafeRelease();
-        Storage.SurfaceProbeActiveIndicesPooled.SafeRelease();
-        Storage.SurfaceProbeTraceIndicesPooled.SafeRelease();
-        Storage.SurfaceProbeHashPooled.SafeRelease();
-        Storage.SurfaceProbeCountersPooled.SafeRelease();
-        Storage.SurfaceProbeCandidatePositions.SafeRelease();
-        Storage.SurfaceProbeCandidatePositionsSRV.SafeRelease();
-        Storage.SurfaceProbeCandidatePositionsUAV.SafeRelease();
-        Storage.SurfaceProbeCandidateNormals.SafeRelease();
-        Storage.SurfaceProbeCandidateNormalsSRV.SafeRelease();
-        Storage.SurfaceProbeCandidateNormalsUAV.SafeRelease();
-        Storage.SurfaceProbePositions.SafeRelease();
-        Storage.SurfaceProbeIntegratedRadiance.SafeRelease();
-        Storage.SurfaceProbeIntegratedRadianceSRV.SafeRelease();
-        Storage.SurfaceProbeIntegratedRadianceUAV.SafeRelease();
-        Storage.SurfaceProbePositionsSRV.SafeRelease();
-        Storage.SurfaceProbePositionsUAV.SafeRelease();
-        Storage.SurfaceProbeNormals.SafeRelease();
-        Storage.SurfaceProbeNormalsSRV.SafeRelease();
-        Storage.SurfaceProbeNormalsUAV.SafeRelease();
-        Storage.SurfaceProbeStableKeys.SafeRelease();
-        Storage.SurfaceProbeStableKeysSRV.SafeRelease();
-        Storage.SurfaceProbeStableKeysUAV.SafeRelease();
-        Storage.SurfaceProbeLastSeenFrames.SafeRelease();
-        Storage.SurfaceProbeLastSeenFramesSRV.SafeRelease();
-        Storage.SurfaceProbeLastSeenFramesUAV.SafeRelease();
-        Storage.SurfaceProbeActiveIndices.SafeRelease();
-        Storage.SurfaceProbeActiveIndicesSRV.SafeRelease();
-        Storage.SurfaceProbeActiveIndicesUAV.SafeRelease();
-        Storage.SurfaceProbeTraceIndices.SafeRelease();
-        Storage.SurfaceProbeTraceIndicesSRV.SafeRelease();
-        Storage.SurfaceProbeTraceIndicesUAV.SafeRelease();
-        Storage.SurfaceProbeHash.SafeRelease();
-        Storage.SurfaceProbeHashSRV.SafeRelease();
-        Storage.SurfaceProbeHashUAV.SafeRelease();
-        Storage.SurfaceProbeCounters.SafeRelease();
-        Storage.SurfaceProbeCountersSRV.SafeRelease();
-        Storage.SurfaceProbeCountersUAV.SafeRelease();
-
-        const bool bSurfaceBuffersCreated =
-            DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_Positions"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbePositions, Storage.SurfaceProbePositionsSRV, Storage.SurfaceProbePositionsUAV) &&
-            DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_IntegratedRadiance"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeIntegratedRadiance, Storage.SurfaceProbeIntegratedRadianceSRV, Storage.SurfaceProbeIntegratedRadianceUAV) &&
-            DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_CandidatePositions"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeCandidatePositions, Storage.SurfaceProbeCandidatePositionsSRV, Storage.SurfaceProbeCandidatePositionsUAV) &&
-            DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_CandidateNormals"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeCandidateNormals, Storage.SurfaceProbeCandidateNormalsSRV, Storage.SurfaceProbeCandidateNormalsUAV) &&
-            DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_Normals"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeNormals, Storage.SurfaceProbeNormalsSRV, Storage.SurfaceProbeNormalsUAV) &&
-            DDGICreateSurfaceProbeBuffer<FDDGISurfaceProbeStableKey>(TEXT("DDGISurfaceProbe_StableKeys"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeStableKeys, Storage.SurfaceProbeStableKeysSRV, Storage.SurfaceProbeStableKeysUAV) &&
-            DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_LastSeenFrames"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeLastSeenFrames, Storage.SurfaceProbeLastSeenFramesSRV, Storage.SurfaceProbeLastSeenFramesUAV) &&
-            DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_ActiveIndices"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeActiveIndices, Storage.SurfaceProbeActiveIndicesSRV, Storage.SurfaceProbeActiveIndicesUAV) &&
-            DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_TraceIndices"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeTraceIndices, Storage.SurfaceProbeTraceIndicesSRV, Storage.SurfaceProbeTraceIndicesUAV) &&
-            DDGICreateSurfaceProbeBuffer<FDDGISurfaceProbeHashEntry>(TEXT("DDGISurfaceProbe_Hash"), GDDGISurfaceProbeHashCapacity, Storage.SurfaceProbeHash, Storage.SurfaceProbeHashSRV, Storage.SurfaceProbeHashUAV) &&
-            DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_Counters"), 9u, Storage.SurfaceProbeCounters, Storage.SurfaceProbeCountersSRV, Storage.SurfaceProbeCountersUAV);
-        if (!bSurfaceBuffersCreated)
-        {
-            Storage.SurfaceProbeCandidatePositionsPooled.SafeRelease();
-            Storage.SurfaceProbeCandidateNormalsPooled.SafeRelease();
-            Storage.SurfaceProbePositionsPooled.SafeRelease();
-            Storage.SurfaceProbeNormalsPooled.SafeRelease();
-            Storage.SurfaceProbeStableKeysPooled.SafeRelease();
-            Storage.SurfaceProbeLastSeenFramesPooled.SafeRelease();
-            Storage.SurfaceProbeActiveIndicesPooled.SafeRelease();
-            Storage.SurfaceProbeHashPooled.SafeRelease();
-            Storage.SurfaceProbeCountersPooled.SafeRelease();
-            Storage.SurfaceProbeIntegratedRadiancePooled.SafeRelease();
-            Storage.SurfaceProbeCapacity = 0u;
-            Storage.SurfaceProbeHashCapacity = 0u;
-            Storage.SurfaceProbeCandidatePositions.SafeRelease();
-            Storage.SurfaceProbeCandidatePositionsSRV.SafeRelease();
-            Storage.SurfaceProbeCandidatePositionsUAV.SafeRelease();
-            Storage.SurfaceProbeCandidateNormals.SafeRelease();
-            Storage.SurfaceProbeCandidateNormalsSRV.SafeRelease();
-            Storage.SurfaceProbeCandidateNormalsUAV.SafeRelease();
-            Storage.SurfaceProbePositions.SafeRelease();
-            Storage.SurfaceProbePositionsSRV.SafeRelease();
-            Storage.SurfaceProbePositionsUAV.SafeRelease();
-            Storage.SurfaceProbeIntegratedRadiance.SafeRelease();
-            Storage.SurfaceProbeIntegratedRadianceSRV.SafeRelease();
-            Storage.SurfaceProbeIntegratedRadianceUAV.SafeRelease();
-            Storage.SurfaceProbeNormals.SafeRelease();
-            Storage.SurfaceProbeNormalsSRV.SafeRelease();
-            Storage.SurfaceProbeNormalsUAV.SafeRelease();
-            Storage.SurfaceProbeStableKeys.SafeRelease();
-            Storage.SurfaceProbeStableKeysSRV.SafeRelease();
-            Storage.SurfaceProbeStableKeysUAV.SafeRelease();
-            Storage.SurfaceProbeLastSeenFrames.SafeRelease();
-            Storage.SurfaceProbeLastSeenFramesSRV.SafeRelease();
-            Storage.SurfaceProbeLastSeenFramesUAV.SafeRelease();
-            Storage.SurfaceProbeActiveIndices.SafeRelease();
-            Storage.SurfaceProbeActiveIndicesSRV.SafeRelease();
-            Storage.SurfaceProbeActiveIndicesUAV.SafeRelease();
-            Storage.SurfaceProbeTraceIndices.SafeRelease();
-            Storage.SurfaceProbeTraceIndicesSRV.SafeRelease();
-            Storage.SurfaceProbeTraceIndicesUAV.SafeRelease();
-            Storage.SurfaceProbeHash.SafeRelease();
-            Storage.SurfaceProbeHashSRV.SafeRelease();
-            Storage.SurfaceProbeHashUAV.SafeRelease();
-            Storage.SurfaceProbeCounters.SafeRelease();
-            Storage.SurfaceProbeCountersSRV.SafeRelease();
-            Storage.SurfaceProbeCountersUAV.SafeRelease();
-            UE_LOG(LogTemp, Warning, TEXT("DDGI: GPU surface-probe storage allocation failed; regular lattice probes remain available."));
-            Storage.SurfaceProbeRetryCountdown = 60u;
-        }
-        else
-        {
-            Storage.SurfaceProbeCapacity = GDDGISurfaceProbeCapacity;
-            Storage.SurfaceProbeHashCapacity = GDDGISurfaceProbeHashCapacity;
-        }
+        // Surface-probe buffers are now allocated by RDG on first use and
+        // extracted into these persistent pooled references at graph execution.
+        // Do not create parallel raw-RHI buffers here.
+        Storage.ReleaseSurfaceProbeAllocator();
+        Storage.SurfaceProbeCapacity = GDDGISurfaceProbeCapacity;
+        Storage.SurfaceProbeHashCapacity = GDDGISurfaceProbeHashCapacity;
     }
     // Ray textures are a grow-only capacity pool. A smaller active window must
     // not shrink/recreate the textures: doing so discards every probe's history.
@@ -2125,81 +2009,81 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
     OutResources = FDDGISurfaceProbeAllocatorRDGResources();
 
     FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
-    if (!Storage || Storage->SurfaceProbeCapacity == 0u || Storage->SurfaceProbeHashCapacity == 0u ||
-        !Storage->SurfaceProbePositions.IsValid() || !Storage->SurfaceProbeIntegratedRadiance.IsValid() || !Storage->SurfaceProbeNormals.IsValid() ||
-        !Storage->SurfaceProbeCandidatePositions.IsValid() || !Storage->SurfaceProbeCandidateNormals.IsValid() ||
-        !Storage->SurfaceProbeStableKeys.IsValid() || !Storage->SurfaceProbeLastSeenFrames.IsValid() ||
-        !Storage->SurfaceProbeActiveIndices.IsValid() || !Storage->SurfaceProbeTraceIndices.IsValid() || !Storage->SurfaceProbeHash.IsValid() ||
-        !Storage->SurfaceProbeCounters.IsValid())
+    if (!Storage || Storage->SurfaceProbeCapacity == 0u || Storage->SurfaceProbeHashCapacity == 0u)
     {
         return false;
     }
 
-    // FRDGPooledBuffer wraps the existing persistent RHI allocation. This avoids
-    // reallocating the buffers while allowing RDG to track their access states.
-    const auto MakePooledBuffer = [](
-        const FStructuredBufferRHIRef& RHIBuffer,
+    // FRDGPooledBuffer is owned by RDG's resource pool. Create graph resources
+    // on first use, extract them after execution, and import them on later frames.
+    // This preserves GPU contents without constructing the private pooled-buffer
+    // type or maintaining a duplicate set of raw-RHI allocations.
+    const auto RegisterPersistentBuffer = [&GraphBuilder](
+        TRefCountPtr<FRDGPooledBuffer>& PooledBuffer,
         uint32 BytesPerElement,
         uint32 NumElements,
-        const TCHAR* DebugName) -> TRefCountPtr<FRDGPooledBuffer>
+        const TCHAR* DebugName) -> FRDGBufferRef
     {
-        if (!RHIBuffer.IsValid())
+        if (PooledBuffer.IsValid())
         {
-            return nullptr;
+            return GraphBuilder.RegisterExternalBuffer(
+                PooledBuffer, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
         }
-        const FRDGBufferDesc Desc = FRDGBufferDesc::CreateStructuredDesc(BytesPerElement, NumElements);
-        return new FRDGPooledBuffer(RHIBuffer, Desc, NumElements, DebugName);
+
+        const FRDGBufferDesc Desc = FRDGBufferDesc::CreateStructuredDesc(
+            BytesPerElement,
+            NumElements,
+            BUF_ShaderResource | BUF_UnorderedAccess);
+        FRDGBufferRef Buffer = GraphBuilder.CreateBuffer(Desc, DebugName);
+        GraphBuilder.QueueBufferExtraction(Buffer, &PooledBuffer, ERHIAccess::SRVCompute);
+
+        // These buffers used to be created from zeroed TResourceArrays. Preserve
+        // that initialization contract for the first RDG allocation.
+        AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Buffer), 0u);
+        return Buffer;
     };
 
-    if (!Storage->SurfaceProbeCandidatePositionsPooled.IsValid())
-        Storage->SurfaceProbeCandidatePositionsPooled = MakePooledBuffer(Storage->SurfaceProbeCandidatePositions, sizeof(FVector4), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_CandidatePositions"));
-    if (!Storage->SurfaceProbeCandidateNormalsPooled.IsValid())
-        Storage->SurfaceProbeCandidateNormalsPooled = MakePooledBuffer(Storage->SurfaceProbeCandidateNormals, sizeof(FVector4), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_CandidateNormals"));
-    if (!Storage->SurfaceProbePositionsPooled.IsValid())
-        Storage->SurfaceProbePositionsPooled = MakePooledBuffer(Storage->SurfaceProbePositions, sizeof(FVector4), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_Positions"));
-    if (!Storage->SurfaceProbeIntegratedRadiancePooled.IsValid())
-        Storage->SurfaceProbeIntegratedRadiancePooled = MakePooledBuffer(Storage->SurfaceProbeIntegratedRadiance, sizeof(FVector4), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_IntegratedRadiance"));
-    if (!Storage->SurfaceProbeNormalsPooled.IsValid())
-        Storage->SurfaceProbeNormalsPooled = MakePooledBuffer(Storage->SurfaceProbeNormals, sizeof(FVector4), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_Normals"));
-    if (!Storage->SurfaceProbeStableKeysPooled.IsValid())
-        Storage->SurfaceProbeStableKeysPooled = MakePooledBuffer(Storage->SurfaceProbeStableKeys, sizeof(FDDGISurfaceProbeStableKey), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_StableKeys"));
-    if (!Storage->SurfaceProbeLastSeenFramesPooled.IsValid())
-        Storage->SurfaceProbeLastSeenFramesPooled = MakePooledBuffer(Storage->SurfaceProbeLastSeenFrames, sizeof(uint32), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_LastSeenFrames"));
-    if (!Storage->SurfaceProbeActiveIndicesPooled.IsValid())
-        Storage->SurfaceProbeActiveIndicesPooled = MakePooledBuffer(Storage->SurfaceProbeActiveIndices, sizeof(uint32), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_ActiveIndices"));
-    if (!Storage->SurfaceProbeTraceIndicesPooled.IsValid())
-        Storage->SurfaceProbeTraceIndicesPooled = MakePooledBuffer(Storage->SurfaceProbeTraceIndices, sizeof(uint32), Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_TraceIndices"));
-    if (!Storage->SurfaceProbeHashPooled.IsValid())
-        Storage->SurfaceProbeHashPooled = MakePooledBuffer(Storage->SurfaceProbeHash, sizeof(FDDGISurfaceProbeHashEntry), Storage->SurfaceProbeHashCapacity, TEXT("DDGISurfaceProbe_Hash"));
-    if (!Storage->SurfaceProbeCountersPooled.IsValid())
-        Storage->SurfaceProbeCountersPooled = MakePooledBuffer(Storage->SurfaceProbeCounters, sizeof(uint32), 9u, TEXT("DDGISurfaceProbe_Counters"));
-
-    if (!Storage->SurfaceProbeCandidatePositionsPooled.IsValid() || !Storage->SurfaceProbeCandidateNormalsPooled.IsValid() ||
-        !Storage->SurfaceProbePositionsPooled.IsValid() || !Storage->SurfaceProbeIntegratedRadiancePooled.IsValid() || !Storage->SurfaceProbeNormalsPooled.IsValid() ||
-        !Storage->SurfaceProbeStableKeysPooled.IsValid() || !Storage->SurfaceProbeLastSeenFramesPooled.IsValid() ||
-        !Storage->SurfaceProbeActiveIndicesPooled.IsValid() || !Storage->SurfaceProbeTraceIndicesPooled.IsValid() || !Storage->SurfaceProbeHashPooled.IsValid() ||
-        !Storage->SurfaceProbeCountersPooled.IsValid())
-    {
-        return false;
-    }
-
-    OutResources.CandidatePositions = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeCandidatePositionsPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.CandidateNormals = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeCandidateNormalsPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.Positions = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbePositionsPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.IntegratedRadiance = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeIntegratedRadiancePooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.Normals = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeNormalsPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.StableKeys = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeStableKeysPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.LastSeenFrames = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeLastSeenFramesPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.ActiveIndices = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeActiveIndicesPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.TraceIndices = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeTraceIndicesPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.Hash = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeHashPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
-    OutResources.Counters = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeCountersPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
+    OutResources.Positions = RegisterPersistentBuffer(
+        Storage->SurfaceProbePositionsPooled, sizeof(FVector4),
+        Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_Positions"));
+    OutResources.IntegratedRadiance = RegisterPersistentBuffer(
+        Storage->SurfaceProbeIntegratedRadiancePooled, sizeof(FVector4),
+        Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_IntegratedRadiance"));
+    OutResources.CandidatePositions = RegisterPersistentBuffer(
+        Storage->SurfaceProbeCandidatePositionsPooled, sizeof(FVector4),
+        Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_CandidatePositions"));
+    OutResources.CandidateNormals = RegisterPersistentBuffer(
+        Storage->SurfaceProbeCandidateNormalsPooled, sizeof(FVector4),
+        Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_CandidateNormals"));
+    OutResources.Normals = RegisterPersistentBuffer(
+        Storage->SurfaceProbeNormalsPooled, sizeof(FVector4),
+        Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_Normals"));
+    OutResources.StableKeys = RegisterPersistentBuffer(
+        Storage->SurfaceProbeStableKeysPooled, sizeof(FDDGISurfaceProbeStableKey),
+        Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_StableKeys"));
+    OutResources.LastSeenFrames = RegisterPersistentBuffer(
+        Storage->SurfaceProbeLastSeenFramesPooled, sizeof(uint32),
+        Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_LastSeenFrames"));
+    OutResources.ActiveIndices = RegisterPersistentBuffer(
+        Storage->SurfaceProbeActiveIndicesPooled, sizeof(uint32),
+        Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_ActiveIndices"));
+    OutResources.TraceIndices = RegisterPersistentBuffer(
+        Storage->SurfaceProbeTraceIndicesPooled, sizeof(uint32),
+        Storage->SurfaceProbeCapacity, TEXT("DDGISurfaceProbe_TraceIndices"));
+    OutResources.Hash = RegisterPersistentBuffer(
+        Storage->SurfaceProbeHashPooled, sizeof(FDDGISurfaceProbeHashEntry),
+        Storage->SurfaceProbeHashCapacity, TEXT("DDGISurfaceProbe_Hash"));
+    OutResources.Counters = RegisterPersistentBuffer(
+        Storage->SurfaceProbeCountersPooled, sizeof(uint32),
+        9u, TEXT("DDGISurfaceProbe_Counters"));
 
     OutResources.ProbeCapacity = Storage->SurfaceProbeCapacity;
     OutResources.HashCapacity = Storage->SurfaceProbeHashCapacity;
-    return OutResources.CandidatePositions && OutResources.CandidateNormals &&
-        OutResources.Positions && OutResources.IntegratedRadiance && OutResources.Normals && OutResources.StableKeys &&
-        OutResources.LastSeenFrames && OutResources.ActiveIndices && OutResources.TraceIndices && OutResources.Hash && OutResources.Counters;
+    return OutResources.Positions && OutResources.IntegratedRadiance &&
+        OutResources.CandidatePositions && OutResources.CandidateNormals &&
+        OutResources.Normals && OutResources.StableKeys && OutResources.LastSeenFrames &&
+        OutResources.ActiveIndices && OutResources.TraceIndices && OutResources.Hash &&
+        OutResources.Counters;
 }
 
 bool DDGIBeginSurfaceProbeCapture_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber)
