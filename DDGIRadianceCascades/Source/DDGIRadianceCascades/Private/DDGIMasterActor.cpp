@@ -38,11 +38,10 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 	{
 		if (UDDGIMasterSubsystem* Subsystem = World->GetSubsystem<UDDGIMasterSubsystem>())
 		{
-			// Blueprint/runtime changes to the enable switches must reach
+			// Blueprint/runtime changes to the GI enable switch must reach
 			// the render thread too; editor property callbacks do not run here.
 			const FDDGIMasterConfig& CurrentConfig = Subsystem->GetConfig();
 			if (CurrentConfig.bEnableDynamicGI != bEnableDynamicGI ||
-				CurrentConfig.bEnableSurfaceProbes != bEnableSurfaceProbes ||
 				CurrentConfig.bEnableStaticBackground != bEnableStaticBackground)
 			{
 				Subsystem->RefreshConfig(this);
