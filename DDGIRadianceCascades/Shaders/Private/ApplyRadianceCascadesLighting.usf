@@ -275,7 +275,7 @@ float3 DDGISampleSurfaceProbeIrradiance(
                         float3 ProbeLocalPosition = PackedPosition.xyz - BVHWorldOrigin.xyz;
                         float3 ToProbe = ProbeLocalPosition - LocalPosition;
                         float SurfaceSide = dot(Normal, ToProbe);
-                        float SideWeight = smoothstep(-100.0f, -10.0f, SurfaceSide);
+                        float SideWeight = smoothstep(-50.0f, -5.0f, SurfaceSide);
                         float DistanceSquared = dot(ToProbe, ToProbe);
                         float DistanceWeight = rcp(DistanceSquared + 2500.0f);
                         float Weight = CellWeight * NormalAgreement * SideWeight * DistanceWeight;
