@@ -631,6 +631,34 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             }
         }
 
+        struct FDDGIProbeEvictionCandidate
+        {
+            FDDGIProbeCellKey Key;
+            uint32 LastSeenUpdate;
+            uint32 PhysicalSlot;
+        };
+        TArray<FDDGIProbeEvictionCandidate> EvictionCandidates;
+        EvictionCandidates.Reserve(Storage.ProbeCellToPhysicalSlot.Num());
+        for (const auto& Pair : Storage.ProbeCellToPhysicalSlot)
+        {
+            if (!ActiveKeys.Contains(Pair.Key))
+            {
+                EvictionCandidates.Add(FDDGIProbeEvictionCandidate{
+                    Pair.Key,
+                    Pair.Value.LastSeenUpdate,
+                    Pair.Value.PhysicalSlot });
+            }
+        }
+        EvictionCandidates.Sort([](
+            const FDDGIProbeEvictionCandidate& A,
+            const FDDGIProbeEvictionCandidate& B)
+        {
+            return A.LastSeenUpdate == B.LastSeenUpdate
+                ? A.PhysicalSlot < B.PhysicalSlot
+                : A.LastSeenUpdate < B.LastSeenUpdate;
+        });
+        int32 NextEvictionCandidate = 0;
+
         Storage.LogicalToPhysicalSlotCPU.SetNumUninitialized(ActiveProbeCount);
         for (int32 LogicalIndex = 0; LogicalIndex < ActiveProbeCount; ++LogicalIndex)
         {
@@ -650,35 +678,20 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             }
             else
             {
-                // Capacity is bounded by the ray texture pool. If it is full,
-                // evict the least-recently-visible inactive identity; never
-                // evict a probe in the current active set.
-                FDDGIProbeCellKey OldestKey;
-                uint32 OldestUpdate = MAX_uint32;
-                bool bFoundEvictionCandidate = false;
-                for (auto It = Storage.ProbeCellToPhysicalSlot.CreateIterator(); It; ++It)
-                {
-                    if (ActiveKeys.Contains(It.Key()))
-                    {
-                        continue;
-                    }
-                    if (!bFoundEvictionCandidate ||
-                        It.Value().LastSeenUpdate < OldestUpdate)
-                    {
-                        OldestKey = It.Key();
-                        OldestUpdate = It.Value().LastSeenUpdate;
-                        NewPhysicalSlot = It.Value().PhysicalSlot;
-                        bFoundEvictionCandidate = true;
-                    }
-                }
-
-                if (!bFoundEvictionCandidate)
+                // Candidates were sorted once above. Consume them in O(1) per
+                // eviction instead of rescanning the retained map for every
+                // newly visible probe (which becomes quadratic at pool capacity).
+                if (!EvictionCandidates.IsValidIndex(NextEvictionCandidate))
                 {
                     Storage.Release();
                     UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: active probes exhausted the physical slot pool; no inactive probe can be evicted."));
                     return;
                 }
-                Storage.ProbeCellToPhysicalSlot.Remove(OldestKey);
+
+                const FDDGIProbeEvictionCandidate& Candidate =
+                    EvictionCandidates[NextEvictionCandidate++];
+                NewPhysicalSlot = Candidate.PhysicalSlot;
+                Storage.ProbeCellToPhysicalSlot.Remove(Candidate.Key);
             }
 
             FDDGIRetainedPhysicalProbeSlot NewSlot;
