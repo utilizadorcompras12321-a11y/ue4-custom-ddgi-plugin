@@ -16,6 +16,31 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
 void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Scene);
 
+/** GPU-resident storage reserved for the surface-probe allocator. */
+struct FDDGISurfaceProbeAllocatorRHIResources
+{
+    FShaderResourceViewRHIRef PositionsSRV;
+    FUnorderedAccessViewRHIRef PositionsUAV;
+    FShaderResourceViewRHIRef NormalsSRV;
+    FUnorderedAccessViewRHIRef NormalsUAV;
+    FShaderResourceViewRHIRef StableKeysSRV;
+    FUnorderedAccessViewRHIRef StableKeysUAV;
+    FShaderResourceViewRHIRef LastSeenFramesSRV;
+    FUnorderedAccessViewRHIRef LastSeenFramesUAV;
+    FShaderResourceViewRHIRef ActiveIndicesSRV;
+    FUnorderedAccessViewRHIRef ActiveIndicesUAV;
+    FShaderResourceViewRHIRef HashSRV;
+    FUnorderedAccessViewRHIRef HashUAV;
+    FShaderResourceViewRHIRef CountersSRV;
+    FUnorderedAccessViewRHIRef CountersUAV;
+    uint32 ProbeCapacity = 0u;
+    uint32 HashCapacity = 0u;
+};
+
+bool DDGIGetSurfaceProbeAllocatorResources_RenderThread(
+    const FSceneInterface* Scene,
+    FDDGISurfaceProbeAllocatorRHIResources& OutResources);
+
 /** Claims this scene's DDGI update slot for the supplied render frame. */
 bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber);
 
