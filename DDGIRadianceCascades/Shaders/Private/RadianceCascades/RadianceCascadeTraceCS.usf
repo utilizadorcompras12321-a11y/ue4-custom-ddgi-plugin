@@ -527,10 +527,11 @@ float3 EvaluateLocalDirectLighting(
     float3 HitPosition,
     float3 Normal,
     float3 BaseColor,
-    uint IgnoreTriangleIndex)
+    uint IgnoreTriangleIndex,
+    uint MaxLightsToEvaluate)
 {
     float3 Direct = 0.0f;
-    const uint SafeLocalLightCount = min(LocalLightCount, 32u);
+    const uint SafeLocalLightCount = min(LocalLightCount, min(MaxLightsToEvaluate, 32u));
     [loop]
     for (uint LightIndex = 0u; LightIndex < SafeLocalLightCount; ++LightIndex)
     {
@@ -654,7 +655,7 @@ float3 EvaluateHitSurfaceRadiance(
             }
         }
         Direct += EvaluateLocalDirectLighting(
-            HitPosition, Normal, BaseColor, TriangleIndex);
+            HitPosition, Normal, BaseColor, TriangleIndex, 4u);
     }
 
     return Emissive + Direct;
@@ -908,7 +909,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                 }
             }
             HitDirectRadiance += EvaluateLocalDirectLighting(
-                HitPosition, GeometricNormal, HitBaseColor, ClosestTriangleIndex);
+                HitPosition, GeometricNormal, HitBaseColor, ClosestTriangleIndex, 8u);
         }
 
         // One deterministic diffuse bounce: secondary rays evaluate direct
