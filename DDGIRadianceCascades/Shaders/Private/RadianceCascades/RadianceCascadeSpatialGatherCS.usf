@@ -129,12 +129,10 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         if (dot(CenterNormal, CenterDirection) > 0.0f) CenterNormal = -CenterNormal;
     }
     float WeightSum = 1.0f;
-    // Keep the spatial-level spacing identical to the probe builder and
-    // lighting sampler: explicit steps {1, 2, 3, 4}, not powers of two.
+    // Clipmap levels use nested power-of-two spacing: 1, 2, 4, 8.
     float CenterLevelValue = CenterProbeData.w;
     uint CenterLevel = (uint)clamp(round(CenterLevelValue), 0.0f, 3.0f);
-    float LevelScale = CenterLevel == 0u ? 1.0f :
-        (CenterLevel == 1u ? 2.0f : (CenterLevel == 2u ? 3.0f : 4.0f));
+    float LevelScale = exp2((float)CenterLevel);
     float SafeSpacing = max(ProbeSpacing, 1.0f) * LevelScale;
     float MaxHitPositionDelta = SafeSpacing * 1.25f;
     float MaxHitPositionDeltaSquared = MaxHitPositionDelta * MaxHitPositionDelta;
