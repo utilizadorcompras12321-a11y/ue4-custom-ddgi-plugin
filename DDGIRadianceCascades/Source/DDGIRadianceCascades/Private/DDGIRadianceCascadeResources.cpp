@@ -2034,11 +2034,13 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
             BytesPerElement,
             NumElements);
         FRDGBufferRef Buffer = GraphBuilder.CreateBuffer(Desc, DebugName);
-        GraphBuilder.QueueBufferExtraction(Buffer, &PooledBuffer, ERHIAccess::SRVCompute);
 
         // These buffers used to be created from zeroed TResourceArrays. Preserve
-        // that initialization contract for the first RDG allocation.
+        // that initialization contract for the first RDG allocation. Register
+        // the producer before queuing extraction: UE4.27 validates that the
+        // resource has already been produced when QueueBufferExtraction is called.
         AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Buffer), 0u);
+        GraphBuilder.QueueBufferExtraction(Buffer, &PooledBuffer, ERHIAccess::SRVCompute);
         return Buffer;
     };
 
