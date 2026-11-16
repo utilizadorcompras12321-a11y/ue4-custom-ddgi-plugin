@@ -1137,10 +1137,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
-	// Frame-number scheduling is deterministic and advances by one contiguous
-	// logical-probe batch. Trace, Gather and Integrate consume the same batch.
-	const uint32 TraceStartIndex = static_cast<uint32>(
-		(static_cast<uint64>(InView.Family->FrameNumber) * TraceProbeCount) % ProbeCount);
+	// A persistent cursor advances only when a real trace batch is dispatched.
+	// This keeps coverage stable if the frame number or trace budget changes, and
+	// invalidation resets the cursor so the nearest probes refresh first.
+	const uint32 TraceStartIndex = DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
+		Scene, ProbeCount, TraceProbeCount);
 	const uint32 TraceTotalTexels = TraceProbeCount * TotalRaysPerProbe;
 	const uint32 TraceTotalGroups = FMath::DivideAndRoundUp(TraceTotalTexels, 64u);
 	const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
