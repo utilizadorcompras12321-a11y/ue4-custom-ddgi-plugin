@@ -33,6 +33,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Lighting", meta = (ClampMin = "0.0", ClampMax = "10000.0", UIMin = "0.0", UIMax = "500.0"))
 	float DirectionalLightGIIntensityScale = 100.0f;
 
+	// Scale for local point/spot-light irradiance captured by the software tracer.
+	// Inverse-square lights are converted from lumens to approximate candela.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Lighting", meta = (ClampMin = "0.0", ClampMax = "100.0", UIMin = "0.0", UIMax = "2.0"))
+	float LocalLightGIIntensityScale = 0.01f;
+
 	// Maximum distance traced by each radiance ray. Independent from the local probe-grid coverage radius.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", Units = "cm"))
 	float DynamicGIDistance = 10000.0f;
