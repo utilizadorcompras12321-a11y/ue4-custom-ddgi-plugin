@@ -16,7 +16,6 @@ float MaxTraceDistance;
 float4 StaticBackgroundColor;
 float StaticBackgroundIntensity;
 float GIIntensity;
-float4 ProbeGridOrigin;
 float4 ActiveWindowCenter;
 float BackgroundTransitionStart;
 float BackgroundTransitionEnd;
@@ -789,8 +788,8 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     uint PhysicalLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
     uint2 Pixel = uint2(PhysicalLinearIndex % TextureWidth, PhysicalLinearIndex / TextureWidth);
     uint2 ProbePixel = uint2(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth);
-    // ProbePositionsTexture stores lattice-relative offsets; ProbeGridOrigin maps them into trace space.
-    float3 Origin = ProbeGridOrigin.xyz + ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
+    // Probe positions are already expressed in BVH-local trace space.
+    float3 Origin = ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
     uint2 DirectionPixel = uint2(PackedRayIndex % TextureWidth, PackedRayIndex / TextureWidth);
     float4 PackedDirection = DirectionsTexture.Load(int3(DirectionPixel, 0));
     float3 Direction = normalize(PackedDirection.xyz);
