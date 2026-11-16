@@ -400,6 +400,13 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         !Storage.SurfaceProbeActiveIndicesUAV.IsValid() || !Storage.SurfaceProbeHashUAV.IsValid() ||
         !Storage.SurfaceProbeCountersUAV.IsValid())
     {
+        Storage.SurfaceProbePositionsPooled.SafeRelease();
+        Storage.SurfaceProbeNormalsPooled.SafeRelease();
+        Storage.SurfaceProbeStableKeysPooled.SafeRelease();
+        Storage.SurfaceProbeLastSeenFramesPooled.SafeRelease();
+        Storage.SurfaceProbeActiveIndicesPooled.SafeRelease();
+        Storage.SurfaceProbeHashPooled.SafeRelease();
+        Storage.SurfaceProbeCountersPooled.SafeRelease();
         Storage.SurfaceProbePositions.SafeRelease();
         Storage.SurfaceProbePositionsSRV.SafeRelease();
         Storage.SurfaceProbePositionsUAV.SafeRelease();
@@ -432,6 +439,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_Counters"), 4u, Storage.SurfaceProbeCounters, Storage.SurfaceProbeCountersSRV, Storage.SurfaceProbeCountersUAV);
         if (!bSurfaceBuffersCreated)
         {
+        Storage.SurfaceProbePositionsPooled.SafeRelease();
+        Storage.SurfaceProbeNormalsPooled.SafeRelease();
+        Storage.SurfaceProbeStableKeysPooled.SafeRelease();
+        Storage.SurfaceProbeLastSeenFramesPooled.SafeRelease();
+        Storage.SurfaceProbeActiveIndicesPooled.SafeRelease();
+        Storage.SurfaceProbeHashPooled.SafeRelease();
+        Storage.SurfaceProbeCountersPooled.SafeRelease();
+            Storage.SurfaceProbeCapacity = 0u;
+            Storage.SurfaceProbeHashCapacity = 0u;
             Storage.SurfaceProbePositions.SafeRelease();
             Storage.SurfaceProbePositionsSRV.SafeRelease();
             Storage.SurfaceProbePositionsUAV.SafeRelease();
