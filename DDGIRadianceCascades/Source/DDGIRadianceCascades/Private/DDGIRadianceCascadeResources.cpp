@@ -56,8 +56,8 @@ namespace
 		}
 	};
 
-	// Fingerprint every input that changes traced radiance. Quantization avoids
-	// invalidating the entire cache for sub-millimeter / sub-0.1% float noise.
+	// Fingerprint traced-radiance inputs with coarse quantization. This avoids
+	// flushing the whole cache for insignificant light-motion and float noise.
 	uint32 DDGIMixLightingFloat(uint32 Hash, float Value, float Scale = 1000.0f)
 	{
 		const float SafeValue = FMath::IsFinite(Value)
@@ -90,21 +90,21 @@ namespace
 
 		MixBool(Config.bHasDirectionalLight);
 		MixBool(Config.bDirectionalLightCastsShadows);
-		MixFloat(Config.DirectionalLightDirection.X);
-		MixFloat(Config.DirectionalLightDirection.Y);
-		MixFloat(Config.DirectionalLightDirection.Z);
-		MixFloat(Config.DirectionalLightColor.R);
-		MixFloat(Config.DirectionalLightColor.G);
-		MixFloat(Config.DirectionalLightColor.B);
-		MixFloat(Config.DirectionalLightIntensity);
-		MixFloat(Config.GIIntensity);
-		MixFloat(Config.LocalLightGIIntensityScale);
+		MixFloat(Config.DirectionalLightDirection.X, 100.0f);
+		MixFloat(Config.DirectionalLightDirection.Y, 100.0f);
+		MixFloat(Config.DirectionalLightDirection.Z, 100.0f);
+		MixFloat(Config.DirectionalLightColor.R, 100.0f);
+		MixFloat(Config.DirectionalLightColor.G, 100.0f);
+		MixFloat(Config.DirectionalLightColor.B, 100.0f);
+		MixFloat(Config.DirectionalLightIntensity, 100.0f);
+		MixFloat(Config.GIIntensity, 100.0f);
+		MixFloat(Config.LocalLightGIIntensityScale, 100.0f);
 
 		MixBool(Config.bEnableStaticBackground);
-		MixFloat(Config.StaticBackgroundColor.R);
-		MixFloat(Config.StaticBackgroundColor.G);
-		MixFloat(Config.StaticBackgroundColor.B);
-		MixFloat(Config.StaticBackgroundIntensity);
+		MixFloat(Config.StaticBackgroundColor.R, 100.0f);
+		MixFloat(Config.StaticBackgroundColor.G, 100.0f);
+		MixFloat(Config.StaticBackgroundColor.B, 100.0f);
+		MixFloat(Config.StaticBackgroundIntensity, 100.0f);
 		MixFloat(Config.BackgroundTransitionStart, 10.0f);
 		MixFloat(Config.BackgroundTransitionEnd, 10.0f);
 
@@ -117,10 +117,10 @@ namespace
 		Hash *= 16777619u;
 		for (uint32 Index = 0; Index < SafeLocalLightCount; ++Index)
 		{
-			MixVector(Config.LocalLightPositionAndRadius[static_cast<int32>(Index)], 10.0f);
-			MixVector(Config.LocalLightDirectionAndCosOuter[static_cast<int32>(Index)]);
-			MixVector(Config.LocalLightColorAndIntensity[static_cast<int32>(Index)]);
-			MixVector(Config.LocalLightParameters[static_cast<int32>(Index)]);
+			MixVector(Config.LocalLightPositionAndRadius[static_cast<int32>(Index)], 1.0f);
+			MixVector(Config.LocalLightDirectionAndCosOuter[static_cast<int32>(Index)], 100.0f);
+			MixVector(Config.LocalLightColorAndIntensity[static_cast<int32>(Index)], 100.0f);
+			MixVector(Config.LocalLightParameters[static_cast<int32>(Index)], 100.0f);
 		}
 		return Hash;
 	}
