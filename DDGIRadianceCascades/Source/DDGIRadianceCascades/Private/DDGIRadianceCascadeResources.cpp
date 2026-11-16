@@ -501,6 +501,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.SurfaceProbeActiveIndicesPooled.SafeRelease();
             Storage.SurfaceProbeHashPooled.SafeRelease();
             Storage.SurfaceProbeCountersPooled.SafeRelease();
+            Storage.SurfaceProbeIntegratedRadiancePooled.SafeRelease();
             Storage.SurfaceProbeCapacity = 0u;
             Storage.SurfaceProbeHashCapacity = 0u;
             Storage.SurfaceProbeCandidatePositions.SafeRelease();
@@ -512,6 +513,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.SurfaceProbePositions.SafeRelease();
             Storage.SurfaceProbePositionsSRV.SafeRelease();
             Storage.SurfaceProbePositionsUAV.SafeRelease();
+            Storage.SurfaceProbeIntegratedRadiance.SafeRelease();
+            Storage.SurfaceProbeIntegratedRadianceSRV.SafeRelease();
+            Storage.SurfaceProbeIntegratedRadianceUAV.SafeRelease();
             Storage.SurfaceProbeNormals.SafeRelease();
             Storage.SurfaceProbeNormalsSRV.SafeRelease();
             Storage.SurfaceProbeNormalsUAV.SafeRelease();
