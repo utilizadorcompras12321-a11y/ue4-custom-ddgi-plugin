@@ -24,8 +24,8 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
 
 static TAutoConsoleVariable<int32> CVarDDGIRadianceProbeTraceBudget(
     TEXT("r.DDGI.RadianceProbeTraceBudget"),
-    128,
-    TEXT("Maximum sparse radiance clipmap probes traced per frame. Probe results are refreshed in deterministic round-robin order; 0 disables radiance tracing."),
+    -1,
+    TEXT("Probe trace budget override per frame (-1 uses the DDGI Master Actor budget, 0 disables tracing, positive values override)."),
     ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
@@ -1123,8 +1123,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		bLoggedTraceLightingConfig = true;
 	}
 
+	const int32 TraceBudgetOverride = CVarDDGIRadianceProbeTraceBudget.GetValueOnRenderThread();
+	const int32 RequestedTraceBudget = TraceBudgetOverride < 0
+		? Config->ProbeUpdateBudget
+		: TraceBudgetOverride;
 	const uint32 TraceBudget = static_cast<uint32>(
-		FMath::Clamp(CVarDDGIRadianceProbeTraceBudget.GetValueOnRenderThread(), 0, 8192));
+		FMath::Clamp(RequestedTraceBudget, 0, 8192));
 	const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceBudget);
 	if (TraceProbeCount > 0u)
 	{
