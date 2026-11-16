@@ -20,6 +20,7 @@ namespace
 		FVector BaseColor = FVector(0.18f, 0.18f, 0.18f);
 		bool bUsesDefaultBaseColor = true;
 		bool bBlocksDDGI = true;
+		bool bIsMasked = false;
 	};
 
 	struct FDDGISoftwareTriangle
@@ -516,6 +517,8 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 			// not become fully opaque blockers.
 			TArray<uint8> MaterialBlocksDDGI;
 			MaterialBlocksDDGI.Init(1, Component->GetNumMaterials());
+			TArray<uint8> MaterialIsMasked;
+			MaterialIsMasked.Init(0, Component->GetNumMaterials());
 			const FMaterialParameterInfo BaseColorParameterInfo(FName(TEXT("DDGI_BaseColor")));
 			const FMaterialParameterInfo EmissiveParameterInfo(FName(TEXT("DDGI_EmissiveRadiance")));
 			for (int32 MaterialIndex = 0; MaterialIndex < Component->GetNumMaterials(); ++MaterialIndex)
@@ -531,7 +534,8 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				{
 					FDDGISoftwareMaterialData NewData;
 					const EBlendMode BlendMode = Material->GetBlendMode();
-					NewData.bBlocksDDGI = BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked;
+					NewData.bBlocksDDGI = BlendMode == BLEND_Opaque;
+					NewData.bIsMasked = BlendMode == BLEND_Masked;
 					FLinearColor EmissiveColor = FLinearColor::Black;
 					if (Material->GetVectorParameterValue(EmissiveParameterInfo, EmissiveColor))
 					{
@@ -556,6 +560,7 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				MaterialEmissiveRadiance[MaterialIndex] = CachedData->EmissiveRadiance;
 				MaterialBaseColor[MaterialIndex] = CachedData->BaseColor;
 				MaterialBlocksDDGI[MaterialIndex] = CachedData->bBlocksDDGI ? 1 : 0;
+				MaterialIsMasked[MaterialIndex] = CachedData->bIsMasked ? 1 : 0;
 				if (CachedData->bUsesDefaultBaseColor)
 				{
 					// Count fallback material slots, not unique material objects.
@@ -582,6 +587,16 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 					static_cast<int64>(TriangleIndex) < MaterialSectionEndTriangle
 					? static_cast<int32>(LOD.Sections[MaterialSectionIndex].MaterialIndex)
 					: INDEX_NONE;
+				// Masked materials need their opacity mask evaluated per UV/texel.
+				// This CPU BVH stores no UVs or material textures, so treating them
+				// as opaque creates false blockers (notably foliage and fences).
+				// Exclude them rather than inventing a solid surface.
+				if (MaterialIsMasked.IsValidIndex(MaterialIndex) &&
+					MaterialIsMasked[MaterialIndex] != 0)
+				{
+					++OutStats.SkippedMaskedTriangles;
+					continue;
+				}
 				if (MaterialBlocksDDGI.IsValidIndex(MaterialIndex) &&
 					MaterialBlocksDDGI[MaterialIndex] == 0)
 				{
