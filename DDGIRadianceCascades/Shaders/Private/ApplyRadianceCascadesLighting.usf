@@ -4,6 +4,7 @@
  */
 #include "/Engine/Public/Platform.ush"
 #include "/Engine/Private/DeferredShadingCommon.ush"
+#include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
 
 Texture2D<float4> NormalTexture;
 Texture2D<float> DepthTexture;
@@ -27,6 +28,10 @@ uint BaseRayCount;
 uint HashCapacity;
 float ProbeSpacing;
 float BaseSegmentLength;
+float CascadeScale;
+float MaxTraceDistance;
+uint CascadeCount;
+uint RaySplitFactor;
 float ProbeGridDistance;
 float4 ProbeGridOrigin;
 float4 ActiveWindowCenter;
@@ -83,15 +88,108 @@ float3 DDGIProbeDiffuseIrradiance(
     const uint SafeRayCount = min(BaseRayCount, min(TotalRaysPerProbe, 64u));
     if (SafeRayCount == 0u) return Irradiance;
 
-    // Approximate probe-to-receiver visibility with the closest deterministic
-    // base ray. The threshold deliberately rejects poorly aligned rays rather
-    // than allowing an unrelated wall hit to darken the receiver.
+    // Select the distance cascade that owns the receiver-to-probe segment.
+    // Then search a bounded subset of the selected base ray's descendants.
+    // This tests visibility across the complete clipmap range without scanning
+    // every ray in every cascade for every receiver pixel.
     float3 ProbeToReceiver = ReceiverPosition - ProbePosition;
     float ReceiverDistance = length(ProbeToReceiver);
     float3 ReceiverDirection = ReceiverDistance > 1.0e-3f
         ? ProbeToReceiver / ReceiverDistance : Normal;
-    float BestAlignment = -1.0f;
-    uint BestVisibilityRay = 0u;
+    float Visibility = 1.0f;
+    if (ReceiverDistance > 1.0f &&
+        ReceiverDistance <= max(MaxTraceDistance, 1.0f) &&
+        CascadeCount > 0u)
+    {
+        uint SelectedCascade = CascadeCount - 1u;
+        [loop]
+        for (uint Cascade = 0u; Cascade < CascadeCount; ++Cascade)
+        {
+            float2 Interval = DDGIRadianceCascadeDistanceInterval(
+                (int)Cascade, BaseSegmentLength, CascadeScale, MaxTraceDistance);
+            if (ReceiverDistance <= Interval.y || Cascade + 1u == CascadeCount)
+            {
+                SelectedCascade = Cascade;
+                break;
+            }
+        }
+
+        uint SelectedRayCount = DDGIRadianceCascadeRayCount(
+            SelectedCascade, BaseRayCount, RaySplitFactor);
+        uint ParentRayCount = SelectedCascade == 0u
+            ? SafeRayCount
+            : DDGIRadianceCascadeRayCount(
+                SelectedCascade - 1u, BaseRayCount, RaySplitFactor);
+        uint ChildrenPerParent = max(
+            SelectedRayCount / max(ParentRayCount, 1u), 1u);
+
+        float BestBaseAlignment = -1.0f;
+        uint BestBaseRay = 0u;
+        [loop]
+        for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
+        {
+            uint2 DirectionPixel = uint2(
+                RayIndex % DDGI_RC_TEXTURE_WIDTH,
+                RayIndex / DDGI_RC_TEXTURE_WIDTH);
+            float3 Direction = normalize(
+                DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
+            float Alignment = dot(Direction, ReceiverDirection);
+            if (Alignment > BestBaseAlignment)
+            {
+                BestBaseAlignment = Alignment;
+                BestBaseRay = RayIndex;
+            }
+        }
+
+        if (BestBaseAlignment > 0.55f)
+        {
+            uint CandidateCount = min(ChildrenPerParent, 8u);
+            uint CascadeStorageOffset = DDGIRadianceCascadeRayStorageOffset(
+                SelectedCascade, BaseRayCount, RaySplitFactor);
+            uint BestRay = 0u;
+            float BestAlignment = -1.0f;
+            [loop]
+            for (uint Candidate = 0u; Candidate < CandidateCount; ++Candidate)
+            {
+                uint ChildIndex = (Candidate * ChildrenPerParent) / CandidateCount;
+                uint CascadeRayIndex =
+                    CascadeStorageOffset + BestBaseRay * ChildrenPerParent + ChildIndex;
+                uint2 DirectionPixel = uint2(
+                    CascadeRayIndex % DDGI_RC_TEXTURE_WIDTH,
+                    CascadeRayIndex / DDGI_RC_TEXTURE_WIDTH);
+                float3 Direction = normalize(
+                    DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
+                float Alignment = dot(Direction, ReceiverDirection);
+                if (Alignment > BestAlignment)
+                {
+                    BestAlignment = Alignment;
+                    BestRay = CascadeRayIndex;
+                }
+            }
+
+            if (BestAlignment > 0.70f)
+            {
+                uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+                uint VisibilityLinearIndex =
+                    PhysicalProbeIndex * TotalRaysPerProbe + BestRay;
+                uint2 VisibilityPixel = uint2(
+                    VisibilityLinearIndex % DDGI_RC_TEXTURE_WIDTH,
+                    VisibilityLinearIndex / DDGI_RC_TEXTURE_WIDTH);
+                float OccluderDistance = HitDistanceTexture.Load(
+                    int3(VisibilityPixel, 0));
+                if (OccluderDistance >= 0.0f)
+                {
+                    float VisibilityBias = max(2.0f, ReceiverDistance * 0.015f);
+                    Visibility = smoothstep(
+                        -VisibilityBias,
+                        VisibilityBias,
+                        OccluderDistance - ReceiverDistance);
+                }
+            }
+        }
+    }
+    if (Visibility <= 1.0e-4f) return Irradiance;
+
     [loop]
     for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
     {
