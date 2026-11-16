@@ -411,7 +411,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
     else if (Storage.SurfaceProbeCapacity != GDDGISurfaceProbeCapacity ||
         Storage.SurfaceProbeHashCapacity != GDDGISurfaceProbeHashCapacity ||
-        !Storage.SurfaceProbePositionsUAV.IsValid() || !Storage.SurfaceProbeNormalsUAV.IsValid() ||
+        !Storage.SurfaceProbePositionsUAV.IsValid() || !Storage.SurfaceProbeCandidatePositionsUAV.IsValid() ||
+        !Storage.SurfaceProbeCandidateNormalsUAV.IsValid() || !Storage.SurfaceProbeNormalsUAV.IsValid() ||
         !Storage.SurfaceProbeStableKeysUAV.IsValid() || !Storage.SurfaceProbeLastSeenFramesUAV.IsValid() ||
         !Storage.SurfaceProbeActiveIndicesUAV.IsValid() || !Storage.SurfaceProbeHashUAV.IsValid() ||
         !Storage.SurfaceProbeCountersUAV.IsValid())
