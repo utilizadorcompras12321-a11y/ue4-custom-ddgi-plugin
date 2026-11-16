@@ -9,6 +9,7 @@ RWStructuredBuffer<float4> SurfaceProbePositions;
 RWStructuredBuffer<float4> SurfaceProbeNormals;
 RWStructuredBuffer<uint> SurfaceProbeLastSeenFrames;
 RWStructuredBuffer<uint> SurfaceProbeActiveIndices;
+RWStructuredBuffer<uint> SurfaceProbeCounters;
 
 float4 ScaledViewSizeAndInvSize;
 float2 ViewRectMin;
@@ -22,6 +23,13 @@ uint FrameNumber;
 void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
     uint2 Tile = DispatchThreadID.xy;
+    if (Tile.x == 0u && Tile.y == 0u)
+    {
+        SurfaceProbeCounters[0] = CandidateCount;
+        SurfaceProbeCounters[1] = CaptureStride;
+        SurfaceProbeCounters[2] = CaptureGridWidth;
+        SurfaceProbeCounters[3] = CaptureGridHeight;
+    }
     if (Tile.x >= CaptureGridWidth || Tile.y >= CaptureGridHeight)
     {
         return;
