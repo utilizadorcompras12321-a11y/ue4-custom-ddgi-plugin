@@ -382,7 +382,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.FreePhysicalSlots.Reset();
         Storage.PhysicalSlotCapacity = 0;
 
-        // Half-float RGBA texels store direction and radiance; R32F stores hit distance.
+        // Half-float RGBA stores directions, raw trace and gathered radiance; packed R11G11B10 in R32_UINT stores final radiance.
         const FPooledRenderTargetDesc DirectionDesc = FPooledRenderTargetDesc::Create2DDesc(
             RequiredDirectionDimensions, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_None,
             TexCreate_ShaderResource | TexCreate_UAV, false);
