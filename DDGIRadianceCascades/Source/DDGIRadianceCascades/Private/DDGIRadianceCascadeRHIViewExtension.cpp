@@ -1124,9 +1124,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	DDGITransitionTexture(RHICmdList, DirectionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, ProbePositionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
-	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
-	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
-	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 
 	static bool bLoggedTraceLightingConfig = false;
 	if (!bLoggedTraceLightingConfig)
@@ -1177,7 +1177,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	// Spatial gather touches only probes traced this frame. It reads the
 	// immutable raw-trace texture and never consumes already integrated output.
-	DDGITransitionTexture(RHICmdList, RadianceScratchTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, RadianceScratchTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	TShaderMapRef<FDDGIRadianceCascadeSpatialGatherRHI> GatherShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(GatherShader.GetComputeShader());
 	GatherShader->SetParameters(
