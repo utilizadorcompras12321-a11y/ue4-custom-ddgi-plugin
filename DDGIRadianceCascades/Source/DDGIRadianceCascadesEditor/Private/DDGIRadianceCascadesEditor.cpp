@@ -10,12 +10,9 @@
 
 #include "DDGIRadianceCascadesEditor.h"
 #include "DDGIMasterActor.h"
-#include "DDGIVolume.h"
 #include "IPlacementModeModule.h"
 #include "Interfaces/IPluginManager.h"
 #include "Styling/SlateStyleRegistry.h"
-#include "DDGIRadianceCascadesDetails.h"
-#include "PropertyEditorModule.h"
 
 #define LOCTEXT_NAMESPACE "FDDGIRadianceCascadesEditor"
 
@@ -35,10 +32,6 @@ void FDDGIRadianceCascadesEditor::StartupModule()
 	IPlacementModeModule& PlacementModeModule = IPlacementModeModule::Get();
 	PlacementModeModule.OnPlacementModeCategoryRefreshed().AddRaw(this, &FDDGIRadianceCascadesEditor::OnPlacementModeRefresh);
 
-	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-	PropertyModule.RegisterCustomClassLayout(
-		ADDGIVolume::StaticClass()->GetFName(),
-		FOnGetDetailCustomizationInstance::CreateStatic(&FDDGIRadianceCascadesDetails::MakeInstance));
 }
 
 void FDDGIRadianceCascadesEditor::ShutdownModule()
@@ -74,17 +67,6 @@ void FDDGIRadianceCascadesEditor::OnPlacementModeRefresh(FName CategoryName)
 	);
 	IPlacementModeModule::Get().RegisterPlaceableItem(CategoryName, MakeShareable(DDGIMasterPlacement));
 
-	// Keep the old volume available while the renderer is being migrated away from
-	// per-volume probe storage. It is deliberately labelled as legacy.
-	FPlaceableItem* DDGIVolumePlacement = new FPlaceableItem(
-		*UActorFactory::StaticClass(),
-		FAssetData(ADDGIVolume::StaticClass()),
-		FName("DDGIRadianceCascadesPlacement.ModesIcon"),
-		TOptional<FLinearColor>(),
-		TOptional<int32>(),
-		FText::FromString("DDGI Volume (Legacy - temporary)")
-	);
-	IPlacementModeModule::Get().RegisterPlaceableItem(CategoryName, MakeShareable(DDGIVolumePlacement));
 }
 
 #undef LOCTEXT_NAMESPACE
