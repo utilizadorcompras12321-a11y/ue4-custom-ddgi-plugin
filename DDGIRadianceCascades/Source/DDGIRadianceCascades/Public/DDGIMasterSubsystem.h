@@ -40,6 +40,7 @@ struct FDDGIMasterConfig
 	UPROPERTY() bool bEnableDynamicGI = true;
 	UPROPERTY() float GIIntensity = 1.0f;
 	UPROPERTY() bool bHasDirectionalLight = false;
+	UPROPERTY() bool bDirectionalLightCastsShadows = true;
 	UPROPERTY() FVector DirectionalLightDirection = FVector(0.0f, 0.0f, -1.0f);
 	UPROPERTY() FLinearColor DirectionalLightColor = FLinearColor::White;
 	UPROPERTY() float DirectionalLightIntensity = 0.0f;
