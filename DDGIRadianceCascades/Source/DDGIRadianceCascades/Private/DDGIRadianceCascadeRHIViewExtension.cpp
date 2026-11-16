@@ -32,7 +32,7 @@ static TAutoConsoleVariable<float> CVarDDGISurfaceProbeSpatialCellSize(
 static TAutoConsoleVariable<int32> CVarDDGISurfaceProbeTraceBudget(
     TEXT("r.DDGI.SurfaceProbeTraceBudget"),
     64,
-    TEXT("Maximum retained surface probes scheduled for tracing per frame (0 disables the entire surface-probe pipeline)."),
+    TEXT("Maximum retained surface probes scheduled for tracing per frame (0 disables all surface-probe passes; persistent buffers remain allocated)."),
     ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
@@ -1140,6 +1140,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
 	FDDGISurfaceProbeAllocatorRDGResources SurfaceProbeResources;
 	const bool bEnableSurfaceProbes = Config && Config->bEnableDynamicGI &&
+		Config->bEnableSurfaceProbes &&
 		CVarDDGISurfaceProbeTraceBudget.GetValueOnRenderThread() > 0;
 	if (bEnableSurfaceProbes)
 	{
