@@ -189,18 +189,12 @@ float3 DDGIProbeDiffuseIrradiance(
         CascadeCount > 0u &&
         bFoundBaseRegion)
     {
-        uint SelectedCascade = CascadeCount - 1u;
-        [loop]
-        for (uint Cascade = 0u; Cascade < CascadeCount; ++Cascade)
-        {
-            float2 Interval = DDGIRadianceCascadeDistanceInterval(
-                (int)Cascade, BaseSegmentLength, CascadeScale, MaxTraceDistance);
-            if (ReceiverDistance <= Interval.y || Cascade + 1u == CascadeCount)
-            {
-                SelectedCascade = Cascade;
-                break;
-            }
-        }
+        // Every cascade ray traces from the probe origin to its own end
+        // distance. The finest (last) cascade therefore has the best angular
+        // resolution while still covering every receiver within MaxTraceDistance.
+        // Selecting a near-distance cascade here unnecessarily falls back to
+        // only BaseRayCount coarse directions and is a major source of wall leaks.
+        const uint SelectedCascade = CascadeCount - 1u;
 
         uint SelectedRayCount = DDGIRadianceCascadeRayCount(
             SelectedCascade, BaseRayCount, RaySplitFactor);
@@ -234,7 +228,9 @@ float3 DDGIProbeDiffuseIrradiance(
         // the ray direction without another texture fetch.
         float3 VisibilityRayDirection =
             DDGIRadianceCascadeRegionDirection(AngularRegion);
-        if (dot(VisibilityRayDirection, ReceiverDirection) > 0.55f)
+        // The ray is the deterministic angular cell containing the receiver
+        // direction. Always test it; a cosine cutoff would disable visibility
+        // precisely in the coarse angular regions most prone to light leaks.
         {
             uint VisibilityLinearIndex =
                 PhysicalProbeIndex * TotalRaysPerProbe + CascadeRayIndex;
