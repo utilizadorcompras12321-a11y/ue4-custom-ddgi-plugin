@@ -419,26 +419,40 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 	// an external caller supplies an extreme Blueprint/config value.
 	MaxTriangleCount = FMath::Min(MaxTriangleCount, GDDGISoftwareBVHHardTriangleLimit);
 
-	// Protect 25% of the global budget for BSP when BSP components exist.
-	// Static meshes can use the full budget in worlds without BSP.
-	bool bHasVisibleBSP = false;
+	// Reserve up to 25% of the global triangle budget for eligible BSP geometry.
+	// Scale the reservation to the actual opaque BSP polygon count, so a small
+	// BSP world does not unnecessarily reduce the static-mesh budget.
+	int64 BSPCandidateTriangleCount = 0;
 	for (ULevel* Level : World->GetLevels())
 	{
 		if (!IsValid(Level)) continue;
 		for (UModelComponent* ModelComponent : Level->ModelComponents)
 		{
-			if (IsValid(ModelComponent) && ModelComponent->IsVisible() && !ModelComponent->bHiddenInGame &&
-				ModelComponent->GetModel() && ModelComponent->GetElements().Num() > 0)
+			if (!IsValid(ModelComponent) || !ModelComponent->IsVisible() || ModelComponent->bHiddenInGame) continue;
+			UModel* Model = ModelComponent->GetModel();
+			if (!Model) continue;
+			for (const FModelElement& Element : ModelComponent->GetElements())
 			{
-				bHasVisibleBSP = true;
-				break;
+				if (!Element.Material || Element.Material->GetBlendMode() != BLEND_Opaque) continue;
+				for (uint16 NodeIndex : Element.Nodes)
+				{
+					if (!Model->Nodes.IsValidIndex(NodeIndex)) continue;
+					const FBspNode& Node = Model->Nodes[NodeIndex];
+					if (Node.NumVertices >= 3 && Model->Surfs.IsValidIndex(Node.iSurf) &&
+						(Model->Surfs[Node.iSurf].PolyFlags & PF_Invisible) == 0)
+					{
+						BSPCandidateTriangleCount = FMath::Min<int64>(
+							static_cast<int64>(MaxTriangleCount),
+							BSPCandidateTriangleCount + static_cast<int64>(Node.NumVertices - 2));
+					}
+				}
 			}
 		}
-		if (bHasVisibleBSP) break;
 	}
-	const int32 StaticMeshTriangleBudget = bHasVisibleBSP ? (MaxTriangleCount * 3) / 4 : MaxTriangleCount;
+	const int32 BSPTriangleReservation = static_cast<int32>(FMath::Min<int64>(
+		static_cast<int64>(MaxTriangleCount / 4), BSPCandidateTriangleCount));
+	const int32 StaticMeshTriangleBudget = MaxTriangleCount - BSPTriangleReservation;
 	bool bStaticMeshBudgetReached = false;
-
 	TArray<FDDGISoftwareTriangle> Triangles;
 	Triangles.Reserve(FMath::Min(MaxTriangleCount, 65536));
 	// Material interfaces are often shared by many static-mesh components.
