@@ -598,6 +598,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(uint32, BaseRayCount)
 		SHADER_PARAMETER(uint32, HashCapacity)
 		SHADER_PARAMETER(float, ProbeSpacing)
+		SHADER_PARAMETER(float, BaseSegmentLength)
 		SHADER_PARAMETER(float, ProbeGridDistance)
 		SHADER_PARAMETER(FVector4, ProbeGridOrigin)
 		SHADER_PARAMETER(FVector4, ActiveWindowCenter)
@@ -744,6 +745,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		Config->RadianceCascades.BaseRayCount, 1, 64));
 	PassParameters->HashCapacity = HashCapacity;
 	PassParameters->ProbeSpacing = ProbeSpacing;
+	PassParameters->BaseSegmentLength = Config->RadianceCascades.BaseSegmentLength;
 	PassParameters->ProbeGridDistance = Config->ProbeGridDistance;
 	PassParameters->ProbeGridOrigin = FVector4(
 		Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f);
