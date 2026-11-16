@@ -22,7 +22,7 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - Windows 64-bit, deferred renderer, SM5-capable GPU.
 - The current tracing backend is software BVH; it does not use DXR or hardware ray tracing.
 - The current BVH is built from supported static geometry. Movable components and instanced geometry are skipped and are not represented in indirect lighting.
-- Direct-light injection supports the strongest visible directional light plus up to 32 visible point/spot lights. Local-light transforms, intensity, radius and spot cones are refreshed at runtime; their attenuation is an approximation of UE4's light falloff.
+- Direct-light injection supports the strongest visible directional light plus up to 32 captured point/spot lights. The eight strongest local lights are shadow-tested at primary hits and the four strongest at secondary-bounce hits to bound BVH traversal cost. Local-light transforms, intensity, radius and spot cones are refreshed at runtime; attenuation is an approximation of UE4's light falloff.
 - This is a custom experimental renderer feature. GPU cost and image quality depend on scene triangle count, active probe count, cascade settings and trace budget. A fixed 60 FPS guarantee is not possible without profiling on the target scene and GPU.
 
 ## Setup
