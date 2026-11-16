@@ -331,7 +331,7 @@ namespace
 
 		// Four nested 16^3 clipmaps. Every level is aligned to the immutable
 		// world lattice; level spacing doubles and each coarser level stores
-		// only the ring outside the previous level's coverage.
+		// the outer ring plus one coarse-cell overlap for seamless interpolation.
 		static const int32 ClipmapResolution = 16;
 		static const int32 ClipmapMinOffset = -8;
 		static const int32 ClipmapMaxOffset = 7;
@@ -396,7 +396,11 @@ namespace
 						const double DX = static_cast<double>(CellX - CenterCell.X) * SafeSpacing;
 						const double DY = static_cast<double>(CellY - CenterCell.Y) * SafeSpacing;
 						const double DZ = static_cast<double>(CellZ - CenterCell.Z) * SafeSpacing;
-						if (FMath::Max3(FMath::Abs(DX), FMath::Abs(DY), FMath::Abs(DZ)) > HalfExtent + SafeSpacing * 2.0)
+						if (FMath::Max(FMath::Abs(DX), FMath::Max(FMath::Abs(DY), FMath::Abs(DZ))) >
+							HalfExtent + SafeSpacing * 2.0 ||
+							CellX < MIN_int32 || CellX > MAX_int32 ||
+							CellY < MIN_int32 || CellY > MAX_int32 ||
+							CellZ < MIN_int32 || CellZ > MAX_int32)
 						{
 							continue;
 						}
