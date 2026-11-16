@@ -66,6 +66,8 @@ The plugin accepts one Master Actor per world. Additional actors are ignored.
 
 The plugin includes an Unreal Automation Test for cascade packing, interval coverage and GPU storage estimates: run `Automation RunTests DDGI.RadianceCascades.Layout` in the editor or automation framework. This is a CPU-side layout test; it does not replace shader compilation, GPU validation or scene profiling.
 
+Material-evaluation architecture constraints and the two viable implementation paths are recorded in [MATERIAL_EVALUATION_DECISION.md](MATERIAL_EVALUATION_DECISION.md). In particular, faithful arbitrary Material Graph evaluation requires a cached renderer material pass; UE 4.27 does not expose registered cached mesh passes as a plugin extension point.
+
 ## Important limitations
 
 This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, SkyLight/RectLight or IES evaluation, arbitrary Material Graph evaluation, texture sampling, opacity-mask evaluation, translucency, or a temporal denoiser. Lighting changes invalidate the complete retained radiance cache; with a bounded trace budget this can temporarily reduce indirect lighting until probes are refreshed. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
