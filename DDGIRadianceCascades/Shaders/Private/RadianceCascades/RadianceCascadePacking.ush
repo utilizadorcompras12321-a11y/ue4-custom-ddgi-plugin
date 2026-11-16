@@ -1,0 +1,43 @@
+// RGB9E5 shared-exponent packing for persistent integrated radiance.
+// The output is stored as R32_UINT so typed UAV loads are guaranteed on
+// Direct3D 11.0 SM5 hardware; R16G16B16A16_FLOAT UAV loads are optional.
+
+uint DDGIPackRGB9E5(float3 Radiance)
+{
+    float3 SafeRadiance = max(Radiance, 0.0f);
+    float MaxComponent = min(max(SafeRadiance.r, max(SafeRadiance.g, SafeRadiance.b)), 65408.0f);
+    if (MaxComponent <= 0.0f)
+    {
+        return 0u;
+    }
+
+    int SharedExponent = clamp((int)floor(log2(MaxComponent)) + 16, 0, 31);
+    float Scale = exp2((float)(SharedExponent - 24));
+    uint3 Mantissa = (uint3)floor(SafeRadiance / Scale + 0.5f);
+    uint MaxMantissa = max(Mantissa.x, max(Mantissa.y, Mantissa.z));
+
+    // Rounding the largest component to 512 requires the next shared exponent.
+    if (MaxMantissa > 511u && SharedExponent < 31)
+    {
+        ++SharedExponent;
+        Scale *= 2.0f;
+        Mantissa = (uint3)floor(SafeRadiance / Scale + 0.5f);
+    }
+
+    Mantissa = min(Mantissa, 511u);
+    return (Mantissa.x) |
+        (Mantissa.y << 9u) |
+        (Mantissa.z << 18u) |
+        ((uint)SharedExponent << 27u);
+}
+
+float3 DDGIUnpackRGB9E5(uint PackedRadiance)
+{
+    uint3 Mantissa = uint3(
+        PackedRadiance & 0x1ffu,
+        (PackedRadiance >> 9u) & 0x1ffu,
+        (PackedRadiance >> 18u) & 0x1ffu);
+    uint SharedExponent = (PackedRadiance >> 27u) & 0x1fu;
+    float Scale = exp2((float)SharedExponent - 24.0f);
+    return (float3)Mantissa * Scale;
+}
