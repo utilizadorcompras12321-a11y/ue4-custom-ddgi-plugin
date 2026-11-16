@@ -14,7 +14,7 @@ RWTexture2D<float4> DirectionsUAV;
 RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<float4> RadianceScratchUAV;
-RWTexture2D<float4> RadianceIntegrationScratchUAV;
+RWTexture2D<uint> RadianceIntegrationScratchUAV;
 RWTexture2D<uint> HitTriangleIndexUAV;
 StructuredBuffer<uint> NewPhysicalSlots;
 uint bInitializeDirections;
@@ -43,7 +43,7 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         RadianceUAV[Pixel] = 0.0f;
         HitDistanceUAV[Pixel] = -1.0f;
         RadianceScratchUAV[Pixel] = 0.0f;
-        RadianceIntegrationScratchUAV[Pixel] = 0.0f;
+        RadianceIntegrationScratchUAV[Pixel] = 0u;
         HitTriangleIndexUAV[Pixel] = 0u;
         return;
     }
