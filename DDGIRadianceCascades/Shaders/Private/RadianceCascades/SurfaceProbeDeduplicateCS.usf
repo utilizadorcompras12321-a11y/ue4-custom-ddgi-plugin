@@ -188,6 +188,32 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
                 return;
             }
 
+            // A stable key only identifies a coarse spatial cell and an
+            // octahedrally quantized normal. Validate the actual surface before
+            // carrying radiance history forward.
+            float3 PreviousPosition = SurfaceProbePositions[ExistingProbeSlot].xyz;
+            float3 PreviousNormal = normalize(SurfaceProbeNormals[ExistingProbeSlot].xyz);
+            float3 CurrentPosition = CandidatePosition.xyz;
+            float3 CurrentNormal = normalize(CandidateNormal.xyz);
+            float PositionDeltaSquared = dot(
+                CurrentPosition - PreviousPosition,
+                CurrentPosition - PreviousPosition);
+            float NormalAgreement = dot(PreviousNormal, CurrentNormal);
+            const float PositionTolerance = 5.0f; // centimeters
+            const float NormalAgreementThreshold = 0.98f;
+            bool bSurfaceHistoryCompatible =
+                PositionDeltaSquared <= PositionTolerance * PositionTolerance &&
+                NormalAgreement >= NormalAgreementThreshold;
+
+            // Follow small sub-cell movement. If the surface changed beyond
+            // tolerance, discard radiance integrated for the previous surface.
+            SurfaceProbePositions[ExistingProbeSlot] = CandidatePosition;
+            SurfaceProbeNormals[ExistingProbeSlot] = CandidateNormal;
+            if (!bSurfaceHistoryCompatible)
+            {
+                SurfaceProbeIntegratedRadiance[ExistingProbeSlot] = 0.0f;
+            }
+
             SurfaceProbeLastSeenFrames[ExistingProbeSlot] = FrameNumber;
             DeviceMemoryBarrier();
             SurfaceProbeHash[BucketIndex].w = ExistingSlot;
