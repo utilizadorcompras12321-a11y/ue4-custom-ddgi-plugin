@@ -201,7 +201,6 @@ public:
 		StaticBackgroundColor.Bind(Initializer.ParameterMap, TEXT("StaticBackgroundColor"));
 		StaticBackgroundIntensity.Bind(Initializer.ParameterMap, TEXT("StaticBackgroundIntensity"));
 		GIIntensity.Bind(Initializer.ParameterMap, TEXT("GIIntensity"));
-		ProbeGridOrigin.Bind(Initializer.ParameterMap, TEXT("ProbeGridOrigin"));
 		ActiveWindowCenter.Bind(Initializer.ParameterMap, TEXT("ActiveWindowCenter"));
 		BackgroundTransitionStart.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionStart"));
 		BackgroundTransitionEnd.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionEnd"));
@@ -258,7 +257,6 @@ public:
 		const FVector4& InStaticBackgroundColor,
 		float InStaticBackgroundIntensity,
 		float InGIIntensity,
-		const FVector4& InProbeGridOrigin,
 		const FVector4& InActiveWindowCenter,
 		float InBackgroundTransitionStart,
 		float InBackgroundTransitionEnd,
@@ -290,7 +288,6 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, StaticBackgroundColor, InStaticBackgroundColor);
 		SetShaderValue(RHICmdList, ShaderRHI, StaticBackgroundIntensity, InStaticBackgroundIntensity);
 		SetShaderValue(RHICmdList, ShaderRHI, GIIntensity, InGIIntensity);
-		SetShaderValue(RHICmdList, ShaderRHI, ProbeGridOrigin, InProbeGridOrigin);
 		SetShaderValue(RHICmdList, ShaderRHI, ActiveWindowCenter, InActiveWindowCenter);
 		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionStart, InBackgroundTransitionStart);
 		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionEnd, InBackgroundTransitionEnd);
@@ -350,7 +347,6 @@ private:
 	LAYOUT_FIELD(FShaderParameter, StaticBackgroundColor);
 	LAYOUT_FIELD(FShaderParameter, StaticBackgroundIntensity);
 	LAYOUT_FIELD(FShaderParameter, GIIntensity);
-	LAYOUT_FIELD(FShaderParameter, ProbeGridOrigin);
 	LAYOUT_FIELD(FShaderParameter, ActiveWindowCenter);
 	LAYOUT_FIELD(FShaderParameter, BackgroundTransitionStart);
 	LAYOUT_FIELD(FShaderParameter, BackgroundTransitionEnd);
@@ -1183,7 +1179,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		Config->RadianceCascades.MaxTraceDistance,
 		FVector4(Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G, Config->StaticBackgroundColor.B, Config->StaticBackgroundColor.A),
 		Config->StaticBackgroundIntensity, Config->GIIntensity,
-		FVector4(Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f),
 		FVector4(
 			InView.ViewMatrices.GetViewOrigin().X - Config->SoftwareBVH->WorldOrigin.X,
 			InView.ViewMatrices.GetViewOrigin().Y - Config->SoftwareBVH->WorldOrigin.Y,
