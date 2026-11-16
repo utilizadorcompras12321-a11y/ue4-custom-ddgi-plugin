@@ -1,6 +1,6 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
-uint TextureWidth, TotalTexels, DispatchGroupsX, ProbeCount, TotalRaysPerProbe, HashCapacity, TriangleCount;
+uint TextureWidth, TotalTexels, DispatchGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe, HashCapacity, TriangleCount;
 float ProbeSpacing;
 float4 ProbeGridOrigin;
 Texture2D<float4> RadianceTexture;
@@ -74,8 +74,9 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
 {
     uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
     if (LinearIndex >= TotalTexels || ProbeCount == 0u || TotalRaysPerProbe == 0u) return;
-    uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
-    uint RayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
+    uint ScheduledProbeIndex = LinearIndex / TotalRaysPerProbe;
+    uint ProbeIndex = (TraceStartIndex + ScheduledProbeIndex) % ProbeCount;
+    uint RayIndex = LinearIndex - ScheduledProbeIndex * TotalRaysPerProbe;
     uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
     uint PhysicalLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
     uint2 Pixel = uint2(PhysicalLinearIndex % TextureWidth, PhysicalLinearIndex / TextureWidth);
