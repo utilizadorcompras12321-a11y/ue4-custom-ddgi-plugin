@@ -7,6 +7,8 @@
 #include "DDGIRadianceCascadeResources.h"
 #include "DDGISoftwareBVH.h"
 #include "Components/DirectionalLightComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
 #if WITH_EDITOR
@@ -567,6 +569,8 @@ void UDDGIMasterSubsystem::Deinitialize()
 
 	ActiveMasterActor.Reset();
 	ActiveDirectionalLight.Reset();
+	CachedLocalLights.Reset();
+	bHasSearchedLocalLights = false;
 	Config = FDDGIMasterConfig();
 	CachedSoftwareBVHTriangleLimit = INDEX_NONE;
 	ActiveWindowCenterCell = FIntVector::ZeroValue;
@@ -602,6 +606,8 @@ void UDDGIMasterSubsystem::UnregisterMasterActor(ADDGIMasterActor* InActor)
 	}
 
 	ActiveMasterActor.Reset();
+	CachedLocalLights.Reset();
+	bHasSearchedLocalLights = false;
 	Config = FDDGIMasterConfig();
 	CachedSoftwareBVHTriangleLimit = INDEX_NONE;
 	ActiveWindowCenterCell = FIntVector::ZeroValue;
@@ -631,9 +637,14 @@ void UDDGIMasterSubsystem::RebuildSoftwareBVH(ADDGIMasterActor* InActor)
 void UDDGIMasterSubsystem::RefreshDirectionalLighting(ADDGIMasterActor* InActor)
 {
 	if (IsValid(InActor) && ActiveMasterActor.Get() == InActor &&
-		InActor->bEnableDynamicGI && Config.bEnableDynamicGI && UpdateDirectionalLighting(InActor))
+		InActor->bEnableDynamicGI && Config.bEnableDynamicGI)
 	{
-		PublishConfigValuesOnly();
+		const bool bDirectionalChanged = UpdateDirectionalLighting(InActor);
+		const bool bLocalLightsChanged = UpdateLocalLighting(InActor);
+		if (bDirectionalChanged || bLocalLightsChanged)
+		{
+			PublishConfigValuesOnly();
+		}
 	}
 }
 
@@ -703,6 +714,133 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 		!FMath::IsNearlyEqual(OldIntensity, Config.DirectionalLightIntensity, 1.0e-4f);
 }
 
+
+bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
+{
+	if (!IsValid(InActor) || !InActor->GetWorld())
+	{
+		return false;
+	}
+
+	// Discover components occasionally, but read cached transforms/intensities
+	// every frame so moving point/spot lights update without an actor scan.
+	// A 2-second discovery interval also catches lights spawned at runtime.
+	if (!bHasSearchedLocalLights || GFrameCounter - LastLocalLightDiscoveryFrame >= 120u)
+	{
+		CachedLocalLights.Reset();
+		for (TActorIterator<AActor> ActorIt(InActor->GetWorld()); ActorIt; ++ActorIt)
+		{
+			AActor* LightActor = *ActorIt;
+			if (!IsValid(LightActor))
+			{
+				continue;
+			}
+			TArray<UPointLightComponent*> Components;
+			LightActor->GetComponents<UPointLightComponent>(Components);
+			for (UPointLightComponent* Component : Components)
+			{
+				if (IsValid(Component))
+				{
+					CachedLocalLights.Add(Component);
+				}
+			}
+		}
+		LastLocalLightDiscoveryFrame = GFrameCounter;
+		bHasSearchedLocalLights = true;
+	}
+
+	static const uint32 MaxLocalLights = 32u;
+	TArray<FVector4> NewPositionAndRadius;
+	TArray<FVector4> NewDirectionAndCosOuter;
+	TArray<FVector4> NewColorAndIntensity;
+	TArray<FVector4> NewParameters;
+	NewPositionAndRadius.SetNumZeroed(MaxLocalLights);
+	NewDirectionAndCosOuter.SetNumZeroed(MaxLocalLights);
+	NewColorAndIntensity.SetNumZeroed(MaxLocalLights);
+	NewParameters.SetNumZeroed(MaxLocalLights);
+
+	const FVector BVHOrigin = Config.SoftwareBVH.IsValid()
+		? Config.SoftwareBVH->WorldOrigin
+		: FVector::ZeroVector;
+	const float IntensityScale = FMath::Max(0.0f, InActor->LocalLightGIIntensityScale);
+	uint32 NewLightCount = 0u;
+	for (const TWeakObjectPtr<UPointLightComponent>& WeakLight : CachedLocalLights)
+	{
+		UPointLightComponent* Light = WeakLight.Get();
+		if (!IsValid(Light) || !Light->IsVisible() ||
+			Light->Intensity <= 0.0f || Light->AttenuationRadius <= 1.0f)
+		{
+			continue;
+		}
+		if (NewLightCount >= MaxLocalLights)
+		{
+			break;
+		}
+
+		const FVector LocalPosition = Light->GetComponentLocation() - BVHOrigin;
+		FVector Forward = FVector::ForwardVector;
+		float CosOuter = -2.0f; // Negative sentinel identifies a point light.
+		float CosInner = -2.0f;
+		if (USpotLightComponent* Spot = Cast<USpotLightComponent>(Light))
+		{
+			Forward = Spot->GetComponentTransform().GetUnitAxis(EAxis::X).GetSafeNormal();
+			CosOuter = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Spot->OuterConeAngle, 0.0f, 89.0f)));
+			CosInner = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Spot->InnerConeAngle, 0.0f, 89.0f)));
+		}
+
+		const bool bInverseSquared = Light->bUseInverseSquaredFalloff != 0;
+		// UE4 inverse-square point lights expose lumens. Convert to an
+		// approximate candela scale (lumens / 4PI), then cm^-2 to m^-2.
+		const float ScaledIntensity = bInverseSquared
+			? Light->Intensity * (10000.0f / (4.0f * PI)) * IntensityScale
+			: Light->Intensity * IntensityScale;
+		const FLinearColor Color = Light->LightColor.ReinterpretAsLinear();
+
+		NewPositionAndRadius[NewLightCount] = FVector4(
+			LocalPosition.X, LocalPosition.Y, LocalPosition.Z,
+			FMath::Max(1.0f, Light->AttenuationRadius));
+		NewDirectionAndCosOuter[NewLightCount] = FVector4(
+			Forward.X, Forward.Y, Forward.Z, CosOuter);
+		NewColorAndIntensity[NewLightCount] = FVector4(
+			Color.R, Color.G, Color.B, ScaledIntensity);
+		NewParameters[NewLightCount] = FVector4(
+			FMath::Max(0.1f, Light->LightFalloffExponent),
+			bInverseSquared ? 1.0f : 0.0f,
+			CosInner,
+			0.0f);
+		++NewLightCount;
+	}
+
+	bool bChanged = Config.LocalLightCount != NewLightCount ||
+		Config.LocalLightPositionAndRadius.Num() != static_cast<int32>(MaxLocalLights) ||
+		Config.LocalLightDirectionAndCosOuter.Num() != static_cast<int32>(MaxLocalLights) ||
+		Config.LocalLightColorAndIntensity.Num() != static_cast<int32>(MaxLocalLights) ||
+		Config.LocalLightParameters.Num() != static_cast<int32>(MaxLocalLights);
+	if (!bChanged)
+	{
+		for (uint32 Index = 0u; Index < MaxLocalLights; ++Index)
+		{
+			if (!Config.LocalLightPositionAndRadius[Index].Equals(NewPositionAndRadius[Index], 0.1f) ||
+				!Config.LocalLightDirectionAndCosOuter[Index].Equals(NewDirectionAndCosOuter[Index], 1.0e-4f) ||
+				!Config.LocalLightColorAndIntensity[Index].Equals(NewColorAndIntensity[Index], 1.0e-3f) ||
+				!Config.LocalLightParameters[Index].Equals(NewParameters[Index], 1.0e-4f))
+			{
+				bChanged = true;
+				break;
+			}
+		}
+	}
+	if (bChanged)
+	{
+		Config.LocalLightPositionAndRadius = MoveTemp(NewPositionAndRadius);
+		Config.LocalLightDirectionAndCosOuter = MoveTemp(NewDirectionAndCosOuter);
+		Config.LocalLightColorAndIntensity = MoveTemp(NewColorAndIntensity);
+		Config.LocalLightParameters = MoveTemp(NewParameters);
+		Config.LocalLightCount = NewLightCount;
+	}
+	return bChanged;
+}
+
 void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 {
 	UWorld* World = GetWorld();
@@ -719,9 +857,16 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 	const FVector DirectionalLightDirection = Config.DirectionalLightDirection;
 	const FLinearColor DirectionalLightColor = Config.DirectionalLightColor;
 	const float DirectionalLightIntensity = Config.DirectionalLightIntensity;
+	const TArray<FVector4> LocalLightPositionAndRadius = Config.LocalLightPositionAndRadius;
+	const TArray<FVector4> LocalLightDirectionAndCosOuter = Config.LocalLightDirectionAndCosOuter;
+	const TArray<FVector4> LocalLightColorAndIntensity = Config.LocalLightColorAndIntensity;
+	const TArray<FVector4> LocalLightParameters = Config.LocalLightParameters;
+	const uint32 LocalLightCount = Config.LocalLightCount;
 
 	ENQUEUE_RENDER_COMMAND(DDGIUpdateMasterConfigLighting)(
-		[Scene, bHasDirectionalLight, DirectionalLightDirection, DirectionalLightColor, DirectionalLightIntensity](FRHICommandListImmediate& RHICmdList)
+		[Scene, bHasDirectionalLight, DirectionalLightDirection, DirectionalLightColor, DirectionalLightIntensity,
+		 LocalLightPositionAndRadius, LocalLightDirectionAndCosOuter, LocalLightColorAndIntensity,
+		 LocalLightParameters, LocalLightCount](FRHICommandListImmediate& RHICmdList)
 		{
 			if (FDDGIMasterConfig* ExistingConfig = GDDGIMasterConfigs_RenderThread.Find(Scene))
 			{
@@ -729,6 +874,11 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 				ExistingConfig->DirectionalLightDirection = DirectionalLightDirection;
 				ExistingConfig->DirectionalLightColor = DirectionalLightColor;
 				ExistingConfig->DirectionalLightIntensity = DirectionalLightIntensity;
+				ExistingConfig->LocalLightPositionAndRadius = LocalLightPositionAndRadius;
+				ExistingConfig->LocalLightDirectionAndCosOuter = LocalLightDirectionAndCosOuter;
+				ExistingConfig->LocalLightColorAndIntensity = LocalLightColorAndIntensity;
+				ExistingConfig->LocalLightParameters = LocalLightParameters;
+				ExistingConfig->LocalLightCount = LocalLightCount;
 			}
 		});
 }
