@@ -666,7 +666,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback has invalid SceneColor, ViewFamily, or Scene."));
 			bLoggedInvalidView = true;
 		}
-		return DDGIReturnSceneColorForPostProcessing(GraphBuilder, View, Inputs, SceneColor);
+		return SceneColor;
 	}
 
 	const FSceneInterface* Scene = View.Family->Scene;
@@ -679,7 +679,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback has no enabled master config or valid software BVH."));
 			bLoggedMissingConfig = true;
 		}
-		return DDGIReturnSceneColorForPostProcessing(GraphBuilder, View, Inputs, SceneColor);
+		return SceneColor;
 	}
 
 	FRDGTextureRef DirectionsTexture = nullptr;
@@ -699,7 +699,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback cannot acquire completed radiance/probe textures."));
 			bLoggedMissingLightingTextures = true;
 		}
-		return DDGIReturnSceneColorForPostProcessing(GraphBuilder, View, Inputs, SceneColor);
+		return SceneColor;
 	}
 
 	FShaderResourceViewRHIRef ProbeSpatialHashSRV;
@@ -711,7 +711,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		Scene, LogicalToPhysicalSRV, NewPhysicalSlotsSRV, NewPhysicalSlotCount, PhysicalSlotCapacity) ||
 		!LogicalToPhysicalSRV.IsValid() || PhysicalSlotCapacity == 0u)
 	{
-		return DDGIReturnSceneColorForPostProcessing(GraphBuilder, View, Inputs, SceneColor);
+		return SceneColor;
 	}
 
 	if (!DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
@@ -724,7 +724,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback cannot acquire a valid probe spatial hash."));
 			bLoggedMissingHash = true;
 		}
-		return DDGIReturnSceneColorForPostProcessing(GraphBuilder, View, Inputs, SceneColor);
+		return SceneColor;
 	}
 
 	if (!Inputs.SceneTextures.SceneTextures)
@@ -735,13 +735,13 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: post-process inputs do not contain SceneTextures."));
 			bLoggedMissingSceneTextures = true;
 		}
-		return DDGIReturnSceneColorForPostProcessing(GraphBuilder, View, Inputs, SceneColor);
+		return SceneColor;
 	}
 
 	const FIntPoint ViewSize = SceneColor.ViewRect.Size();
 	if (ViewSize.X <= 0 || ViewSize.Y <= 0)
 	{
-		return DDGIReturnSceneColorForPostProcessing(GraphBuilder, View, Inputs, SceneColor);
+		return SceneColor;
 	}
 
 	FRDGTextureDesc OutputDesc = SceneColor.Texture->Desc;
