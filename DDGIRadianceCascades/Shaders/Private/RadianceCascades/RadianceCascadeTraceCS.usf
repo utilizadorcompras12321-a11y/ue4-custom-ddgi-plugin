@@ -26,6 +26,11 @@ float4 DirectionalLightDirection;
 float4 DirectionalLightColor;
 float DirectionalLightIntensity;
 uint bHasDirectionalLight;
+uint LocalLightCount;
+float4 LocalLightPositionAndRadius[32];
+float4 LocalLightDirectionAndCosOuter[32];
+float4 LocalLightColorAndIntensity[32];
+float4 LocalLightParameters[32];
 
 Texture2D<float4> DirectionsTexture;
 Texture2D<float4> ProbePositionsTexture;
@@ -518,6 +523,83 @@ bool TraceClosestHit(
     return bFoundHit;
 }
 
+float3 EvaluateLocalDirectLighting(
+    float3 HitPosition,
+    float3 Normal,
+    float3 BaseColor,
+    uint IgnoreTriangleIndex)
+{
+    float3 Direct = 0.0f;
+    const uint SafeLocalLightCount = min(LocalLightCount, 32u);
+    [loop]
+    for (uint LightIndex = 0u; LightIndex < SafeLocalLightCount; ++LightIndex)
+    {
+        float4 PositionAndRadius = LocalLightPositionAndRadius[LightIndex];
+        float4 DirectionAndCosOuter = LocalLightDirectionAndCosOuter[LightIndex];
+        float4 ColorAndIntensity = LocalLightColorAndIntensity[LightIndex];
+        float4 LightParameters = LocalLightParameters[LightIndex];
+
+        float3 ToLightVector = PositionAndRadius.xyz - HitPosition;
+        float DistanceSquared = dot(ToLightVector, ToLightVector);
+        float Radius = max(PositionAndRadius.w, 1.0f);
+        if (DistanceSquared <= 1.0f || DistanceSquared >= Radius * Radius)
+        {
+            continue;
+        }
+
+        float Distance = sqrt(DistanceSquared);
+        float3 ToLight = ToLightVector / Distance;
+        float NdotL = saturate(dot(Normal, ToLight));
+        if (NdotL <= 0.0f)
+        {
+            continue;
+        }
+
+        float RadialFade = 1.0f - smoothstep(Radius * 0.8f, Radius, Distance);
+        float Attenuation;
+        if (LightParameters.y > 0.5f)
+        {
+            // Inverse-square lights are packed as candela*cm^2. The CPU
+            // converts UE4 lumens to approximate candela before this divide.
+            Attenuation = RadialFade / max(DistanceSquared, 10000.0f);
+        }
+        else
+        {
+            float LegacyFade = saturate(1.0f - Distance / Radius);
+            Attenuation = pow(LegacyFade, max(LightParameters.x, 0.1f));
+        }
+
+        // Spot lights use a smooth inner-to-outer cone transition. Point
+        // lights carry a negative cosine sentinel and skip this term.
+        if (DirectionAndCosOuter.w > -1.0f)
+        {
+            float CosTheta = dot(-ToLight, normalize(DirectionAndCosOuter.xyz));
+            float CosInner = max(
+                DirectionAndCosOuter.w,
+                LightParameters.z);
+            Attenuation *= smoothstep(
+                DirectionAndCosOuter.w,
+                max(CosInner, DirectionAndCosOuter.w + 1.0e-4f),
+                CosTheta);
+        }
+
+        if (Attenuation <= 1.0e-6f)
+        {
+            continue;
+        }
+
+        float3 ShadowOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
+        float ShadowDistance = max(Distance - ComputeRayOriginBias(HitPosition) * 2.0f, 0.0f);
+        if (!TraceAnyHit(ShadowOrigin, ToLight, ShadowDistance, IgnoreTriangleIndex))
+        {
+            Direct += BaseColor * ColorAndIntensity.rgb *
+                ColorAndIntensity.w * Attenuation * NdotL *
+                (1.0f / 3.14159265f) * GIIntensity;
+        }
+    }
+    return Direct;
+}
+
 float3 EvaluateHitSurfaceRadiance(
     uint TriangleIndex,
     float3 TriangleA,
@@ -539,10 +621,8 @@ float3 EvaluateHitSurfaceRadiance(
     // The geometric normal is only needed for direct diffuse lighting.
     // Emissive-only surfaces and scenes without a directional light can
     // return immediately without cross products or normal normalization.
-    if (bHasDirectionalLight == 0u ||
-        DirectionalLightIntensity == 0.0f ||
-        !any(DirectionalLightColor.rgb != 0.0f) ||
-        !any(BaseColor > 1.0e-6f))
+    if (!any(BaseColor > 1.0e-6f) ||
+        (bHasDirectionalLight == 0u && LocalLightCount == 0u))
     {
         return Emissive;
     }
@@ -556,18 +636,25 @@ float3 EvaluateHitSurfaceRadiance(
     float3 Direct = 0.0f;
     if (dot(Normal, Normal) > 0.0f)
     {
-        float NdotL = saturate(dot(Normal, ToLight));
-        if (NdotL > 0.0f)
+        if (bHasDirectionalLight != 0u &&
+            DirectionalLightIntensity > 0.0f &&
+            any(DirectionalLightColor.rgb != 0.0f))
         {
-            float3 ShadowOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
-            const float DirectionalShadowDistance = 1000000.0f;
-            if (!TraceAnyHit(ShadowOrigin, ToLight, DirectionalShadowDistance, TriangleIndex))
+            float NdotL = saturate(dot(Normal, ToLight));
+            if (NdotL > 0.0f)
             {
-                Direct = BaseColor * DirectionalLightColor.rgb *
-                    DirectionalLightIntensity * NdotL *
-                    (1.0f / 3.14159265f) * GIIntensity;
+                float3 ShadowOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
+                const float DirectionalShadowDistance = 1000000.0f;
+                if (!TraceAnyHit(ShadowOrigin, ToLight, DirectionalShadowDistance, TriangleIndex))
+                {
+                    Direct += BaseColor * DirectionalLightColor.rgb *
+                        DirectionalLightIntensity * NdotL *
+                        (1.0f / 3.14159265f) * GIIntensity;
+                }
             }
         }
+        Direct += EvaluateLocalDirectLighting(
+            HitPosition, Normal, BaseColor, TriangleIndex);
     }
 
     return Emissive + Direct;
@@ -801,23 +888,27 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         // A black diffuse albedo cannot receive direct diffuse light.
         // Keep emissive radiance above, but skip the pointless shadow traversal.
         if (dot(GeometricNormal, GeometricNormal) > 0.0f &&
-            bHasDirectionalLight != 0u &&
             any(HitBaseColor > 1.0e-6f))
         {
-            float3 ToLight = normalize(DirectionalLightDirection.xyz);
-            float NdotL = saturate(dot(GeometricNormal, ToLight));
-            if (NdotL > 0.0f)
+            if (bHasDirectionalLight != 0u && DirectionalLightIntensity > 0.0f)
             {
-                float3 ShadowOrigin = HitPosition + GeometricNormal * ComputeRayOriginBias(HitPosition);
-                const float DirectionalShadowDistance = 1000000.0f;
-                const bool bOccluded = TraceAnyHit(
-                    ShadowOrigin, ToLight, DirectionalShadowDistance, ClosestTriangleIndex);
-                if (!bOccluded)
+                float3 ToLight = normalize(DirectionalLightDirection.xyz);
+                float NdotL = saturate(dot(GeometricNormal, ToLight));
+                if (NdotL > 0.0f)
                 {
-                    HitDirectRadiance = HitBaseColor * DirectionalLightColor.rgb *
-                        DirectionalLightIntensity * NdotL * (1.0f / 3.14159265f) * GIIntensity;
+                    float3 ShadowOrigin = HitPosition + GeometricNormal * ComputeRayOriginBias(HitPosition);
+                    const float DirectionalShadowDistance = 1000000.0f;
+                    const bool bOccluded = TraceAnyHit(
+                        ShadowOrigin, ToLight, DirectionalShadowDistance, ClosestTriangleIndex);
+                    if (!bOccluded)
+                    {
+                        HitDirectRadiance = HitBaseColor * DirectionalLightColor.rgb *
+                            DirectionalLightIntensity * NdotL * (1.0f / 3.14159265f) * GIIntensity;
+                    }
                 }
             }
+            HitDirectRadiance += EvaluateLocalDirectLighting(
+                HitPosition, GeometricNormal, HitBaseColor, ClosestTriangleIndex);
         }
 
         // One deterministic diffuse bounce: secondary rays evaluate direct
