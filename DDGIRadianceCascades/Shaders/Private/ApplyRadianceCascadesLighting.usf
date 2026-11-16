@@ -179,7 +179,7 @@ float3 DDGIProbeDiffuseIrradiance(
             uint2 RadiancePixel = uint2(
                 LinearIndex % DDGI_RC_TEXTURE_WIDTH,
                 LinearIndex / DDGI_RC_TEXTURE_WIDTH);
-            Irradiance += DDGIUnpackRGB9E5(RadianceTexture.Load(int3(RadiancePixel, 0))) * Cosine;
+            Irradiance += DDGIUnpackR11G11B10(RadianceTexture.Load(int3(RadiancePixel, 0))) * Cosine;
         }
     }
 
