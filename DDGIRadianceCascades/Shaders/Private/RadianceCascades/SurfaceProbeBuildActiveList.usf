@@ -2,42 +2,37 @@
 
 StructuredBuffer<uint> SurfaceProbeLastSeenFrames;
 RWStructuredBuffer<uint> SurfaceProbeActiveIndices;
+RWStructuredBuffer<uint> SurfaceProbeTraceIndices;
 RWStructuredBuffer<uint> SurfaceProbeCounters;
 
 uint ProbeCapacity;
 uint FrameNumber;
+uint TraceProbeBudget;
 
 static const uint DDGI_SURFACE_PROBE_RETENTION_FRAMES = 120u;
 
+// Keep the active list sorted by physical slot. The trace scheduler uses this
+// stable ordering for starvation-free round robin across frames.
 [numthreads(1, 1, 1)]
-void SurfaceProbeResetActiveListCS(uint3 DispatchThreadID : SV_DispatchThreadID)
-{
-    SurfaceProbeCounters[6] = 0u;
-}
-
-[numthreads(64, 1, 1)]
 void SurfaceProbeBuildActiveListCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-    uint PhysicalSlot = DispatchThreadID.x;
     uint AllocatedCount = min(SurfaceProbeCounters[4], ProbeCapacity);
-    if (PhysicalSlot >= AllocatedCount)
+    uint ActiveCount = 0u;
+    SurfaceProbeCounters[6] = 0u;
+
+    [loop]
+    for (uint PhysicalSlot = 0u; PhysicalSlot < AllocatedCount; ++PhysicalSlot)
     {
-        return;
+        uint LastSeenFrame = SurfaceProbeLastSeenFrames[PhysicalSlot];
+        uint FrameAge = FrameNumber - LastSeenFrame;
+        if (FrameAge <= DDGI_SURFACE_PROBE_RETENTION_FRAMES)
+        {
+            SurfaceProbeActiveIndices[ActiveCount] = PhysicalSlot;
+            ++ActiveCount;
+        }
     }
 
-    uint LastSeenFrame = SurfaceProbeLastSeenFrames[PhysicalSlot];
-    uint FrameAge = FrameNumber - LastSeenFrame;
-    if (FrameAge > DDGI_SURFACE_PROBE_RETENTION_FRAMES)
-    {
-        return;
-    }
-
-    uint ActiveIndex;
-    InterlockedAdd(SurfaceProbeCounters[6], 1u, ActiveIndex);
-    if (ActiveIndex < ProbeCapacity)
-    {
-        SurfaceProbeActiveIndices[ActiveIndex] = PhysicalSlot;
-    }
+    SurfaceProbeCounters[6] = ActiveCount;
 }
 
 [numthreads(1, 1, 1)]
