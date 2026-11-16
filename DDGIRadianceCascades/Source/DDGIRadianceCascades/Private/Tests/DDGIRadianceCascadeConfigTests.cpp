@@ -62,6 +62,10 @@ bool FDDGIRadianceCascadeLayoutTest::RunTest(const FString& Parameters)
 	// helpers are mirrored by RadianceCascadeLayout.ush and must never produce
 	// overlapping storage ranges or gaps in the distance intervals.
 	const float TraceDistances[] = { 1.0f, 249.0f, 250.0f, 1000.0f, 7750.0f, 1000000.0f };
+	bool bAllCascadeCountsValid = true;
+	bool bAllRayLayoutsBounded = true;
+	bool bAllStorageOffsetsContiguous = true;
+	bool bAllDistanceIntervalsValid = true;
 	for (int32 CascadeCount = 1; CascadeCount <= 8; ++CascadeCount)
 	{
 		for (int32 BaseRays = 1; BaseRays <= 64; ++BaseRays)
@@ -79,39 +83,37 @@ bool FDDGIRadianceCascadeLayoutTest::RunTest(const FString& Parameters)
 					Sweep.MaxTraceDistance = TraceDistance;
 
 					const int32 ActiveCount = Sweep.GetSafeCascadeCount();
-					TestTrue(TEXT("At least one cascade remains active"),
-						ActiveCount >= 1 && ActiveCount <= CascadeCount);
-					TestTrue(TEXT("Packed ray storage remains positive and bounded"),
-						Sweep.GetTotalRayCount() >= BaseRays &&
-						Sweep.GetTotalRayCount() <= 8 * 65536);
+					bAllCascadeCountsValid &= ActiveCount >= 1 && ActiveCount <= CascadeCount;
+					bAllRayLayoutsBounded &= Sweep.GetTotalRayCount() >= BaseRays &&
+						Sweep.GetTotalRayCount() <= 8 * 65536;
 
 					int32 ExpectedOffset = 0;
 					for (int32 Level = 0; Level < ActiveCount; ++Level)
 					{
-						TestEqual(TEXT("Cascade storage begins at the previous cascade end"),
-							Sweep.GetRayStorageOffset(Level), ExpectedOffset);
+						bAllStorageOffsetsContiguous &= Sweep.GetRayStorageOffset(Level) == ExpectedOffset;
 						ExpectedOffset += Sweep.GetRayCount(Level);
-						TestEqual(TEXT("Next offset follows this cascade's complete ray group"),
-							Sweep.GetRayStorageOffset(Level + 1), ExpectedOffset);
-						TestTrue(TEXT("Cascade interval has positive length"),
-							Sweep.GetCascadeEndDistance(Level) >
-							Sweep.GetCascadeStartDistance(Level));
+						bAllStorageOffsetsContiguous &= Sweep.GetRayStorageOffset(Level + 1) == ExpectedOffset;
+						bAllDistanceIntervalsValid &= Sweep.GetCascadeEndDistance(Level) >
+							Sweep.GetCascadeStartDistance(Level);
 						if (Level + 1 < ActiveCount)
 						{
-							TestTrue(TEXT("Adjacent cascade intervals meet exactly"),
-								FMath::IsNearlyEqual(
-									Sweep.GetCascadeEndDistance(Level),
-									Sweep.GetCascadeStartDistance(Level + 1), 1.0e-3f));
+							bAllDistanceIntervalsValid &= FMath::IsNearlyEqual(
+								Sweep.GetCascadeEndDistance(Level),
+								Sweep.GetCascadeStartDistance(Level + 1), 1.0e-3f);
 						}
 					}
-					TestTrue(TEXT("Final active cascade reaches the trace limit"),
-						FMath::IsNearlyEqual(
-							Sweep.GetCascadeEndDistance(ActiveCount - 1),
-							TraceDistance, 1.0e-3f));
+					bAllDistanceIntervalsValid &= FMath::IsNearlyEqual(
+						Sweep.GetCascadeEndDistance(ActiveCount - 1),
+						TraceDistance, 1.0e-3f);
 				}
 			}
 		}
 	}
+
+	TestTrue(TEXT("All supported cascade counts retain a valid active interval"), bAllCascadeCountsValid);
+	TestTrue(TEXT("All supported ray layouts remain bounded"), bAllRayLayoutsBounded);
+	TestTrue(TEXT("All supported ray storage offsets are contiguous"), bAllStorageOffsetsContiguous);
+	TestTrue(TEXT("All supported distance intervals are contiguous and reach MaxTraceDistance"), bAllDistanceIntervalsValid);
 
 	// The shader's 16-bit mantissa/exponent storage is independent of this
 	// configuration calculation; verify that byte estimates remain monotonic.
