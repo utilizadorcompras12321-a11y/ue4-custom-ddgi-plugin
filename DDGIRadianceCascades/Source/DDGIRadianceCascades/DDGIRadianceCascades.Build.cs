@@ -27,9 +27,7 @@ public class DDGIRadianceCascades : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"RenderCore",
-			"Renderer",
-			"DeveloperSettings",
-			"RHI",
+			"Renderer",			"RHI",
 		});
 
 		PrivateIncludePaths.AddRange(new string[]
