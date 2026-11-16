@@ -68,9 +68,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "1", ClampMax = "250000", UIMin = "1000", UIMax = "250000"))
 	int32 MaxSoftwareTriangles = 250000;
 
-	// Retained for later probe scheduling; does not cap BVH construction.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "0"))
-	int32 ProbeUpdateBudget = 50000;
+	// Maximum number of sparse probes traced per frame. Higher values refresh the clipmap faster at greater GPU cost.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "0", ClampMax = "8192", UIMin = "0", UIMax = "2048"))
+	int32 ProbeUpdateBudget = 128;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Background")
 	bool bEnableStaticBackground = true;
