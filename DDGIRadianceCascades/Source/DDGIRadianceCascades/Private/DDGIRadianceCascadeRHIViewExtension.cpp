@@ -50,8 +50,6 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
-		UpdateProbeStart.Bind(Initializer.ParameterMap, TEXT("UpdateProbeStart"));
-		UpdateProbeCount.Bind(Initializer.ParameterMap, TEXT("UpdateProbeCount"));
 		CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
 		BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
 		RaySplitFactor.Bind(Initializer.ParameterMap, TEXT("RaySplitFactor"));
@@ -97,8 +95,6 @@ public:
 		const uint32 InTextureWidth = 4096;
 
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
-		SetShaderValue(RHICmdList, ShaderRHI, UpdateProbeStart, InUpdateProbeStart);
-		SetShaderValue(RHICmdList, ShaderRHI, UpdateProbeCount, InUpdateProbeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
 		SetShaderValue(RHICmdList, ShaderRHI, RaySplitFactor, InRaySplitFactor);
@@ -239,8 +235,6 @@ public:
 		uint32 InDispatchGroupsX,
 		uint32 InProbeCount,
 		uint32 InTotalRaysPerProbe,
-		uint32 InUpdateProbeStart,
-		uint32 InUpdateProbeCount,
 		uint32 InNodeCount,
 		uint32 InTriangleCount,
 		uint32 InCascadeCount,
@@ -315,8 +309,6 @@ private:
 	LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
 	LAYOUT_FIELD(FShaderParameter, ProbeCount);
 	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
-	LAYOUT_FIELD(FShaderParameter, UpdateProbeStart);
-	LAYOUT_FIELD(FShaderParameter, UpdateProbeCount);
 	LAYOUT_FIELD(FShaderParameter, NodeCount);
 	LAYOUT_FIELD(FShaderParameter, TriangleCount);
 	LAYOUT_FIELD(FShaderParameter, CascadeCount);
@@ -1116,19 +1108,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
-	// Initialization clears newly allocated slots, so trace every logical probe
-	// on that frame. On steady-state frames, rotate a bounded contiguous window;
-	// untouched probes retain their previous radiance and hit history.
-	const uint32 SafeUpdateBudget = Config->ProbeUpdateBudget > 0
-		? static_cast<uint32>(Config->ProbeUpdateBudget)
-		: ProbeCount;
-	const uint32 UpdateProbeCount = bClaimedUpdateFrame
-		? ProbeCount
-		: FMath::Clamp(SafeUpdateBudget, 1u, ProbeCount);
-	const uint32 UpdateProbeStart = UpdateProbeCount >= ProbeCount
-		? 0u
-		: static_cast<uint32>((static_cast<uint64>(InView.Family->FrameNumber) * UpdateProbeCount) % ProbeCount);
-
 	DDGITransitionTexture(RHICmdList, DirectionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, ProbePositionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
@@ -1158,7 +1137,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
 		RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
 		TotalTexels, GroupsX, ProbeCount, TotalRaysPerProbe,
-		UpdateProbeStart, UpdateProbeCount,
 		NodeCount, TriangleCount,
 		static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
 		Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
