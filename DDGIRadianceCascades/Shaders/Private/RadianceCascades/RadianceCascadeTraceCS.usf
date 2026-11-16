@@ -591,9 +591,12 @@ float3 EvaluateLocalDirectLighting(
 
         float3 ShadowOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
         float ShadowDistance = max(Distance - ComputeRayOriginBias(HitPosition) * 2.0f, 0.0f);
-        const bool bLocalLightOccluded =
-            LightParameters.w > 0.5f &&
-            TraceAnyHit(ShadowOrigin, ToLight, ShadowDistance, IgnoreTriangleIndex);
+        bool bLocalLightOccluded = false;
+        if (LightParameters.w > 0.5f)
+        {
+            bLocalLightOccluded = TraceAnyHit(
+                ShadowOrigin, ToLight, ShadowDistance, IgnoreTriangleIndex);
+        }
         if (!bLocalLightOccluded)
         {
             Direct += BaseColor * ColorAndIntensity.rgb *
@@ -649,9 +652,12 @@ float3 EvaluateHitSurfaceRadiance(
             {
                 float3 ShadowOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
                 const float DirectionalShadowDistance = 1000000.0f;
-                const bool bDirectionalOccluded =
-                    bDirectionalLightCastsShadows != 0u &&
-                    TraceAnyHit(ShadowOrigin, ToLight, DirectionalShadowDistance, TriangleIndex);
+                bool bDirectionalOccluded = false;
+                if (bDirectionalLightCastsShadows != 0u)
+                {
+                    bDirectionalOccluded = TraceAnyHit(
+                        ShadowOrigin, ToLight, DirectionalShadowDistance, TriangleIndex);
+                }
                 if (!bDirectionalOccluded)
                 {
                     Direct += BaseColor * DirectionalLightColor.rgb *
@@ -905,9 +911,12 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                 {
                     float3 ShadowOrigin = HitPosition + GeometricNormal * ComputeRayOriginBias(HitPosition);
                     const float DirectionalShadowDistance = 1000000.0f;
-                    const bool bOccluded =
-                        bDirectionalLightCastsShadows != 0u &&
-                        TraceAnyHit(ShadowOrigin, ToLight, DirectionalShadowDistance, ClosestTriangleIndex);
+                    bool bOccluded = false;
+                    if (bDirectionalLightCastsShadows != 0u)
+                    {
+                        bOccluded = TraceAnyHit(
+                            ShadowOrigin, ToLight, DirectionalShadowDistance, ClosestTriangleIndex);
+                    }
                     if (!bOccluded)
                     {
                         HitDirectRadiance = HitBaseColor * DirectionalLightColor.rgb *
