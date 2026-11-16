@@ -573,12 +573,14 @@ float3 EvaluateHitSurfaceRadiance(
     return Emissive + Direct;
 }
 
-// Fixed four-point cosine-weighted hemisphere quadrature. The sample pattern
-// is indexed only by the ray/hit, never by frame number or a random seed.
+// Deterministic cosine-weighted hemisphere quadrature. Four samples are used
+// by the regular cascade path; Surface Probes use two opposite azimuths to
+// reduce secondary BVH traversal cost while retaining a balanced sample pair.
 float3 TraceDeterministicDiffuseBounce(
     float3 HitPosition,
     float3 SurfaceNormal,
-    uint IgnoreTriangleIndex)
+    uint IgnoreTriangleIndex,
+    uint SampleCount)
 {
     // ComputeTriangleGeometricNormal already returns a finite unit vector.
     // The caller only flips its sign, so normalizing it again is redundant.
@@ -599,30 +601,35 @@ float3 TraceDeterministicDiffuseBounce(
         BasisSign + Normal.y * Normal.y * BasisA,
         -Normal.y);
 
-    // The origin offset is identical for all four deterministic samples.
+    // The origin offset is identical for all deterministic samples.
     // Compute it once per primary hit instead of repeating the bias calculation.
     float3 SecondaryOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
 
     float3 IncomingRadianceSum = 0.0f;
-    // Directional light direction is invariant across all four secondary hits.
+    // Directional light direction is invariant across the secondary hits.
     // Normalize it once per primary hit, not once per secondary surface.
     float3 ToLight = bHasDirectionalLight != 0u
         ? normalize(DirectionalLightDirection.xyz)
         : 0.0f;
-    const uint SampleCount = 4u;
+    SampleCount = clamp(SampleCount, 1u, 4u);
+    // For a two-sample budget, select opposite azimuths (indices 0 and 2)
+    // rather than adjacent quadrants. This avoids clustering both rays on
+    // the same side of the tangent basis.
+    const uint SampleStride = SampleCount == 2u ? 2u : 1u;
     const float CosTheta = 0.6666666666666667f;
     const float SinTheta = 0.7453559924999299f;
     const float AzimuthComponent = 0.7071067811865475f;
 
     // Fourfold-symmetric cosine-weighted quadrature. The four azimuths are
-    // the exact sign permutations of (1/sqrt(2), 1/sqrt(2)); encode those
-    // signs directly instead of evaluating sin/cos for compile-time angles.
-    // The sample order matches the original +,+ / -,+ / -,- / +,- sequence.
+    // exact sign permutations of (1/sqrt(2), 1/sqrt(2)); encode those signs
+    // directly instead of evaluating sin/cos for compile-time angles.
+    // A two-sample pass uses opposite quadrants from the same pattern.
     [loop]
     for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
     {
-        float TangentSign = ((SampleIndex + 1u) & 2u) != 0u ? -1.0f : 1.0f;
-        float BitangentSign = (SampleIndex & 2u) != 0u ? -1.0f : 1.0f;
+        uint PatternIndex = SampleIndex * SampleStride;
+        float TangentSign = ((PatternIndex + 1u) & 2u) != 0u ? -1.0f : 1.0f;
+        float BitangentSign = (PatternIndex & 2u) != 0u ? -1.0f : 1.0f;
         // Tangent and bitangent form an orthonormal basis around the
         // unit surface normal. The cosine-weighted sample is therefore
         // unit length analytically; avoid a per-ray normalize/rsqrt here.
@@ -824,7 +831,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             any(HitBaseColor > 1.0e-6f))
         {
             float3 IncomingBounceRadiance = TraceDeterministicDiffuseBounce(
-                HitPosition, GeometricNormal, ClosestTriangleIndex);
+                HitPosition, GeometricNormal, ClosestTriangleIndex, 4u);
             HitIndirectRadiance = HitBaseColor * IncomingBounceRadiance;
         }
     }
@@ -928,7 +935,7 @@ void SurfaceProbeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             if (dot(HitNormal, HitNormal) > 0.0f && any(HitBaseColor > 1.0e-6f))
             {
                 HitRadiance += HitBaseColor * TraceDeterministicDiffuseBounce(
-                    HitPosition, HitNormal, HitTriangleIndex);
+                    HitPosition, HitNormal, HitTriangleIndex, 2u);
             }
             IncomingRadianceSum += HitRadiance;
         }
