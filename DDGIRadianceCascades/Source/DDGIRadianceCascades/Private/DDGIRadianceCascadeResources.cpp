@@ -56,6 +56,75 @@ namespace
 		}
 	};
 
+	// Fingerprint every input that changes traced radiance. Quantization avoids
+	// invalidating the entire cache for sub-millimeter / sub-0.1% float noise.
+	uint32 DDGIMixLightingFloat(uint32 Hash, float Value, float Scale = 1000.0f)
+	{
+		const float SafeValue = FMath::IsFinite(Value)
+			? FMath::Clamp(Value, -1000000.0f, 1000000.0f)
+			: 0.0f;
+		const int32 Quantized = FMath::RoundToInt(SafeValue * Scale);
+		Hash ^= static_cast<uint32>(Quantized);
+		return Hash * 16777619u;
+	}
+
+	uint32 DDGIGetLightingFingerprint(const FDDGIMasterConfig& Config)
+	{
+		uint32 Hash = 2166136261u;
+		auto MixBool = [&Hash](bool Value)
+		{
+			Hash ^= Value ? 1u : 0u;
+			Hash *= 16777619u;
+		};
+		auto MixFloat = [&Hash](float Value, float Scale = 1000.0f)
+		{
+			Hash = DDGIMixLightingFloat(Hash, Value, Scale);
+		};
+		auto MixVector = [&MixFloat](const FVector4& Value, float Scale = 1000.0f)
+		{
+			MixFloat(Value.X, Scale);
+			MixFloat(Value.Y, Scale);
+			MixFloat(Value.Z, Scale);
+			MixFloat(Value.W, Scale);
+		};
+
+		MixBool(Config.bHasDirectionalLight);
+		MixBool(Config.bDirectionalLightCastsShadows);
+		MixFloat(Config.DirectionalLightDirection.X);
+		MixFloat(Config.DirectionalLightDirection.Y);
+		MixFloat(Config.DirectionalLightDirection.Z);
+		MixFloat(Config.DirectionalLightColor.R);
+		MixFloat(Config.DirectionalLightColor.G);
+		MixFloat(Config.DirectionalLightColor.B);
+		MixFloat(Config.DirectionalLightIntensity);
+		MixFloat(Config.GIIntensity);
+		MixFloat(Config.LocalLightGIIntensityScale);
+
+		MixBool(Config.bEnableStaticBackground);
+		MixFloat(Config.StaticBackgroundColor.R);
+		MixFloat(Config.StaticBackgroundColor.G);
+		MixFloat(Config.StaticBackgroundColor.B);
+		MixFloat(Config.StaticBackgroundIntensity);
+		MixFloat(Config.BackgroundTransitionStart, 10.0f);
+		MixFloat(Config.BackgroundTransitionEnd, 10.0f);
+
+		const uint32 SafeLocalLightCount = FMath::Min<uint32>(
+			Config.LocalLightCount,
+			static_cast<uint32>(FMath::Min(
+				FMath::Min(Config.LocalLightPositionAndRadius.Num(), Config.LocalLightDirectionAndCosOuter.Num()),
+				FMath::Min(Config.LocalLightColorAndIntensity.Num(), Config.LocalLightParameters.Num()))));
+		Hash ^= SafeLocalLightCount;
+		Hash *= 16777619u;
+		for (uint32 Index = 0; Index < SafeLocalLightCount; ++Index)
+		{
+			MixVector(Config.LocalLightPositionAndRadius[static_cast<int32>(Index)], 10.0f);
+			MixVector(Config.LocalLightDirectionAndCosOuter[static_cast<int32>(Index)]);
+			MixVector(Config.LocalLightColorAndIntensity[static_cast<int32>(Index)]);
+			MixVector(Config.LocalLightParameters[static_cast<int32>(Index)]);
+		}
+		return Hash;
+	}
+
 	struct FDDGIRetainedPhysicalProbeSlot
 	{
 		uint32 PhysicalSlot = MAX_uint32;
@@ -124,6 +193,8 @@ namespace
 		uint32 BVHNodeCount = 0;
 		uint32 BVHTriangleCount = 0;
 		uint32 LastRadianceUpdateFrameNumber = MAX_uint32;
+		uint32 LightingFingerprint = 0u;
+		bool bHasLightingFingerprint = false;
 		bool bNeedsInitialization = true;
 		bool bNeedsDirectionInitialization = true;
 		bool bInvalidateAllPhysicalSlots = false;
@@ -214,6 +285,8 @@ namespace
 			bInvalidateAllPhysicalSlots = false;
 			bPendingPhysicalSlotsUpload = false;
 			LastRadianceUpdateFrameNumber = MAX_uint32;
+			LightingFingerprint = 0u;
+			bHasLightingFingerprint = false;
 		}
 	};
 
@@ -294,6 +367,18 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
+    // Traced radiance is cached per physical probe. If any direct-light or
+    // background input changes, the old cache is no longer physically valid:
+    // retaining it is the source of long-lived lighting ghost trails.
+    const uint32 CurrentLightingFingerprint = DDGIGetLightingFingerprint(Config);
+    if (Storage.bHasLightingFingerprint &&
+        Storage.LightingFingerprint != CurrentLightingFingerprint)
+    {
+        Storage.bInvalidateAllPhysicalSlots = true;
+        Storage.bNeedsInitialization = true;
+    }
+    Storage.LightingFingerprint = CurrentLightingFingerprint;
+    Storage.bHasLightingFingerprint = true;
     const float PreviousUploadedProbeSpacing = Storage.UploadedProbeSpacing;
     // Ray textures are a grow-only capacity pool. A smaller active window must
     // not shrink/recreate the textures: doing so discards every probe's history.
