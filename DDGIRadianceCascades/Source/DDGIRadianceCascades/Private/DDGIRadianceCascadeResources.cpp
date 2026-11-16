@@ -463,7 +463,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_LastSeenFrames"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeLastSeenFrames, Storage.SurfaceProbeLastSeenFramesSRV, Storage.SurfaceProbeLastSeenFramesUAV) &&
             DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_ActiveIndices"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeActiveIndices, Storage.SurfaceProbeActiveIndicesSRV, Storage.SurfaceProbeActiveIndicesUAV) &&
             DDGICreateSurfaceProbeBuffer<FDDGISurfaceProbeHashEntry>(TEXT("DDGISurfaceProbe_Hash"), GDDGISurfaceProbeHashCapacity, Storage.SurfaceProbeHash, Storage.SurfaceProbeHashSRV, Storage.SurfaceProbeHashUAV) &&
-            DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_Counters"), 4u, Storage.SurfaceProbeCounters, Storage.SurfaceProbeCountersSRV, Storage.SurfaceProbeCountersUAV);
+            DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_Counters"), 8u, Storage.SurfaceProbeCounters, Storage.SurfaceProbeCountersSRV, Storage.SurfaceProbeCountersUAV);
         if (!bSurfaceBuffersCreated)
         {
         Storage.SurfaceProbePositionsPooled.SafeRelease();
@@ -2060,7 +2060,7 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
     if (!Storage->SurfaceProbeHashPooled.IsValid())
         Storage->SurfaceProbeHashPooled = MakePooledBuffer(Storage->SurfaceProbeHash, sizeof(FDDGISurfaceProbeHashEntry), Storage->SurfaceProbeHashCapacity, TEXT("DDGISurfaceProbe_Hash"));
     if (!Storage->SurfaceProbeCountersPooled.IsValid())
-        Storage->SurfaceProbeCountersPooled = MakePooledBuffer(Storage->SurfaceProbeCounters, sizeof(uint32), 4u, TEXT("DDGISurfaceProbe_Counters"));
+        Storage->SurfaceProbeCountersPooled = MakePooledBuffer(Storage->SurfaceProbeCounters, sizeof(uint32), 8u, TEXT("DDGISurfaceProbe_Counters"));
 
     if (!Storage->SurfaceProbeCandidatePositionsPooled.IsValid() || !Storage->SurfaceProbeCandidateNormalsPooled.IsValid() ||
         !Storage->SurfaceProbePositionsPooled.IsValid() || !Storage->SurfaceProbeNormalsPooled.IsValid() ||
