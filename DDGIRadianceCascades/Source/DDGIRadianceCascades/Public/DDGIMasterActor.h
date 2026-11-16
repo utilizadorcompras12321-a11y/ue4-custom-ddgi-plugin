@@ -38,7 +38,7 @@ public:
 	float DynamicGIDistance = 10000.0f;
 
 	// Radius covered by the probe lattice. A smaller local radius preserves probe density under the GPU probe budget.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", Units = "cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", ClampMax = "12000000.0", Units = "cm"))
 	float ProbeGridDistance = 4000.0f;
 
 	// Radiance Cascades layout. These settings define the cascade hierarchy,
@@ -59,7 +59,7 @@ public:
 	float CascadeScale = 2.0f;
 
 	// Base spacing for spatial probe level 0. Higher levels use explicit steps {1, 2, 3, 4}.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", Units = "cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", ClampMax = "100000.0", Units = "cm"))
 	float ProbeSpacing = 200.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "1", ClampMax = "32768", UIMin = "1", UIMax = "32768"))
