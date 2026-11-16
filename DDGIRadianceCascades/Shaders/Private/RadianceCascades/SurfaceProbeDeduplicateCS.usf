@@ -91,6 +91,133 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         if (ExistingSlot == 0u)
         {
+            // The exact stable key is absent. Before allocating a second probe,
+            // look for the same quantized normal in the 26 adjacent 50 cm cells.
+            // This catches small surface motion across a cell boundary without
+            // treating a nearby, differently oriented surface as the same probe.
+            uint NeighborBucket = 0xffffffffu;
+            uint NeighborSlot = 0xffffffffu;
+            uint NeighborBucketValue = 0u;
+            uint3 NeighborCellBitsSelected = uint3(0u, 0u, 0u);
+            float NeighborDistanceSquared = 3.402823466e+38f;
+
+            [loop]
+            for (int NeighborZ = -1; NeighborZ <= 1; ++NeighborZ)
+            {
+                [loop]
+                for (int NeighborY = -1; NeighborY <= 1; ++NeighborY)
+                {
+                    [loop]
+                    for (int NeighborX = -1; NeighborX <= 1; ++NeighborX)
+                    {
+                        if (NeighborX == 0 && NeighborY == 0 && NeighborZ == 0)
+                        {
+                            continue;
+                        }
+
+                        int3 NeighborCell = QuantizedCell + int3(NeighborX, NeighborY, NeighborZ);
+                        uint3 NeighborCellBits = asuint(NeighborCell);
+                        uint NeighborStartBucket =
+                            DDGIHashSurfaceKey(NeighborCellBits, NormalKey) & (HashCapacity - 1u);
+
+                        [loop]
+                        for (uint NeighborProbe = 0u; NeighborProbe < HashCapacity; ++NeighborProbe)
+                        {
+                            uint NeighborBucketIndex =
+                                (NeighborStartBucket + NeighborProbe) & (HashCapacity - 1u);
+                            uint NeighborEncodedSlot = SurfaceProbeHash[NeighborBucketIndex].w;
+
+                            // A locked bucket means another candidate is changing
+                            // this chain. Defer this candidate rather than risk a
+                            // duplicate insertion based on an incomplete lookup.
+                            if (NeighborEncodedSlot == DDGI_HASH_LOCKED)
+                            {
+                                return;
+                            }
+                            if (NeighborEncodedSlot == 0u)
+                            {
+                                break;
+                            }
+
+                            uint NeighborProbeSlot = NeighborEncodedSlot - 1u;
+                            if (NeighborProbeSlot >= ProbeCapacity)
+                            {
+                                InterlockedAdd(SurfaceProbeCounters[5], 1u);
+                                return;
+                            }
+
+                            uint4 NeighborKey = SurfaceProbeStableKeys[NeighborProbeSlot];
+                            if (all(SurfaceProbeHash[NeighborBucketIndex].xyz == NeighborCellBits) &&
+                                all(NeighborKey.xyz == NeighborCellBits) &&
+                                NeighborKey.w == NormalKey)
+                            {
+                                float3 NeighborPosition = SurfaceProbePositions[NeighborProbeSlot].xyz;
+                                float3 NeighborNormal = normalize(SurfaceProbeNormals[NeighborProbeSlot].xyz);
+                                float3 CandidateNormalUnit = normalize(CandidateNormal.xyz);
+                                float3 NeighborDelta = CandidatePosition.xyz - NeighborPosition;
+                                float NeighborDeltaSquared = dot(NeighborDelta, NeighborDelta);
+                                float NeighborNormalAgreement = dot(NeighborNormal, CandidateNormalUnit);
+                                uint NeighborAge = FrameNumber - SurfaceProbeLastSeenFrames[NeighborProbeSlot];
+
+                                if (NeighborAge <= DDGI_SURFACE_PROBE_RETENTION_FRAMES &&
+                                    NeighborDeltaSquared <= 25.0f &&
+                                    NeighborNormalAgreement >= 0.98f &&
+                                    NeighborDeltaSquared < NeighborDistanceSquared)
+                                {
+                                    NeighborBucket = NeighborBucketIndex;
+                                    NeighborSlot = NeighborProbeSlot;
+                                    NeighborBucketValue = NeighborEncodedSlot;
+                                    NeighborCellBitsSelected = NeighborCellBits;
+                                    NeighborDistanceSquared = NeighborDeltaSquared;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (NeighborBucket != 0xffffffffu)
+            {
+                uint OriginalNeighborSlot;
+                InterlockedCompareExchange(
+                    SurfaceProbeHash[NeighborBucket].w,
+                    NeighborBucketValue,
+                    DDGI_HASH_LOCKED,
+                    OriginalNeighborSlot);
+
+                if (OriginalNeighborSlot != NeighborBucketValue)
+                {
+                    return;
+                }
+
+                // Revalidate after locking. Keep the original key and anchor
+                // position unchanged: moving the key's position repeatedly
+                // across cells would make it drift away from its hash identity.
+                uint4 LockedNeighborKey = SurfaceProbeStableKeys[NeighborSlot];
+                float3 LockedNeighborPosition = SurfaceProbePositions[NeighborSlot].xyz;
+                float3 LockedNeighborNormal = normalize(SurfaceProbeNormals[NeighborSlot].xyz);
+                float3 LockedDelta = CandidatePosition.xyz - LockedNeighborPosition;
+                bool bNeighborStillCompatible =
+                    all(SurfaceProbeHash[NeighborBucket].xyz == LockedNeighborKey.xyz) &&
+                    all(LockedNeighborKey.xyz == NeighborCellBitsSelected) &&
+                    LockedNeighborKey.w == NormalKey &&
+                    dot(LockedDelta, LockedDelta) <= 25.0f &&
+                    dot(LockedNeighborNormal, normalize(CandidateNormal.xyz)) >= 0.98f &&
+                    (FrameNumber - SurfaceProbeLastSeenFrames[NeighborSlot]) <= DDGI_SURFACE_PROBE_RETENTION_FRAMES;
+
+                if (bNeighborStillCompatible)
+                {
+                    SurfaceProbeLastSeenFrames[NeighborSlot] = FrameNumber;
+                    DeviceMemoryBarrier();
+                    SurfaceProbeHash[NeighborBucket].w = NeighborBucketValue;
+                    return;
+                }
+
+                DeviceMemoryBarrier();
+                SurfaceProbeHash[NeighborBucket].w = NeighborBucketValue;
+            }
+
             // An empty bucket terminates the search: the key cannot exist
             // later in this linear-probing chain.
             if (ReusableBucket != 0xffffffffu)
