@@ -806,8 +806,8 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 						for (int32 Corner = 0; Corner < 3; ++Corner)
 						{
 							const int64 VertIndex = static_cast<int64>(Node.iVertPool) + CornerIndices[Corner];
-							if (!Model->Verts.IsValidIndex(VertIndex)) { bValid = false; break; }
-							const int32 PointIndex = Model->Verts[VertIndex].pVertex;
+							if (VertIndex < 0 || VertIndex >= Model->Verts.Num()) { bValid = false; break; }
+							const int32 PointIndex = Model->Verts[static_cast<int32>(VertIndex)].pVertex;
 							if (!Model->Points.IsValidIndex(PointIndex)) { bValid = false; break; }
 							P[Corner] = ComponentTransform.TransformVector(Model->Points[PointIndex]) + ComponentRelativeLocation;
 							if (!IsFiniteVector(P[Corner])) { bValid = false; break; }
