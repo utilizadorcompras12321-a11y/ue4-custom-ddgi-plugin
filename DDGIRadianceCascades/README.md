@@ -10,6 +10,7 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - Software BVH traversal in SM5 compute shaders.
 - One secondary diffuse bounce.
 - Separate persistent raw-trace, gathered-radiance and final-integrated textures; tracing never overwrites integrated history.
+- Final integrated radiance uses packed R11G11B10 values in an R32_UINT texture, avoiding optional half-float typed UAV loads on DX11.0.
 - Logical-to-physical probe-slot mapping with retained history for stable world-lattice cells.
 - Trace, gather and integration process the same bounded probe batch; untouched probes retain their last valid integrated result.
 - Spatial gather with surface/normal/plane rejection.
