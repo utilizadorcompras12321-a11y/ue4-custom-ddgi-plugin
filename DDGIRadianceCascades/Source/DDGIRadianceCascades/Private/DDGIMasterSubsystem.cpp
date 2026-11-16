@@ -947,6 +947,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	Config.bEnableDynamicGI = InActor->bEnableDynamicGI;
 	Config.GIIntensity = FMath::Max(0.0f, InActor->GIIntensity);
 	Config.LocalLightGIIntensityScale = FMath::Max(0.0f, InActor->LocalLightGIIntensityScale);
+	Config.LocalLightCount = 0;
 	Config.LocalLightPositionAndRadius.SetNumZeroed(32);
 	Config.LocalLightDirectionAndCosOuter.SetNumZeroed(32);
 	Config.LocalLightColorAndIntensity.SetNumZeroed(32);
