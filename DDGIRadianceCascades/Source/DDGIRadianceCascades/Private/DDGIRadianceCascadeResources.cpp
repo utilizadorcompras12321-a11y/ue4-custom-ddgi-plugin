@@ -631,6 +631,17 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             }
         }
 
+        int32 NewIdentityCount = 0;
+        for (const FDDGIProbeCellKey& Key : ProbeCellKeys)
+        {
+            if (!Storage.ProbeCellToPhysicalSlot.Contains(Key))
+            {
+                ++NewIdentityCount;
+            }
+        }
+        const int32 RequiredEvictionCount = FMath::Max(
+            0, NewIdentityCount - Storage.FreePhysicalSlots.Num());
+
         struct FDDGIProbeEvictionCandidate
         {
             FDDGIProbeCellKey Key;
@@ -638,25 +649,28 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             uint32 PhysicalSlot;
         };
         TArray<FDDGIProbeEvictionCandidate> EvictionCandidates;
-        EvictionCandidates.Reserve(Storage.ProbeCellToPhysicalSlot.Num());
-        for (const auto& Pair : Storage.ProbeCellToPhysicalSlot)
+        if (RequiredEvictionCount > 0)
         {
-            if (!ActiveKeys.Contains(Pair.Key))
+            EvictionCandidates.Reserve(Storage.ProbeCellToPhysicalSlot.Num());
+            for (const auto& Pair : Storage.ProbeCellToPhysicalSlot)
             {
-                EvictionCandidates.Add(FDDGIProbeEvictionCandidate{
-                    Pair.Key,
-                    Pair.Value.LastSeenUpdate,
-                    Pair.Value.PhysicalSlot });
+                if (!ActiveKeys.Contains(Pair.Key))
+                {
+                    EvictionCandidates.Add(FDDGIProbeEvictionCandidate{
+                        Pair.Key,
+                        Pair.Value.LastSeenUpdate,
+                        Pair.Value.PhysicalSlot });
+                }
             }
+            EvictionCandidates.Sort([](
+                const FDDGIProbeEvictionCandidate& A,
+                const FDDGIProbeEvictionCandidate& B)
+            {
+                return A.LastSeenUpdate == B.LastSeenUpdate
+                    ? A.PhysicalSlot < B.PhysicalSlot
+                    : A.LastSeenUpdate < B.LastSeenUpdate;
+            });
         }
-        EvictionCandidates.Sort([](
-            const FDDGIProbeEvictionCandidate& A,
-            const FDDGIProbeEvictionCandidate& B)
-        {
-            return A.LastSeenUpdate == B.LastSeenUpdate
-                ? A.PhysicalSlot < B.PhysicalSlot
-                : A.LastSeenUpdate < B.LastSeenUpdate;
-        });
         int32 NextEvictionCandidate = 0;
 
         Storage.LogicalToPhysicalSlotCPU.SetNumUninitialized(ActiveProbeCount);
