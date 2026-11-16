@@ -22,6 +22,7 @@ namespace
 		FVector EmissiveRadiance = FVector::ZeroVector;
 		FVector BaseColor = FVector(0.18f, 0.18f, 0.18f);
 		bool bUsesDefaultBaseColor = true;
+		bool bUsesVertexColor = false;
 		bool bBlocksDDGI = true;
 		bool bIsMasked = false;
 	};
@@ -573,6 +574,11 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 			MaterialBlocksDDGI.Init(1, Component->GetNumMaterials());
 			TArray<uint8> MaterialIsMasked;
 			MaterialIsMasked.Init(0, Component->GetNumMaterials());
+			TArray<uint8> MaterialUsesVertexColor;
+			MaterialUsesVertexColor.Init(0, Component->GetNumMaterials());
+			const FColorVertexBuffer& ColorVertexBuffer = LOD.VertexBuffers.ColorVertexBuffer;
+			const bool bHasCPUVertexColors = ColorVertexBuffer.GetVertexData() != nullptr &&
+				ColorVertexBuffer.GetNumVertices() >= VertexCount;
 			const FMaterialParameterInfo BaseColorParameterInfo(FName(TEXT("DDGI_BaseColor")));
 			const FMaterialParameterInfo EmissiveParameterInfo(FName(TEXT("DDGI_EmissiveRadiance")));
 			for (int32 MaterialIndex = 0; MaterialIndex < Component->GetNumMaterials(); ++MaterialIndex)
@@ -601,6 +607,12 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 
 					FLinearColor BaseColorValue = FLinearColor::White;
 					NewData.bUsesDefaultBaseColor = !Material->GetVectorParameterValue(BaseColorParameterInfo, BaseColorValue);
+					float MetallicValue = 0.0f;
+					Material->GetScalarParameterValue(FMaterialParameterInfo(FName(TEXT("DDGI_Metallic"))), MetallicValue);
+					const float DiffuseEnergy = 1.0f - FMath::Clamp(MetallicValue, 0.0f, 1.0f);
+					float UseVertexColorValue = 0.0f;
+					Material->GetScalarParameterValue(FMaterialParameterInfo(FName(TEXT("DDGI_UseVertexColor"))), UseVertexColorValue);
+					NewData.bUsesVertexColor = UseVertexColorValue > 0.5f;
 					if (!NewData.bUsesDefaultBaseColor)
 					{
 						NewData.BaseColor = FVector(
@@ -608,6 +620,7 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 							FMath::Max(0.0f, BaseColorValue.G),
 							FMath::Max(0.0f, BaseColorValue.B));
 					}
+					NewData.BaseColor *= DiffuseEnergy;
 					CachedData = &MaterialDataCache.Add(Material, NewData);
 				}
 
@@ -615,6 +628,7 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				MaterialBaseColor[MaterialIndex] = CachedData->BaseColor;
 				MaterialBlocksDDGI[MaterialIndex] = CachedData->bBlocksDDGI ? 1 : 0;
 				MaterialIsMasked[MaterialIndex] = CachedData->bIsMasked ? 1 : 0;
+				MaterialUsesVertexColor[MaterialIndex] = CachedData->bUsesVertexColor ? 1 : 0;
 				if (CachedData->bUsesDefaultBaseColor)
 				{
 					// Count fallback material slots, not unique material objects.
@@ -743,6 +757,21 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				{
 					Triangle.BaseColor = MaterialBaseColor[MaterialIndex];
 				}
+				// The software BVH stores one diffuse value per triangle. When explicitly
+				// requested by DDGI_UseVertexColor, approximate the interpolated vertex
+				// color at the triangle centroid. This avoids changing the GPU BVH stride.
+				if (MaterialUsesVertexColor.IsValidIndex(MaterialIndex) &&
+					MaterialUsesVertexColor[MaterialIndex] != 0 && bHasCPUVertexColors)
+				{
+					const FLinearColor ColorA(ColorVertexBuffer.VertexColor(I0));
+					const FLinearColor ColorB(ColorVertexBuffer.VertexColor(I1));
+					const FLinearColor ColorC(ColorVertexBuffer.VertexColor(I2));
+					const FVector AverageVertexColor(
+						FMath::Max(0.0f, (ColorA.R + ColorB.R + ColorC.R) / 3.0f),
+						FMath::Max(0.0f, (ColorA.G + ColorB.G + ColorC.G) / 3.0f),
+						FMath::Max(0.0f, (ColorA.B + ColorB.B + ColorC.B) / 3.0f));
+					Triangle.BaseColor *= AverageVertexColor;
+				}
 				Triangle.BoundsMin = FVector(FLT_MAX, FLT_MAX, FLT_MAX);
 				Triangle.BoundsMax = FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, A);
@@ -809,7 +838,11 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 					NewData.EmissiveRadiance = FVector(FMath::Max(0.0f,EmissiveColor.R),FMath::Max(0.0f,EmissiveColor.G),FMath::Max(0.0f,EmissiveColor.B));
 					FLinearColor BaseColorValue = FLinearColor::White;
 					NewData.bUsesDefaultBaseColor = !Material->GetVectorParameterValue(FMaterialParameterInfo(FName(TEXT("DDGI_BaseColor"))), BaseColorValue);
+					float MetallicValue = 0.0f;
+					Material->GetScalarParameterValue(FMaterialParameterInfo(FName(TEXT("DDGI_Metallic"))), MetallicValue);
+					const float DiffuseEnergy = 1.0f - FMath::Clamp(MetallicValue, 0.0f, 1.0f);
 					if (!NewData.bUsesDefaultBaseColor) NewData.BaseColor = FVector(FMath::Max(0.0f,BaseColorValue.R),FMath::Max(0.0f,BaseColorValue.G),FMath::Max(0.0f,BaseColorValue.B));
+					NewData.BaseColor *= DiffuseEnergy;
 					CachedData = &MaterialDataCache.Add(Material, NewData);
 				}
 				if (!CachedData->bBlocksDDGI)
