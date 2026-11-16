@@ -35,6 +35,14 @@ RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<uint> HitTriangleIndexUAV;
 
+StructuredBuffer<float4> SurfaceProbePositions;
+StructuredBuffer<float4> SurfaceProbeNormals;
+StructuredBuffer<uint> SurfaceProbeTraceIndices;
+StructuredBuffer<uint> SurfaceProbeCounters;
+RWStructuredBuffer<float4> SurfaceProbeIntegratedRadiance;
+float4 BVHWorldOrigin;
+uint SurfaceProbeFrameNumber;
+
 // Position-relative ray bias: enough to cover several float ULPs at the
 // current coordinate magnitude, but never use a scene-independent 0.5 cm.
 float ComputeRayOriginBias(float3 Position)
@@ -827,3 +835,119 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             : BackgroundRadiance,
         1.0f);
 }
+
+[numthreads(64, 1, 1)]
+void SurfaceProbeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    uint ScheduledProbeIndex = DispatchThreadId.x;
+    uint ScheduledProbeCount = min(SurfaceProbeCounters[7], 512u);
+    if (ScheduledProbeIndex >= ScheduledProbeCount ||
+        NodeCount == 0u || TriangleCount == 0u)
+    {
+        return;
+    }
+
+    uint PhysicalProbeIndex = SurfaceProbeTraceIndices[ScheduledProbeIndex];
+    float4 PackedPosition = SurfaceProbePositions[PhysicalProbeIndex];
+    float4 PackedNormal = SurfaceProbeNormals[PhysicalProbeIndex];
+    if (PackedPosition.w <= 0.5f || PackedNormal.w <= 0.5f)
+    {
+        return;
+    }
+
+    float3 Normal = normalize(PackedNormal.xyz);
+    if (!all(isfinite(Normal)) || dot(Normal, Normal) < 0.5f)
+    {
+        return;
+    }
+
+    float3 AbsolutePosition = PackedPosition.xyz;
+    float3 Origin = AbsolutePosition - BVHWorldOrigin.xyz;
+    Origin += Normal * ComputeRayOriginBias(Origin);
+
+    // Cosine-weighted hemisphere samples are rotated by a deterministic
+    // golden-ratio phase each frame. This changes angular coverage over time
+    // without adding random noise or requiring a persistent ray-history atlas.
+    const uint SampleCount = 16u;
+    const float GoldenRatioConjugate = 0.6180339887498948f;
+    const float TwoPi = 6.283185307179586f;
+    float FrameRotation = frac((float)SurfaceProbeFrameNumber * GoldenRatioConjugate);
+    float3 IncomingRadianceSum = 0.0f;
+    float3 ToLight = bHasDirectionalLight != 0u
+        ? normalize(DirectionalLightDirection.xyz)
+        : 0.0f;
+
+    [loop]
+    for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
+    {
+        float Xi = ((float)SampleIndex + 0.5f) / (float)SampleCount;
+        float CosTheta = sqrt(1.0f - Xi);
+        float SinTheta = sqrt(Xi);
+        float Phi = TwoPi * frac((float)SampleIndex * GoldenRatioConjugate + FrameRotation);
+
+        // Frisvad/Duff basis avoids a pole-dependent cross-product branch.
+        float BasisSign = Normal.z >= 0.0f ? 1.0f : -1.0f;
+        float BasisA = -1.0f / (BasisSign + Normal.z);
+        float BasisB = Normal.x * Normal.y * BasisA;
+        float3 Tangent = float3(
+            1.0f + BasisSign * Normal.x * Normal.x * BasisA,
+            BasisSign * BasisB,
+            -BasisSign * Normal.x);
+        float3 Bitangent = float3(
+            BasisB,
+            BasisSign + Normal.y * Normal.y * BasisA,
+            -Normal.y);
+
+        float SinPhi;
+        float CosPhi;
+        sincos(Phi, SinPhi, CosPhi);
+        float3 Direction =
+            Tangent * (CosPhi * SinTheta) +
+            Bitangent * (SinPhi * SinTheta) +
+            Normal * CosTheta;
+
+        float HitDistance = MaxTraceDistance;
+        uint HitTriangleIndex = 0u;
+        float3 HitA = 0.0f;
+        float3 HitB = 0.0f;
+        float3 HitC = 0.0f;
+        if (TraceClosestHit(
+            Origin, Direction, MaxTraceDistance, 0xFFFFFFFFu,
+            HitDistance, HitTriangleIndex, HitA, HitB, HitC))
+        {
+            float3 HitPosition = Origin + Direction * HitDistance;
+            float3 HitRadiance = EvaluateHitSurfaceRadiance(
+                HitTriangleIndex, HitA, HitB, HitC,
+                HitPosition, Direction, ToLight);
+
+            float3 HitNormal = ComputeTriangleGeometricNormal(HitA, HitB, HitC);
+            if (dot(HitNormal, Direction) > 0.0f)
+            {
+                HitNormal = -HitNormal;
+            }
+            float3 HitBaseColor = max(BVHTriangles[HitTriangleIndex * 4u + 3u].xyz, 0.0f);
+            if (dot(HitNormal, HitNormal) > 0.0f && any(HitBaseColor > 1.0e-6f))
+            {
+                HitRadiance += HitBaseColor * TraceDeterministicDiffuseBounce(
+                    HitPosition, HitNormal, HitTriangleIndex);
+            }
+            IncomingRadianceSum += HitRadiance;
+        }
+        else if (bEnableStaticBackground != 0u)
+        {
+            IncomingRadianceSum +=
+                StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity;
+        }
+    }
+
+    // Cosine-weighted sampling estimates diffuse irradiance as pi times
+    // the mean incoming radiance. Alpha marks whether temporal history exists.
+    float3 CurrentIrradiance =
+        IncomingRadianceSum * (3.14159265358979323846f / (float)SampleCount);
+    float4 Previous = SurfaceProbeIntegratedRadiance[PhysicalProbeIndex];
+    float3 Integrated = Previous.a > 0.5f && all(isfinite(Previous.rgb))
+        ? lerp(Previous.rgb, CurrentIrradiance, 0.2f)
+        : CurrentIrradiance;
+    SurfaceProbeIntegratedRadiance[PhysicalProbeIndex] = float4(Integrated, 1.0f);
+}
+
