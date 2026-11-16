@@ -149,6 +149,7 @@ namespace
 		int32 UploadedProbeCount = 0;
 		uint32 UploadedProbeLayoutHash = 0;
 		float UploadedProbeSpacing = 0.0f;
+		FVector UploadedProbeBVHOrigin = FVector::ZeroVector;
 
 		void Release()
 		{
@@ -199,6 +200,7 @@ namespace
 			UploadedProbeCount = 0;
 			UploadedProbeLayoutHash = 0;
 			UploadedProbeSpacing = 0.0f;
+			UploadedProbeBVHOrigin = FVector::ZeroVector;
 			TotalRaysPerProbe = 0;
 			RayLayoutCascadeCount = 0;
 			RayLayoutBaseRayCount = 0;
@@ -516,6 +518,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.UploadedProbeCount = 0;
         Storage.UploadedProbeLayoutHash = 0;
         Storage.UploadedProbeSpacing = 0.0f;
+        Storage.UploadedProbeBVHOrigin = FVector::ZeroVector;
     }
 
     const int32 ProbeCount = ActiveProbeCount;
@@ -564,6 +567,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.UploadedProbeCount == ProbeCount &&
         Storage.UploadedProbeLayoutHash == ProbeLayoutHash &&
         FMath::IsNearlyEqual(Storage.UploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f) &&
+        Storage.UploadedProbeBVHOrigin.Equals(Config.SoftwareBVH->WorldOrigin, 1.0e-4f) &&
         bProbeIdentityMatches;
     const bool bPhysicalMappingMissing =
         Storage.PhysicalSlotCapacity == 0 ||
@@ -945,6 +949,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.UploadedProbeCount = ProbeCount;
         Storage.UploadedProbeLayoutHash = ProbeLayoutHash;
         Storage.UploadedProbeSpacing = SafeProbeSpacing;
+        Storage.UploadedProbeBVHOrigin = Config.SoftwareBVH->WorldOrigin;
     }
 
     // Build a deterministic open-addressed spatial hash for sparse probe cells.
