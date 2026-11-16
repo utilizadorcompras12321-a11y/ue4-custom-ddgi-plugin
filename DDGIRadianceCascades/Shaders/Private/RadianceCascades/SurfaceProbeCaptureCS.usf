@@ -65,8 +65,6 @@ void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     {
         SurfaceProbeCandidatePositions[CandidateIndex] = 0.0f;
         SurfaceProbeCandidateNormals[CandidateIndex] = 0.0f;
-        SurfaceProbeActiveIndices[CandidateIndex] = 0xffffffffu;
-        SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
         return;
     }
 
@@ -76,8 +74,6 @@ void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     {
         SurfaceProbeCandidatePositions[CandidateIndex] = 0.0f;
         SurfaceProbeCandidateNormals[CandidateIndex] = 0.0f;
-        SurfaceProbeActiveIndices[CandidateIndex] = 0xffffffffu;
-        SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
         return;
     }
 
