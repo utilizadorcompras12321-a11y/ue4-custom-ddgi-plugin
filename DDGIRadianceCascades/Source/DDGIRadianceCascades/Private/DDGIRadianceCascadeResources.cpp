@@ -483,20 +483,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
-    if (!Config.bEnableSurfaceProbes)
-    {
-        Storage.ReleaseSurfaceProbeAllocator();
-    }
-    else if (Storage.SurfaceProbeCapacity != GDDGISurfaceProbeCapacity ||
-        Storage.SurfaceProbeHashCapacity != GDDGISurfaceProbeHashCapacity)
-    {
-        // Surface-probe buffers are now allocated by RDG on first use and
-        // extracted into these persistent pooled references at graph execution.
-        // Do not create parallel raw-RHI buffers here.
-        Storage.ReleaseSurfaceProbeAllocator();
-        Storage.SurfaceProbeCapacity = GDDGISurfaceProbeCapacity;
-        Storage.SurfaceProbeHashCapacity = GDDGISurfaceProbeHashCapacity;
-    }
+    // Surface-captured probes were a second GI path. Release legacy buffers;
+    // all indirect lighting now comes exclusively from the sparse cascade probes.
+    Storage.ReleaseSurfaceProbeAllocator();
     // Ray textures are a grow-only capacity pool. A smaller active window must
     // not shrink/recreate the textures: doing so discards every probe's history.
     // A ray-layout change still requires new storage, but must not evict the
