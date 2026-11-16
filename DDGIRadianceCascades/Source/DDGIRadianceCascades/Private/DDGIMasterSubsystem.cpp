@@ -382,10 +382,13 @@ namespace
 							const int64 InnerMaxY = PreviousCenterY + ClipmapMaxOffset * PreviousStep - Overlap;
 							const int64 InnerMinZ = PreviousCenterZ + ClipmapMinOffset * PreviousStep + Overlap;
 							const int64 InnerMaxZ = PreviousCenterZ + ClipmapMaxOffset * PreviousStep - Overlap;
+							// Keep the coarse lattice samples exactly on the inner
+							// boundary. They are the one-cell overlap needed by trilinear
+							// interpolation at the fine/coarse clipmap transition.
 							const bool bInsidePreviousClipmap =
-								CellX >= InnerMinX && CellX <= InnerMaxX &&
-								CellY >= InnerMinY && CellY <= InnerMaxY &&
-								CellZ >= InnerMinZ && CellZ <= InnerMaxZ;
+								CellX > InnerMinX && CellX < InnerMaxX &&
+								CellY > InnerMinY && CellY < InnerMaxY &&
+								CellZ > InnerMinZ && CellZ < InnerMaxZ;
 							if (bInsidePreviousClipmap)
 							{
 								continue;
