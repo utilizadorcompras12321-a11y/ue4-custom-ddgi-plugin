@@ -313,6 +313,10 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.bInvalidateAllPhysicalSlots = true;
         Storage.bNeedsInitialization = true;
     }
+    Storage.RayLayoutBaseSegmentLength = RequestedBaseSegmentLength;
+    Storage.RayLayoutCascadeScale = RequestedCascadeScale;
+    Storage.RayLayoutMaxTraceDistance = RequestedMaxTraceDistance;
+
     const bool bRayLayoutChanged =
         Storage.TotalRaysPerProbe != 0 &&
         (Storage.TotalRaysPerProbe != Config.TotalRaysPerProbe ||
