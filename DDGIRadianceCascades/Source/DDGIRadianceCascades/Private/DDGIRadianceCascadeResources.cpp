@@ -484,9 +484,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         }
     }
 
-    // Keep immutable world-lattice probe positions in a separate full-precision
-    // float4 texture. ProbeGridOrigin converts them to BVH-local coordinates
-    // during shading; camera motion does not rewrite this texture.
+    // Store probe positions relative to the BVH origin in a full-precision
+    // float4 texture. This avoids subtracting large absolute world coordinates
+    // in the shader and keeps camera motion from rewriting the texture.
     const int32 ProbeTextureWidth = 4096;
     // Probe positions are metadata, not ray history. Grow this texture only
     // when the active window exceeds its previous high-water mark; never reserve
@@ -909,7 +909,19 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             return;
         }
 
-        const FVector4* ProbePositionData = Config.ProbePositions.GetData();
+        TArray<FVector4> ProbePositionUpload;
+        ProbePositionUpload.SetNumUninitialized(ProbeCount);
+        const FVector BVHOrigin = Config.SoftwareBVH->WorldOrigin;
+        for (int32 ProbeIndex = 0; ProbeIndex < ProbeCount; ++ProbeIndex)
+        {
+            const FVector4& WorldProbePosition = Config.ProbePositions[ProbeIndex];
+            ProbePositionUpload[ProbeIndex] = FVector4(
+                WorldProbePosition.X - BVHOrigin.X,
+                WorldProbePosition.Y - BVHOrigin.Y,
+                WorldProbePosition.Z - BVHOrigin.Z,
+                WorldProbePosition.W);
+        }
+        const FVector4* ProbePositionData = ProbePositionUpload.GetData();
         for (int32 Row = 0; Row < ProbePositionDimensions.Y; ++Row)
         {
             const int32 FirstProbe = Row * ProbePositionDimensions.X;
