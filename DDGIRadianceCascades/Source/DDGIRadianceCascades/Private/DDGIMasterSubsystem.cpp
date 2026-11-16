@@ -699,6 +699,7 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 	}
 
 	const bool bHadLight = Config.bHasDirectionalLight;
+	const bool bOldDirectionalLightCastsShadows = Config.bDirectionalLightCastsShadows;
 	const FVector OldDirection = Config.DirectionalLightDirection;
 	const FLinearColor OldColor = Config.DirectionalLightColor;
 	const float OldIntensity = Config.DirectionalLightIntensity;
@@ -713,14 +714,17 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 			1.0e-5f * FMath::Max(0.0f, InActor->DirectionalLightGIIntensityScale),
 			100.0f);
 		Config.bHasDirectionalLight = true;
+		Config.bDirectionalLightCastsShadows = Light->CastShadows != 0;
 	}
 	else
 	{
 		Config.bHasDirectionalLight = false;
+		Config.bDirectionalLightCastsShadows = false;
 		Config.DirectionalLightIntensity = 0.0f;
 	}
 
 	return bHadLight != Config.bHasDirectionalLight ||
+		bOldDirectionalLightCastsShadows != Config.bDirectionalLightCastsShadows ||
 		!OldDirection.Equals(Config.DirectionalLightDirection, 1.0e-4f) ||
 		!OldColor.Equals(Config.DirectionalLightColor, 1.0e-4f) ||
 		!FMath::IsNearlyEqual(OldIntensity, Config.DirectionalLightIntensity, 1.0e-4f);
@@ -846,7 +850,7 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 			FMath::Max(0.1f, Light->LightFalloffExponent),
 			bInverseSquared ? 1.0f : 0.0f,
 			CosInner,
-			0.0f);
+			Light->CastShadows != 0 ? 1.0f : 0.0f);
 		++NewLightCount;
 	}
 
@@ -893,6 +897,7 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 	// the four lighting values instead of copying the full master config
 	// (which can contain tens of thousands of probe positions).
 	const bool bHasDirectionalLight = Config.bHasDirectionalLight;
+	const bool bDirectionalLightCastsShadows = Config.bDirectionalLightCastsShadows;
 	const FVector DirectionalLightDirection = Config.DirectionalLightDirection;
 	const FLinearColor DirectionalLightColor = Config.DirectionalLightColor;
 	const float DirectionalLightIntensity = Config.DirectionalLightIntensity;
@@ -903,13 +908,14 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 	const uint32 LocalLightCount = Config.LocalLightCount;
 
 	ENQUEUE_RENDER_COMMAND(DDGIUpdateMasterConfigLighting)(
-		[Scene, bHasDirectionalLight, DirectionalLightDirection, DirectionalLightColor, DirectionalLightIntensity,
+		[Scene, bHasDirectionalLight, bDirectionalLightCastsShadows, DirectionalLightDirection, DirectionalLightColor, DirectionalLightIntensity,
 		 LocalLightPositionAndRadius, LocalLightDirectionAndCosOuter, LocalLightColorAndIntensity,
 		 LocalLightParameters, LocalLightCount](FRHICommandListImmediate& RHICmdList)
 		{
 			if (FDDGIMasterConfig* ExistingConfig = GDDGIMasterConfigs_RenderThread.Find(Scene))
 			{
 				ExistingConfig->bHasDirectionalLight = bHasDirectionalLight;
+				ExistingConfig->bDirectionalLightCastsShadows = bDirectionalLightCastsShadows;
 				ExistingConfig->DirectionalLightDirection = DirectionalLightDirection;
 				ExistingConfig->DirectionalLightColor = DirectionalLightColor;
 				ExistingConfig->DirectionalLightIntensity = DirectionalLightIntensity;
