@@ -245,10 +245,13 @@ float3 DDGIProbeDiffuseIrradiance(
             if (OccluderDistance >= 0.0f)
             {
                 float VisibilityBias = max(2.0f, ReceiverDistance * 0.015f);
-                Visibility = smoothstep(
-                    -VisibilityBias,
+                // A hit at the receiver distance is the receiver surface,
+                // not an occluder. Only a hit clearly before the receiver fades
+                // the probe contribution.
+                Visibility = 1.0f - smoothstep(
                     VisibilityBias,
-                    OccluderDistance - ReceiverDistance);
+                    VisibilityBias * 2.0f,
+                    ReceiverDistance - OccluderDistance);
             }
         }
     }
