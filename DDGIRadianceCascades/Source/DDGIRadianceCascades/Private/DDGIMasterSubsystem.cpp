@@ -949,7 +949,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		}
 		if (BuildStats.bTriangleLimitReached)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI: Software BVH reached its %d-triangle limit. Components encountered later in world iteration may be omitted; increase MaxSoftwareTriangles or reduce static-mesh geometry if coverage is incomplete."), Config.MaxSoftwareTriangles);
+			UE_LOG(LogTemp, Warning, TEXT("DDGI: Software BVH reached its %d-triangle global or per-category budget. Eligible static-mesh or BSP geometry may be omitted; increase MaxSoftwareTriangles or reduce scene geometry if coverage is incomplete."), Config.MaxSoftwareTriangles);
 		}
 		if (BuildStats.MaterialsUsingDefaultBaseColor > 0)
 		{
