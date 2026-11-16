@@ -223,11 +223,6 @@ float3 DDGIProbeDiffuseIrradiance(
         uint CascadeRayIndex = CascadeStorageOffset +
             BestBaseRay * ChildrenPerParent +
             min(DescendantIndex, ChildrenPerParent - 1u);
-        // AngularRegion has been split along the exact same deterministic
-        // path used to build the direction texture. Its center is therefore
-        // the ray direction without another texture fetch.
-        float3 VisibilityRayDirection =
-            DDGIRadianceCascadeRegionDirection(AngularRegion);
         // The ray is the deterministic angular cell containing the receiver
         // direction. Always test it; a cosine cutoff would disable visibility
         // precisely in the coarse angular regions most prone to light leaks.
