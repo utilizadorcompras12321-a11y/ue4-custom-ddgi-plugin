@@ -1,0 +1,90 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/DeferredShadingCommon.ush"
+
+Texture2D<float4> NormalTexture;
+Texture2D<float> DepthTexture;
+SamplerState PointClampSampler;
+
+RWStructuredBuffer<float4> SurfaceProbePositions;
+RWStructuredBuffer<float4> SurfaceProbeNormals;
+RWStructuredBuffer<uint> SurfaceProbeLastSeenFrames;
+RWStructuredBuffer<uint> SurfaceProbeActiveIndices;
+
+float4 ScaledViewSizeAndInvSize;
+float2 ViewRectMin;
+uint CaptureStride;
+uint CaptureGridWidth;
+uint CaptureGridHeight;
+uint CandidateCount;
+uint FrameNumber;
+
+[numthreads(8, 8, 1)]
+void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint2 Tile = DispatchThreadID.xy;
+    if (Tile.x >= CaptureGridWidth || Tile.y >= CaptureGridHeight)
+    {
+        return;
+    }
+
+    uint CandidateIndex = Tile.y * CaptureGridWidth + Tile.x;
+    if (CandidateIndex >= CandidateCount)
+    {
+        return;
+    }
+
+    int2 PixelIndex = int2(Tile * CaptureStride + (CaptureStride / 2u));
+    if (PixelIndex.x >= (int)ScaledViewSizeAndInvSize.x ||
+        PixelIndex.y >= (int)ScaledViewSizeAndInvSize.y)
+    {
+        SurfaceProbePositions[CandidateIndex] = 0.0f;
+        SurfaceProbeNormals[CandidateIndex] = 0.0f;
+        SurfaceProbeActiveIndices[CandidateIndex] = 0xffffffffu;
+        SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
+        return;
+    }
+
+    float2 ScreenUV = (float2(PixelIndex) + 0.5f) * ScaledViewSizeAndInvSize.zw;
+    int2 GBufferPixel = int2(ScreenUV * View.ViewSizeAndInvSize.xy);
+    float2 GBufferUV = (float2(GBufferPixel) + 0.5f) * View.ViewSizeAndInvSize.zw;
+    float4 ScreenPosition = float4(
+        GBufferUV * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f),
+        0.0f, 1.0f);
+    float3 InScreenVector = mul(
+        float4(ScreenPosition.xy, 1.0f, 0.0f),
+        View.ScreenToTranslatedWorld).xyz;
+
+    float2 BufferUV = (ScreenUV * View.ViewSizeAndInvSize.xy + ViewRectMin) *
+        View.BufferSizeAndInvSize.zw;
+    float DeviceZ = DepthTexture.SampleLevel(PointClampSampler, BufferUV, 0).r;
+
+    if (DeviceZ <= 0.000001f)
+    {
+        SurfaceProbePositions[CandidateIndex] = 0.0f;
+        SurfaceProbeNormals[CandidateIndex] = 0.0f;
+        SurfaceProbeActiveIndices[CandidateIndex] = 0xffffffffu;
+        SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
+        return;
+    }
+
+    float3 Normal = normalize(DecodeNormal(
+        NormalTexture.SampleLevel(PointClampSampler, BufferUV, 0).xyz));
+    if (any(isnan(Normal)) || any(isinf(Normal)) || dot(Normal, Normal) < 0.5f)
+    {
+        SurfaceProbePositions[CandidateIndex] = 0.0f;
+        SurfaceProbeNormals[CandidateIndex] = 0.0f;
+        SurfaceProbeActiveIndices[CandidateIndex] = 0xffffffffu;
+        SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
+        return;
+    }
+
+    float SceneDepth = ConvertFromDeviceZ(DeviceZ);
+    float3 WorldPosition = InScreenVector * SceneDepth + View.WorldCameraOrigin;
+
+    // This is a screen-sampled staging set, not yet the stable world-space
+    // probe set. The following deduplication pass must assign persistent slots.
+    SurfaceProbePositions[CandidateIndex] = float4(WorldPosition, 1.0f);
+    SurfaceProbeNormals[CandidateIndex] = float4(Normal, 1.0f);
+    SurfaceProbeActiveIndices[CandidateIndex] = CandidateIndex;
+    SurfaceProbeLastSeenFrames[CandidateIndex] = FrameNumber;
+}
