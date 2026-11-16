@@ -896,6 +896,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.UploadedProbeCount = 0;
             Storage.UploadedProbeLayoutHash = 0;
             Storage.UploadedProbeSpacing = 0.0f;
+            Storage.bInvalidateAllPhysicalSlots = true;
             Storage.bNeedsInitialization = true;
             UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no shader-resource RHI texture."));
             return;
@@ -908,6 +909,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             Storage.UploadedProbeCount = 0;
             Storage.UploadedProbeLayoutHash = 0;
             Storage.UploadedProbeSpacing = 0.0f;
+            Storage.bInvalidateAllPhysicalSlots = true;
             Storage.bNeedsInitialization = true;
             UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: sparse probe-position texture has no 2D RHI resource."));
             return;
