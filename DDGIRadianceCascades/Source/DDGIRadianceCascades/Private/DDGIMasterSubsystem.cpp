@@ -1009,7 +1009,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		? FMath::Clamp(RequestedProbeSpacingFromActor, 1.0f, 100000.0f)
 		: 200.0f;
 	const float RequestedProbeGridDistance = InActor->ProbeGridDistance;
-	const float MaxProbeGridDistance = Config.ProbeSpacing * 120.0f;
+	const float MaxProbeGridDistance = Config.ProbeSpacing * 56.0f;
 	Config.ProbeGridDistance = std::isfinite(static_cast<double>(RequestedProbeGridDistance))
 		? FMath::Clamp(RequestedProbeGridDistance, 1.0f, MaxProbeGridDistance)
 		: FMath::Min(4000.0f, MaxProbeGridDistance);
@@ -1017,7 +1017,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		RequestedProbeGridDistance > MaxProbeGridDistance)
 	{
 		UE_LOG(LogTemp, Warning,
-			TEXT("DDGI: ProbeGridDistance %.1f cm exceeds the CPU lattice-search safety limit for spacing %.1f cm; clamped to %.1f cm (120 spacing units)."),
+			TEXT("DDGI: ProbeGridDistance %.1f cm exceeds the CPU lattice-search four-level clipmap coverage limit for spacing %.1f cm; clamped to %.1f cm (56 spacing units)."),
 			RequestedProbeGridDistance, Config.ProbeSpacing, Config.ProbeGridDistance);
 	}
 	Config.RadianceCascades.CascadeCount = FMath::Clamp(InActor->CascadeCount, 1, 8);
