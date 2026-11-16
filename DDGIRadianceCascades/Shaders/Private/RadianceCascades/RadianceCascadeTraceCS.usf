@@ -573,9 +573,7 @@ float3 EvaluateHitSurfaceRadiance(
     return Emissive + Direct;
 }
 
-// Deterministic cosine-weighted hemisphere quadrature. Four samples are used
-// by the regular cascade path; Surface Probes use two opposite azimuths to
-// reduce secondary BVH traversal cost while retaining a balanced sample pair.
+// Deterministic cosine-weighted hemisphere quadrature for the cascade bounce.
 float3 TraceDeterministicDiffuseBounce(
     float3 HitPosition,
     float3 SurfaceNormal,
