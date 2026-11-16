@@ -248,9 +248,10 @@ float3 DDGIProbeDiffuseIrradiance(
         }
     }
 
-    // Equal-solid-angle base directions: each represents 4*PI/N steradians.
-    // The selected cascade ray tests the actual receiver distance, so blockers
-    // in any clipmap interval can reject probes on the opposite side of a wall.
+    // Each base direction represents 4*PI/N steradians. The 1/PI
+    // Lambertian BRDF normalization cancels PI, so this returns E/PI,
+    // ready to multiply directly by diffuse albedo in the apply pass.
+    // The finest cascade ray tests visibility at the receiver distance.
     return Irradiance * (4.0f / (float)SafeRayCount) * Visibility;
 }
 uint DDGIGetSpatialLevelStep(uint Level)
