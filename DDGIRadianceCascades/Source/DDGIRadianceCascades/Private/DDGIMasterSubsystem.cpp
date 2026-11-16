@@ -676,7 +676,7 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 			LightActor->GetComponents<UDirectionalLightComponent>(DirectionalLights);
 			for (UDirectionalLightComponent* Candidate : DirectionalLights)
 			{
-				if (IsValid(Candidate) && Candidate->IsVisible() && Candidate->Intensity > StrongestIntensity)
+				if (IsValid(Candidate) && Candidate->IsVisible() && Candidate->bAffectDynamicIndirectLighting && Candidate->Intensity > StrongestIntensity)
 				{
 					StrongestIntensity = Candidate->Intensity;
 					Light = Candidate;
@@ -692,13 +692,14 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 	const FLinearColor OldColor = Config.DirectionalLightColor;
 	const float OldIntensity = Config.DirectionalLightIntensity;
 
-	if (IsValid(Light) && Light->IsVisible() && Light->Intensity > 0.0f)
+	if (IsValid(Light) && Light->IsVisible() && Light->bAffectDynamicIndirectLighting && Light->Intensity > 0.0f)
 	{
 		Config.DirectionalLightDirection = -Light->GetComponentTransform().GetUnitAxis(EAxis::X).GetSafeNormal();
 		Config.DirectionalLightColor = Light->LightColor.ReinterpretAsLinear();
 		// Keep the scene light untouched; apply a separate scale only to DDGI radiance.
 		Config.DirectionalLightIntensity = FMath::Min(
-			Light->Intensity * 1.0e-5f * FMath::Max(0.0f, InActor->DirectionalLightGIIntensityScale),
+			Light->Intensity * FMath::Max(0.0f, Light->IndirectLightingIntensity) *
+			1.0e-5f * FMath::Max(0.0f, InActor->DirectionalLightGIIntensityScale),
 			100.0f);
 		Config.bHasDirectionalLight = true;
 	}
@@ -767,7 +768,7 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 	for (const TWeakObjectPtr<UPointLightComponent>& WeakLight : CachedLocalLights)
 	{
 		UPointLightComponent* Light = WeakLight.Get();
-		if (!IsValid(Light) || !Light->IsVisible() ||
+		if (!IsValid(Light) || !Light->IsVisible() || !Light->bAffectDynamicIndirectLighting ||
 			Light->Intensity <= 0.0f || Light->AttenuationRadius <= 1.0f)
 		{
 			continue;
@@ -792,8 +793,9 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 		// UE4 inverse-square point lights expose lumens. Convert to an
 		// approximate candela scale (lumens / 4PI), then cm^-2 to m^-2.
 		const float ScaledIntensity = bInverseSquared
-			? Light->Intensity * (10000.0f / (4.0f * PI)) * IntensityScale
-			: Light->Intensity * IntensityScale;
+			? Light->Intensity * FMath::Max(0.0f, Light->IndirectLightingIntensity) *
+				(10000.0f / (4.0f * PI)) * IntensityScale
+			: Light->Intensity * FMath::Max(0.0f, Light->IndirectLightingIntensity) * IntensityScale;
 		const FLinearColor Color = Light->LightColor.ReinterpretAsLinear();
 
 		NewPositionAndRadius[NewLightCount] = FVector4(
