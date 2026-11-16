@@ -610,6 +610,38 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 };
 
 
+class FDDGISurfaceProbeDeduplicateCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeDeduplicateCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeDeduplicateCS, FGlobalShader);
+
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbeCandidatePositions)
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbeCandidateNormals)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbePositions)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeNormals)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeIntegratedRadiance)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, SurfaceProbeStableKeys)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeLastSeenFrames)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, SurfaceProbeHash)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeCounters)
+        SHADER_PARAMETER(uint32, ProbeCapacity)
+        SHADER_PARAMETER(uint32, HashCapacity)
+        SHADER_PARAMETER(uint32, FrameNumber)
+    END_SHADER_PARAMETER_STRUCT()
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+    FDDGISurfaceProbeDeduplicateCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeDeduplicateCS.usf",
+    "SurfaceProbeDeduplicateCS",
+    SF_Compute);
+
 class FDDGISurfaceProbeCaptureCS : public FGlobalShader
 {
     DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeCaptureCS);
@@ -773,6 +805,7 @@ static void DDGIScheduleSurfaceProbeCapture(
     DeduplicateParameters->SurfaceProbeCandidateNormals = GraphBuilder.CreateSRV(Resources.CandidateNormals);
     DeduplicateParameters->SurfaceProbePositions = GraphBuilder.CreateUAV(Resources.Positions);
     DeduplicateParameters->SurfaceProbeNormals = GraphBuilder.CreateUAV(Resources.Normals);
+    DeduplicateParameters->SurfaceProbeIntegratedRadiance = GraphBuilder.CreateUAV(Resources.IntegratedRadiance);
     DeduplicateParameters->SurfaceProbeStableKeys = GraphBuilder.CreateUAV(Resources.StableKeys);
     DeduplicateParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateUAV(Resources.LastSeenFrames);
     DeduplicateParameters->SurfaceProbeHash = GraphBuilder.CreateUAV(Resources.Hash);
