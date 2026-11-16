@@ -252,8 +252,12 @@ float3 DDGISampleSurfaceProbeIrradiance(
             continue;
         }
 
+        // Linear probing can place this cell's entries beyond 64 buckets
+        // because unrelated cells share the same global table. Stop only at
+        // the first empty bucket or after one complete table cycle; the build
+        // pass publishes entries contiguously and the table load factor is <= 0.5.
         [loop]
-        for (uint Attempt = 0u; Attempt < 64u; ++Attempt)
+        for (uint Attempt = 0u; Attempt < SurfaceProbeSpatialHashCapacity; ++Attempt)
         {
             uint4 Entry = SurfaceProbeSpatialHash[Bucket];
             if (Entry.w == 0u)
