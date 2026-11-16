@@ -34,6 +34,8 @@ struct FDDGISurfaceProbeAllocatorRHIResources
     // Compact list: ActiveIndices[0..Counters[6]) contains retained physical slots.
     FShaderResourceViewRHIRef ActiveIndicesSRV;
     FUnorderedAccessViewRHIRef ActiveIndicesUAV;
+    FShaderResourceViewRHIRef TraceIndicesSRV;
+    FUnorderedAccessViewRHIRef TraceIndicesUAV;
     FShaderResourceViewRHIRef HashSRV;
     FUnorderedAccessViewRHIRef HashUAV;
     // Counters: [4] allocated-slot high-water mark, [5] allocator errors, [6] active-list count.
@@ -57,6 +59,7 @@ struct FDDGISurfaceProbeAllocatorRDGResources
     FRDGBufferRef StableKeys = nullptr;
     FRDGBufferRef LastSeenFrames = nullptr;
     FRDGBufferRef ActiveIndices = nullptr;
+    FRDGBufferRef TraceIndices = nullptr;
     FRDGBufferRef Hash = nullptr;
     FRDGBufferRef Counters = nullptr;
     uint32 ProbeCapacity = 0u;
