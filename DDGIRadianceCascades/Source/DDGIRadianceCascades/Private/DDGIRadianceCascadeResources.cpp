@@ -2032,8 +2032,7 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
 
         const FRDGBufferDesc Desc = FRDGBufferDesc::CreateStructuredDesc(
             BytesPerElement,
-            NumElements,
-            BUF_ShaderResource | BUF_UnorderedAccess);
+            NumElements);
         FRDGBufferRef Buffer = GraphBuilder.CreateBuffer(Desc, DebugName);
         GraphBuilder.QueueBufferExtraction(Buffer, &PooledBuffer, ERHIAccess::SRVCompute);
 
