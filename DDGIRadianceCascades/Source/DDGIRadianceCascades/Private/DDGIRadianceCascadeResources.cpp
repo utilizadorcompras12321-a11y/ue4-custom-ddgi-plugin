@@ -556,7 +556,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     {
         // A matching uploaded snapshot without its CPU identity cache is an
         // inconsistent state; fail closed rather than building lookup data
-        // from stale or incomplete keys.        DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+        // from stale or incomplete keys.
+        DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
         UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: cached probe-cell identity count does not match the uploaded layout."));
         return;
     }
