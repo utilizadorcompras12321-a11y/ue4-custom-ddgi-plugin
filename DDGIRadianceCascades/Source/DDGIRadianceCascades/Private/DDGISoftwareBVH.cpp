@@ -565,7 +565,7 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 
 			TArray<FVector> MaterialBaseColor;
 			// Materials without an explicit DDGI_BaseColor parameter use a neutral 18% diffuse fallback.
-			// Arbitrary material graphs and texture samples are not evaluated by this CPU BVH.
+			// Optional metallic and vertex-color overrides are applied below; arbitrary material graphs and textures are not evaluated.
 			MaterialBaseColor.Init(FVector(0.18f, 0.18f, 0.18f), Component->GetNumMaterials());
 			// The software BVH has no transmittance representation. Only opaque and
 			// masked materials may conservatively occlude; transparent blend modes must
