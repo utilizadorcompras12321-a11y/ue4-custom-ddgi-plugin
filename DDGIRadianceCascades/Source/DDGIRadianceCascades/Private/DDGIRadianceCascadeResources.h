@@ -31,10 +31,12 @@ struct FDDGISurfaceProbeAllocatorRHIResources
     FUnorderedAccessViewRHIRef StableKeysUAV;
     FShaderResourceViewRHIRef LastSeenFramesSRV;
     FUnorderedAccessViewRHIRef LastSeenFramesUAV;
+    // Compact list: ActiveIndices[0..Counters[6]) contains retained physical slots.
     FShaderResourceViewRHIRef ActiveIndicesSRV;
     FUnorderedAccessViewRHIRef ActiveIndicesUAV;
     FShaderResourceViewRHIRef HashSRV;
     FUnorderedAccessViewRHIRef HashUAV;
+    // Counters: [4] allocated-slot high-water mark, [5] allocator errors, [6] active-list count.
     FShaderResourceViewRHIRef CountersSRV;
     FUnorderedAccessViewRHIRef CountersUAV;
     uint32 ProbeCapacity = 0u;
