@@ -314,293 +314,183 @@ namespace
 		OutPositions.Reset();
 		OutCellCoordinates.Reset();
 		OutLevels.Reset();
+
 		if (!std::isfinite(static_cast<double>(Spacing)) ||
 			!std::isfinite(static_cast<double>(Radius)))
 		{
 			return;
 		}
-		// Bound the lattice search independently of MaxActiveProbes. The
-		// candidate-count and selection passes both visit the Y/Z lattice rows;
-		// an unbounded radius/spacing ratio can otherwise stall the game thread
-		// even though only a small fixed number of probes is retained.
-		const float SafeSpacing = FMath::Clamp(Spacing, 1.0f, 100000.0f);
-		const double SafeSpacingDouble = static_cast<double>(SafeSpacing);
-		const double MaxRadius = SafeSpacingDouble * 120.0;
-		const double RequestedRadius = FMath::Max(0.0, static_cast<double>(Radius));
-		const float SafeRadius = static_cast<float>(FMath::Min(RequestedRadius, MaxRadius));
-		const int32 SafeMaxProbeCount = FMath::Max(0, MaxProbeCount);
-		if (SafeMaxProbeCount == 0) return;
 
-		const double TransitionWidth = FMath::Max(
-			SafeSpacingDouble * 2.0, static_cast<double>(SafeRadius) * 0.05);
-		int64 LevelCandidateCounts[4] = { 0, 0, 0, 0 };
-		int64 FirstX[4], LastX[4], FirstY[4], LastY[4], FirstZ[4], LastZ[4];
-		// Explicit non-dyadic spatial steps retain substantially more detail in distant LODs.
-		int32 LevelSteps[4] = { 1, 2, 3, 4 };
-		int64 MinDistanceSquared[4] = { 0, 0, 0, 0 };
-		int64 MaxDistanceSquared[4] = { 0, 0, 0, 0 };
-
-		// Count lattice points exactly, but analytically along X. For each
-		// (Y,Z) row, the spherical shell intersects at most two X intervals.
-		for (int32 Level = 0; Level < 4; ++Level)
+		const double SafeSpacing = FMath::Clamp(static_cast<double>(Spacing), 1.0, 100000.0);
+		const double SafeRadius = FMath::Max(0.0, static_cast<double>(Radius));
+		const int32 SafeMaxProbeCount = FMath::Clamp(MaxProbeCount, 0, 32768);
+		if (SafeRadius <= 0.0 || SafeMaxProbeCount == 0)
 		{
-			const int32 LevelStep = LevelSteps[Level];
-			const double BoundaryBefore = static_cast<double>(SafeRadius) *
-				(static_cast<double>(Level) / 4.0);
-			const double BoundaryAfter = static_cast<double>(SafeRadius) *
-				(static_cast<double>(Level + 1) / 4.0);
-			// Trilinear sampling needs all eight lattice corners around every
-			// query point. At most one full level-spacing per axis separates a
-			// query point from a corner, so sqrt(3) * LevelSpacing is a
-			// conservative radial support margin. Expand both sides of each
-			// level's blend region; otherwise the shell boundary loses corners
-			// and the interpolated cascade collapses to zero near its edge.
-			const double LevelSpacing = SafeSpacingDouble * static_cast<double>(LevelStep);
-			const double SupportMargin = std::sqrt(3.0) * LevelSpacing;
-			const double InnerRadius = Level == 0 ? 0.0 :
-				FMath::Max(0.0, BoundaryBefore - TransitionWidth - SupportMargin);
-			const double OuterRadius = (Level == 3 ? static_cast<double>(SafeRadius) :
-				FMath::Min(static_cast<double>(SafeRadius), BoundaryAfter + TransitionWidth)) +
-				SupportMargin;
-			const double RadiusInCells = OuterRadius / SafeSpacingDouble;
-			const double MaxSafeRadiusInCells =
-				std::sqrt(static_cast<double>(MAX_int64) / 3.0);
-			if (!std::isfinite(RadiusInCells) || RadiusInCells > MaxSafeRadiusInCells)
+			return;
+		}
+
+		// Four nested 16^3 clipmaps. Every level is aligned to the immutable
+		// world lattice; level spacing doubles and each coarser level stores
+		// only the ring outside the previous level's coverage.
+		static const int32 ClipmapResolution = 16;
+		static const int32 ClipmapMinOffset = -8;
+		static const int32 ClipmapMaxOffset = 7;
+		static const int32 ClipmapLevelCount = 4;
+
+		TArray<FVector4> LevelPositions[ClipmapLevelCount];
+		TArray<FIntVector> LevelCells[ClipmapLevelCount];
+		int32 ActiveLevelCount = 0;
+		int64 PreviousCenterX = 0;
+		int64 PreviousCenterY = 0;
+		int64 PreviousCenterZ = 0;
+		int64 PreviousStep = 1;
+
+		for (int32 Level = 0; Level < ClipmapLevelCount; ++Level)
+		{
+			const int64 Step = 1ll << Level;
+			const double HalfExtent = SafeSpacing * 8.0 * static_cast<double>(Step);
+			const int64 CenterX = DDGISafeRoundCell(static_cast<double>(CenterCell.X) / static_cast<double>(Step)) * Step;
+			const int64 CenterY = DDGISafeRoundCell(static_cast<double>(CenterCell.Y) / static_cast<double>(Step)) * Step;
+			const int64 CenterZ = DDGISafeRoundCell(static_cast<double>(CenterCell.Z) / static_cast<double>(Step)) * Step;
+
+			LevelPositions[Level].Reserve(ClipmapResolution * ClipmapResolution * ClipmapResolution);
+			LevelCells[Level].Reserve(ClipmapResolution * ClipmapResolution * ClipmapResolution);
+
+			for (int32 Z = ClipmapMinOffset; Z <= ClipmapMaxOffset; ++Z)
 			{
-				// Squared 3D distances must remain representable in signed int64.
-				OutPositions.Reset();
-				return;
+				const int64 CellZ = CenterZ + static_cast<int64>(Z) * Step;
+				for (int32 Y = ClipmapMinOffset; Y <= ClipmapMaxOffset; ++Y)
+				{
+					const int64 CellY = CenterY + static_cast<int64>(Y) * Step;
+					for (int32 X = ClipmapMinOffset; X <= ClipmapMaxOffset; ++X)
+					{
+						const int64 CellX = CenterX + static_cast<int64>(X) * Step;
+
+						// Coarser clipmaps are rings, not overlapping full volumes.
+						// This preserves a single owner for every world-space region.
+						if (Level > 0)
+						{
+							const int64 InnerMinX = PreviousCenterX + ClipmapMinOffset * PreviousStep;
+							const int64 InnerMaxX = PreviousCenterX + ClipmapMaxOffset * PreviousStep;
+							const int64 InnerMinY = PreviousCenterY + ClipmapMinOffset * PreviousStep;
+							const int64 InnerMaxY = PreviousCenterY + ClipmapMaxOffset * PreviousStep;
+							const int64 InnerMinZ = PreviousCenterZ + ClipmapMinOffset * PreviousStep;
+							const int64 InnerMaxZ = PreviousCenterZ + ClipmapMaxOffset * PreviousStep;
+							const bool bInsidePreviousClipmap =
+								CellX >= InnerMinX && CellX <= InnerMaxX &&
+								CellY >= InnerMinY && CellY <= InnerMaxY &&
+								CellZ >= InnerMinZ && CellZ <= InnerMaxZ;
+							if (bInsidePreviousClipmap)
+							{
+								continue;
+							}
+						}
+
+						// Clipmap extent is the requested world radius. The outermost
+						// level may overshoot by less than one factor of two so it
+						// always covers the requested radius without a sparse fringe.
+						const double DX = static_cast<double>(CellX - CenterCell.X) * SafeSpacing;
+						const double DY = static_cast<double>(CellY - CenterCell.Y) * SafeSpacing;
+						const double DZ = static_cast<double>(CellZ - CenterCell.Z) * SafeSpacing;
+						if (FMath::Max3(FMath::Abs(DX), FMath::Abs(DY), FMath::Abs(DZ)) > HalfExtent + SafeSpacing * 2.0)
+						{
+							continue;
+						}
+
+						const FIntVector Cell(
+							static_cast<int32>(CellX),
+							static_cast<int32>(CellY),
+							static_cast<int32>(CellZ));
+						LevelCells[Level].Add(Cell);
+						LevelPositions[Level].Add(FVector4(
+							static_cast<float>(static_cast<double>(Cell.X) * SafeSpacing),
+							static_cast<float>(static_cast<double>(Cell.Y) * SafeSpacing),
+							static_cast<float>(static_cast<double>(Cell.Z) * SafeSpacing),
+							static_cast<float>(Level)));
+					}
+				}
 			}
-			const double SpacingSquared = SafeSpacingDouble * SafeSpacingDouble;
-			MinDistanceSquared[Level] = static_cast<int64>(
-				std::ceil((InnerRadius * InnerRadius) / SpacingSquared));
-			MaxDistanceSquared[Level] = static_cast<int64>(
-				std::floor((OuterRadius * OuterRadius) / SpacingSquared));
 
-			const int64 MinCellX = DDGISafeFloorCell(
-				static_cast<double>(CenterCell.X) - RadiusInCells);
-			const int64 MaxCellX = DDGISafeCeilCell(
-				static_cast<double>(CenterCell.X) + RadiusInCells);
-			const int64 MinCellY = DDGISafeFloorCell(
-				static_cast<double>(CenterCell.Y) - RadiusInCells);
-			const int64 MaxCellY = DDGISafeCeilCell(
-				static_cast<double>(CenterCell.Y) + RadiusInCells);
-			const int64 MinCellZ = DDGISafeFloorCell(
-				static_cast<double>(CenterCell.Z) - RadiusInCells);
-			const int64 MaxCellZ = DDGISafeCeilCell(
-				static_cast<double>(CenterCell.Z) + RadiusInCells);
-			FirstX[Level] = DDGICeilDiv(MinCellX, LevelStep) * LevelStep;
-			LastX[Level] = DDGIFloorDiv(MaxCellX, LevelStep) * LevelStep;
-			FirstY[Level] = DDGICeilDiv(MinCellY, LevelStep) * LevelStep;
-			LastY[Level] = DDGIFloorDiv(MaxCellY, LevelStep) * LevelStep;
-			FirstZ[Level] = DDGICeilDiv(MinCellZ, LevelStep) * LevelStep;
-			LastZ[Level] = DDGIFloorDiv(MaxCellZ, LevelStep) * LevelStep;
+			if (LevelPositions[Level].Num() > 0)
+			{
+				++ActiveLevelCount;
+			}
 
-			if (MinDistanceSquared[Level] > MaxDistanceSquared[Level] ||
-				FirstX[Level] > LastX[Level] ||
-				FirstY[Level] > LastY[Level] ||
-				FirstZ[Level] > LastZ[Level])
+			PreviousCenterX = CenterX;
+			PreviousCenterY = CenterY;
+			PreviousCenterZ = CenterZ;
+			PreviousStep = Step;
+
+			if (HalfExtent >= SafeRadius)
+			{
+				break;
+			}
+		}
+
+		if (ActiveLevelCount == 0)
+		{
+			return;
+		}
+
+		int32 TotalCandidates = 0;
+		for (int32 Level = 0; Level < ActiveLevelCount; ++Level)
+		{
+			TotalCandidates += LevelPositions[Level].Num();
+		}
+		const int32 TargetCount = FMath::Min(SafeMaxProbeCount, TotalCandidates);
+		int32 Quotas[ClipmapLevelCount] = { 0, 0, 0, 0 };
+		int32 Remaining = TargetCount;
+
+		// Reserve an equal initial share for every populated level, then
+		// distribute the remainder in stable level order. Default capacity
+		// exceeds the complete four-level clipmap, so this is only a safety cap.
+		for (int32 Level = 0; Level < ActiveLevelCount && Remaining > 0; ++Level)
+		{
+			if (LevelPositions[Level].Num() > 0)
+			{
+				Quotas[Level] = 1;
+				--Remaining;
+			}
+		}
+		while (Remaining > 0)
+		{
+			bool bAssigned = false;
+			for (int32 Level = 0; Level < ActiveLevelCount && Remaining > 0; ++Level)
+			{
+				if (Quotas[Level] < LevelPositions[Level].Num())
+				{
+					++Quotas[Level];
+					--Remaining;
+					bAssigned = true;
+				}
+			}
+			if (!bAssigned)
+			{
+				break;
+			}
+		}
+
+		OutPositions.Reserve(TargetCount);
+		OutCellCoordinates.Reserve(TargetCount);
+		OutLevels.Reserve(TargetCount);
+		for (int32 Level = 0; Level < ActiveLevelCount; ++Level)
+		{
+			const int32 CandidateCount = LevelPositions[Level].Num();
+			const int32 Quota = Quotas[Level];
+			if (CandidateCount <= 0 || Quota <= 0)
 			{
 				continue;
 			}
 
-			const int64 FirstDeltaX = static_cast<int64>(FirstX[Level]) - CenterCell.X;
-			const int64 LastDeltaX = static_cast<int64>(LastX[Level]) - CenterCell.X;
-			const int64 FirstDeltaY = static_cast<int64>(FirstY[Level]) - CenterCell.Y;
-			const int64 LastDeltaY = static_cast<int64>(LastY[Level]) - CenterCell.Y;
-			const int64 FirstDeltaZ = static_cast<int64>(FirstZ[Level]) - CenterCell.Z;
-			const int64 LastDeltaZ = static_cast<int64>(LastZ[Level]) - CenterCell.Z;
-			const int64 MinQ = MinDistanceSquared[Level];
-			const int64 MaxQ = MaxDistanceSquared[Level];
-
-			int64 ZStart = 0, ZEnd = -1;
-			if (DDGIGetLatticeRangeWithinAbs(
-				FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(MaxQ), ZStart, ZEnd))
+			// Evenly decimate in stable Z/Y/X order if a deliberately small
+			// capacity is configured. No frame-dependent or random selection.
+			for (int32 Selected = 0; Selected < Quota; ++Selected)
 			{
-				for (int64 DZ = ZStart; DZ <= ZEnd; DZ += LevelStep)
-				{
-					const int64 ZSquared = DZ * DZ;
-					int64 YStart = 0, YEnd = -1;
-					if (!DDGIGetLatticeRangeWithinAbs(
-						FirstDeltaY, LastDeltaY, LevelStep,
-						DDGIFloorSqrt(MaxQ - ZSquared), YStart, YEnd)) continue;
-					for (int64 DY = YStart; DY <= YEnd; DY += LevelStep)
-					{
-						const int64 YZSquared = DY * DY + ZSquared;
-						const int64 MaxXAbs = DDGIFloorSqrt(MaxQ - YZSquared);
-						const int64 MinXAbs = MinQ > YZSquared ?
-							DDGICeilSqrt(MinQ - YZSquared) : 0;
-						const int64 RowCandidateCount = DDGICountLatticeValuesByAbsoluteValue(
-							FirstDeltaX, LastDeltaX, LevelStep, MinXAbs, MaxXAbs);
-						if (RowCandidateCount > MAX_int64 - LevelCandidateCounts[Level])
-						{
-							OutPositions.Reset();
-							return;
-						}
-						LevelCandidateCounts[Level] += RowCandidateCount;
-					}
-				}
-			}
-		}
-
-		int64 TotalCandidateCount = 0;
-		int32 NonEmptyLevelCount = 0;
-		for (int32 Level = 0; Level < 4; ++Level)
-		{
-			if (LevelCandidateCounts[Level] > MAX_int64 - TotalCandidateCount)
-			{
-				OutPositions.Reset();
-				return;
-			}
-			TotalCandidateCount += LevelCandidateCounts[Level];
-			if (LevelCandidateCounts[Level] > 0) ++NonEmptyLevelCount;
-		}
-		if (TotalCandidateCount == 0) return;
-
-		// Preserve the existing proportional per-level quotas exactly.
-		int32 Quotas[4] = { 0, 0, 0, 0 };
-		int32 RemainingBudget = SafeMaxProbeCount;
-		if (SafeMaxProbeCount >= NonEmptyLevelCount)
-		{
-			for (int32 Level = 0; Level < 4; ++Level)
-			{
-				if (LevelCandidateCounts[Level] > 0)
-				{
-					Quotas[Level] = 1;
-					--RemainingBudget;
-				}
-			}
-		}
-		while (RemainingBudget > 0)
-		{
-			int32 BestLevel = INDEX_NONE;
-			double BestScore = -1.0;
-			for (int32 Level = 0; Level < 4; ++Level)
-			{
-				const int64 CandidateCount = LevelCandidateCounts[Level];
-				if (static_cast<int64>(Quotas[Level]) >= CandidateCount) continue;
-				const double Score = static_cast<double>(CandidateCount) /
-					static_cast<double>(Quotas[Level] + 1);
-				if (Score > BestScore)
-				{
-					BestScore = Score;
-					BestLevel = Level;
-				}
-			}
-			if (BestLevel == INDEX_NONE) break;
-			++Quotas[BestLevel];
-			--RemainingBudget;
-		}
-
-		OutPositions.Reserve(static_cast<int32>(FMath::Min<int64>(SafeMaxProbeCount, TotalCandidateCount)));
-		OutCellCoordinates.Reserve(static_cast<int32>(FMath::Min<int64>(SafeMaxProbeCount, TotalCandidateCount)));
-		OutLevels.Reserve(static_cast<int32>(FMath::Min<int64>(SafeMaxProbeCount, TotalCandidateCount)));
-		for (int32 Level = 0; Level < 4; ++Level)
-		{
-			const int32 Quota = Quotas[Level];
-			if (Quota <= 0 || LevelCandidateCounts[Level] <= 0) continue;
-
-			const int32 LevelStep = LevelSteps[Level];
-			const int64 FirstDeltaX = static_cast<int64>(FirstX[Level]) - CenterCell.X;
-			const int64 LastDeltaX = static_cast<int64>(LastX[Level]) - CenterCell.X;
-			const int64 FirstDeltaY = static_cast<int64>(FirstY[Level]) - CenterCell.Y;
-			const int64 LastDeltaY = static_cast<int64>(LastY[Level]) - CenterCell.Y;
-			const int64 FirstDeltaZ = static_cast<int64>(FirstZ[Level]) - CenterCell.Z;
-			const int64 LastDeltaZ = static_cast<int64>(LastZ[Level]) - CenterCell.Z;
-			const int64 MinQ = MinDistanceSquared[Level];
-			const int64 MaxQ = MaxDistanceSquared[Level];
-
-			// One Y/Z pass per level. Keep only the best Quota candidates in
-			// a bounded max-heap. X values in each row are visited by increasing
-			// absolute distance, so a candidate that cannot beat the heap root
-			// proves that no later X in that row can enter the result.
-			TArray<FDDGISelectedProbeCandidate> SelectedCandidates;
-			SelectedCandidates.Reserve(Quota);
-
-			int64 ZStart = 0, ZEnd = -1;
-			if (DDGIGetLatticeRangeWithinAbs(
-				FirstDeltaZ, LastDeltaZ, LevelStep, DDGIFloorSqrt(MaxQ), ZStart, ZEnd))
-			{
-				for (int64 DZ = ZStart; DZ <= ZEnd; DZ += LevelStep)
-				{
-					const int64 ZSquared = DZ * DZ;
-					int64 YStart = 0, YEnd = -1;
-					if (!DDGIGetLatticeRangeWithinAbs(
-						FirstDeltaY, LastDeltaY, LevelStep,
-						DDGIFloorSqrt(MaxQ - ZSquared), YStart, YEnd)) continue;
-
-					for (int64 DY = YStart; DY <= YEnd; DY += LevelStep)
-					{
-						const int64 YZSquared = DY * DY + ZSquared;
-						const int64 MaxXAbs = DDGIFloorSqrt(MaxQ - YZSquared);
-						const int64 MinXAbs = MinQ > YZSquared ?
-							DDGICeilSqrt(MinQ - YZSquared) : 0;
-
-						int64 NegativeFirst = 0, NegativeLast = -1;
-						int64 PositiveFirst = 0, PositiveLast = -1;
-						const bool bHasNegative = DDGIGetLatticeRange(
-							FirstDeltaX, LastDeltaX, LevelStep,
-							-MaxXAbs, MinXAbs == 0 ? -1 : -MinXAbs,
-							NegativeFirst, NegativeLast);
-						const bool bHasPositive = DDGIGetLatticeRange(
-							FirstDeltaX, LastDeltaX, LevelStep,
-							MinXAbs, MaxXAbs, PositiveFirst, PositiveLast);
-
-						int64 NegativeX = bHasNegative ? NegativeLast : 0;
-						int64 PositiveX = bHasPositive ? PositiveFirst : 0;
-						bool bNegativeValid = bHasNegative;
-						bool bPositiveValid = bHasPositive;
-
-						while (bNegativeValid || bPositiveValid)
-						{
-							const bool bTakeNegative = bNegativeValid &&
-								(!bPositiveValid || -NegativeX <= PositiveX);
-							const int64 DX = bTakeNegative ? NegativeX : PositiveX;
-
-							FDDGISelectedProbeCandidate Candidate;
-							Candidate.CellX = static_cast<int32>(
-								static_cast<int64>(CenterCell.X) + DX);
-							Candidate.CellY = static_cast<int32>(
-								static_cast<int64>(CenterCell.Y) + DY);
-							Candidate.CellZ = static_cast<int32>(
-								static_cast<int64>(CenterCell.Z) + DZ);
-							Candidate.Position = FVector4(
-								static_cast<float>(Candidate.CellX) * SafeSpacing,
-								static_cast<float>(Candidate.CellY) * SafeSpacing,
-								static_cast<float>(Candidate.CellZ) * SafeSpacing,
-								static_cast<float>(Level));
-							Candidate.DistanceSquared = DX * DX + YZSquared;
-
-							const bool bHeapHasRoom = SelectedCandidates.Num() < Quota;
-							if (!bHeapHasRoom &&
-								!DDGISelectedProbeCandidateLess(Candidate, SelectedCandidates[0]))
-							{
-								break;
-							}
-							DDGIInsertBoundedSelectedProbe(
-								SelectedCandidates, Candidate, Quota);
-
-							if (bTakeNegative)
-							{
-								NegativeX -= LevelStep;
-								bNegativeValid = NegativeX >= NegativeFirst;
-							}
-							else
-							{
-								PositiveX += LevelStep;
-								bPositiveValid = PositiveX <= PositiveLast;
-							}
-						}
-					}
-				}
-			}
-
-			SelectedCandidates.Sort(DDGISelectedProbeCandidateLess);
-			for (const FDDGISelectedProbeCandidate& Candidate : SelectedCandidates)
-			{
-				OutPositions.Add(Candidate.Position);
-				OutCellCoordinates.Add(FIntVector(Candidate.CellX, Candidate.CellY, Candidate.CellZ));
-				OutLevels.Add(FMath::RoundToInt(Candidate.Position.W));
+				const int32 CandidateIndex = static_cast<int32>(
+					(static_cast<int64>(Selected) * CandidateCount) / Quota);
+				OutPositions.Add(LevelPositions[Level][CandidateIndex]);
+				OutCellCoordinates.Add(LevelCells[Level][CandidateIndex]);
+				OutLevels.Add(Level);
 			}
 		}
 	}
