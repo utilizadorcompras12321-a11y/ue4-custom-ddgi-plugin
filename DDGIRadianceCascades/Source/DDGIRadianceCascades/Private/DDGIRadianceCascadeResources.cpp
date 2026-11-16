@@ -597,6 +597,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         // Refresh visible identities and expire only probes that have remained
         // outside the active window for the retention period. Their physical
         // slots and ray history remain untouched while they are retained.
+        // Collect expired pending slots first, then filter the pending array once;
+        // repeatedly calling TArray::Remove inside this loop is quadratic.
+        TSet<uint32> ExpiredPendingSlots;
         for (auto It = Storage.ProbeCellToPhysicalSlot.CreateIterator(); It; ++It)
         {
             if (ActiveKeys.Contains(It.Key()))
@@ -613,11 +616,21 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                 // A retained identity owns exactly one physical slot; expired map entries
                 // are removed immediately below, so this slot cannot already be free.
                 Storage.FreePhysicalSlots.Add(ExpiredSlot);
-                if (Storage.NewlyAllocatedPhysicalSlotsCPU.Remove(ExpiredSlot) > 0)
-                {
-                    Storage.bPendingPhysicalSlotsUpload = true;
-                }
+                ExpiredPendingSlots.Add(ExpiredSlot);
                 It.RemoveCurrent();
+            }
+        }
+        if (ExpiredPendingSlots.Num() > 0)
+        {
+            const int32 PreviousPendingSlotCount = Storage.NewlyAllocatedPhysicalSlotsCPU.Num();
+            Storage.NewlyAllocatedPhysicalSlotsCPU.RemoveAll(
+                [&ExpiredPendingSlots](uint32 PendingSlot)
+                {
+                    return ExpiredPendingSlots.Contains(PendingSlot);
+                });
+            if (Storage.NewlyAllocatedPhysicalSlotsCPU.Num() != PreviousPendingSlotCount)
+            {
+                Storage.bPendingPhysicalSlotsUpload = true;
             }
         }
 
