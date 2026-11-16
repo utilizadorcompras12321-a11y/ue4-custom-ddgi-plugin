@@ -25,6 +25,7 @@ Supported direct-light injection:
 Geometry and material scope:
 - Opaque static mesh and BSP geometry with CPU-accessible mesh data.
 - Static ISM/HISM instances are expanded into world-space triangles and included. Movable components and movable instances are excluded from the software BVH.
+- Rebuilding the static BVH publishes a new immutable geometry/material snapshot; the render-thread resource cache detects the snapshot change and invalidates retained radiance before tracing against it. Static geometry or material edits therefore require `RebuildStaticGeometryBVH`.
 - Static-mesh diffuse material input supports `DDGI_BaseColor` and
   `DDGI_EmissiveRadiance` vector parameters, `DDGI_Metallic` scalar diffuse-
   energy reduction, and opt-in `DDGI_UseVertexColor`. Vertex colors are reduced
