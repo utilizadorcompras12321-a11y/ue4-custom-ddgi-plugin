@@ -370,12 +370,16 @@ namespace
 						// This preserves a single owner for every world-space region.
 						if (Level > 0)
 						{
-							const int64 InnerMinX = PreviousCenterX + ClipmapMinOffset * PreviousStep;
-							const int64 InnerMaxX = PreviousCenterX + ClipmapMaxOffset * PreviousStep;
-							const int64 InnerMinY = PreviousCenterY + ClipmapMinOffset * PreviousStep;
-							const int64 InnerMaxY = PreviousCenterY + ClipmapMaxOffset * PreviousStep;
-							const int64 InnerMinZ = PreviousCenterZ + ClipmapMinOffset * PreviousStep;
-							const int64 InnerMaxZ = PreviousCenterZ + ClipmapMaxOffset * PreviousStep;
+							// Keep one coarse cell of overlap inside the previous
+							// clipmap so trilinear sampling has all eight corners
+							// while blending across the clipmap boundary.
+							const int64 Overlap = Step;
+							const int64 InnerMinX = PreviousCenterX + ClipmapMinOffset * PreviousStep + Overlap;
+							const int64 InnerMaxX = PreviousCenterX + ClipmapMaxOffset * PreviousStep - Overlap;
+							const int64 InnerMinY = PreviousCenterY + ClipmapMinOffset * PreviousStep + Overlap;
+							const int64 InnerMaxY = PreviousCenterY + ClipmapMaxOffset * PreviousStep - Overlap;
+							const int64 InnerMinZ = PreviousCenterZ + ClipmapMinOffset * PreviousStep + Overlap;
+							const int64 InnerMaxZ = PreviousCenterZ + ClipmapMaxOffset * PreviousStep - Overlap;
 							const bool bInsidePreviousClipmap =
 								CellX >= InnerMinX && CellX <= InnerMaxX &&
 								CellY >= InnerMinY && CellY <= InnerMaxY &&
