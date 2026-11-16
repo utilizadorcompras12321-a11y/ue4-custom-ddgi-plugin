@@ -80,15 +80,15 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
     uint PhysicalLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
     uint2 Pixel = uint2(PhysicalLinearIndex % TextureWidth, PhysicalLinearIndex / TextureWidth);
-    // ProbePositionsTexture stores grid-relative offsets. Reconstruct the
-    // position in BVH-local coordinates before comparing hit positions or
-    // distances with neighboring probes.
+    // ProbePositionsTexture stores BVH-local positions. Keep this coordinate
+    // space for hit-plane tests; convert to world-lattice coordinates only
+    // when looking up neighboring probe cells.
     // Load the probe metadata once: both position and level are needed for
     // every ray processed by this probe.
     float4 CenterProbeData = ProbePositionsTexture.Load(
         int3(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth, 0));
-    float3 CenterPositionOffset = CenterProbeData.xyz;
-    float3 CenterPosition = ProbeGridOrigin.xyz + CenterPositionOffset;
+    float3 CenterPosition = CenterProbeData.xyz;
+    float3 CenterWorldLatticePosition = CenterPosition - ProbeGridOrigin.xyz;
     uint2 DirectionPixel = uint2(RayIndex % TextureWidth, RayIndex / TextureWidth);
     float3 CenterDirection = normalize(DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
     float4 CenterRadianceSample = RadianceTexture.Load(int3(Pixel, 0));
@@ -145,7 +145,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     int3 LevelCellStep = 0;
     if (UsePrecomputedProbeNeighbors == 0u)
     {
-        CenterCell = int3(round(CenterPositionOffset / max(ProbeSpacing, 1.0f)));
+        CenterCell = int3(round(CenterWorldLatticePosition / max(ProbeSpacing, 1.0f)));
         LevelCellStep = int3((int)LevelScale, (int)LevelScale, (int)LevelScale);
     }
     uint NeighborSlot = 0u;
@@ -174,9 +174,8 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         // Read the actual neighbor offset instead of reconstructing its position
         // from a global spacing. This is equivalent for the current uniform
         // lattice and remains correct when probes later use per-level spacing.
-        float3 NeighborPositionOffset = ProbePositionsTexture.Load(
+        float3 NeighborPosition = ProbePositionsTexture.Load(
             int3(NeighborIndex % TextureWidth, NeighborIndex / TextureWidth, 0)).xyz;
-        float3 NeighborPosition = ProbeGridOrigin.xyz + NeighborPositionOffset;
         uint NeighborPhysicalIndex = LogicalToPhysicalSlots[NeighborIndex];
         uint NeighborLinear = NeighborPhysicalIndex * TotalRaysPerProbe + RayIndex;
         uint2 NeighborPixel = uint2(NeighborLinear % TextureWidth, NeighborLinear / TextureWidth);
