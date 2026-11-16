@@ -319,9 +319,15 @@ namespace
 		{
 			return;
 		}
-		const float SafeSpacing = FMath::Max(1.0f, Spacing);
-		const float SafeRadius = FMath::Max(0.0f, Radius);
+		// Bound the lattice search independently of MaxActiveProbes. The
+		// candidate-count and selection passes both visit the Y/Z lattice rows;
+		// an unbounded radius/spacing ratio can otherwise stall the game thread
+		// even though only a small fixed number of probes is retained.
+		const float SafeSpacing = FMath::Clamp(Spacing, 1.0f, 100000.0f);
 		const double SafeSpacingDouble = static_cast<double>(SafeSpacing);
+		const double MaxRadius = SafeSpacingDouble * 120.0;
+		const double RequestedRadius = FMath::Max(0.0, static_cast<double>(Radius));
+		const float SafeRadius = static_cast<float>(FMath::Min(RequestedRadius, MaxRadius));
 		const int32 SafeMaxProbeCount = FMath::Max(0, MaxProbeCount);
 		if (SafeMaxProbeCount == 0) return;
 
@@ -861,7 +867,22 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 
 	UpdateDirectionalLighting(InActor);
 	Config.DynamicGIDistance = FMath::Max(1.0f, InActor->DynamicGIDistance);
-	Config.ProbeGridDistance = FMath::Max(1.0f, InActor->ProbeGridDistance);
+	const float RequestedProbeSpacing = InActor->ProbeSpacing;
+	Config.ProbeSpacing = std::isfinite(static_cast<double>(RequestedProbeSpacing))
+		? FMath::Clamp(RequestedProbeSpacing, 1.0f, 100000.0f)
+		: 200.0f;
+	const float RequestedProbeGridDistance = InActor->ProbeGridDistance;
+	const float MaxProbeGridDistance = Config.ProbeSpacing * 120.0f;
+	Config.ProbeGridDistance = std::isfinite(static_cast<double>(RequestedProbeGridDistance))
+		? FMath::Clamp(RequestedProbeGridDistance, 1.0f, MaxProbeGridDistance)
+		: 4000.0f;
+	if (std::isfinite(static_cast<double>(RequestedProbeGridDistance)) &&
+		RequestedProbeGridDistance > MaxProbeGridDistance)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("DDGI: ProbeGridDistance %.1f cm exceeds the CPU lattice-search safety limit for spacing %.1f cm; clamped to %.1f cm (120 spacing units)."),
+			RequestedProbeGridDistance, Config.ProbeSpacing, Config.ProbeGridDistance);
+	}
 	Config.RadianceCascades.CascadeCount = FMath::Clamp(InActor->CascadeCount, 1, 8);
 	Config.RadianceCascades.BaseRayCount = FMath::Clamp(InActor->BaseRayCount, 1, 64);
 	Config.RadianceCascades.RaySplitFactor = FMath::Clamp(InActor->RaySplitFactor, 1, 4);
@@ -870,7 +891,6 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	Config.RadianceCascades.MaxTraceDistance = FMath::Max(1.0f, InActor->DynamicGIDistance);
 	Config.RadianceCascades.BuildCascadeSlices(Config.RadianceCascadeSlices);
 	Config.TotalRaysPerProbe = Config.RadianceCascades.GetTotalRayCount();
-	Config.ProbeSpacing = FMath::Max(1.0f, InActor->ProbeSpacing);
 	// Keep probe count within the texture/hash layout supported by the renderer.
 	Config.MaxActiveProbes = FMath::Clamp(InActor->MaxActiveProbes, 1, 32768);
 	Config.ProbeUpdateBudget = FMath::Max(0, InActor->ProbeUpdateBudget);
