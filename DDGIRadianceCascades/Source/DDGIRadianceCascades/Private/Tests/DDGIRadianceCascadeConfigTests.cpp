@@ -115,8 +115,8 @@ bool FDDGIRadianceCascadeLayoutTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("All supported ray storage offsets are contiguous"), bAllStorageOffsetsContiguous);
 	TestTrue(TEXT("All supported distance intervals are contiguous and reach MaxTraceDistance"), bAllDistanceIntervalsValid);
 
-	// The shader's 16-bit mantissa/exponent storage is independent of this
-	// configuration calculation; verify that byte estimates remain monotonic.
+	// Packed R11G11B10 precision is independent of this configuration
+	// calculation; verify that byte estimates remain monotonic.
 	FDDGIRadianceCascadeConfig MemoryConfig;
 	MemoryConfig.CascadeCount = 5;
 	MemoryConfig.BaseRayCount = 6;
