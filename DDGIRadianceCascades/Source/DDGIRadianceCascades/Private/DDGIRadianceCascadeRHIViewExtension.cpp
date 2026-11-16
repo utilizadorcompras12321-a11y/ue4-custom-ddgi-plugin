@@ -365,6 +365,7 @@ public:
  {
   TextureWidth.Bind(I.ParameterMap,TEXT("TextureWidth")); TotalTexels.Bind(I.ParameterMap,TEXT("TotalTexels"));
   DispatchGroupsX.Bind(I.ParameterMap,TEXT("DispatchGroupsX")); ProbeCount.Bind(I.ParameterMap,TEXT("ProbeCount"));
+  TraceStartIndex.Bind(I.ParameterMap,TEXT("TraceStartIndex"));
   TotalRaysPerProbe.Bind(I.ParameterMap,TEXT("TotalRaysPerProbe")); HashCapacity.Bind(I.ParameterMap,TEXT("HashCapacity"));
   TriangleCount.Bind(I.ParameterMap,TEXT("TriangleCount"));
   ProbeSpacing.Bind(I.ParameterMap,TEXT("ProbeSpacing")); ProbeGridOrigin.Bind(I.ParameterMap,TEXT("ProbeGridOrigin"));
@@ -382,11 +383,12 @@ public:
  void SetParameters(FRHICommandList& C,const TShaderRHIParamRef Sh,FShaderResourceViewRHIRef R,FShaderResourceViewRHIRef H,FShaderResourceViewRHIRef HitIndices,
   FShaderResourceViewRHIRef D,FShaderResourceViewRHIRef P,FShaderResourceViewRHIRef LogicalToPhysicalSRV,FShaderResourceViewRHIRef Triangles,FShaderResourceViewRHIRef S,
   FShaderResourceViewRHIRef NeighborList,FUnorderedAccessViewRHIRef O,
-  uint32 T,uint32 G,uint32 PC,uint32 RPP,uint32 HC,uint32 TC,float PS,const FVector4& Origin,uint32 bUseNeighborList)
+  uint32 T,uint32 G,uint32 PC,uint32 StartIndex,uint32 RPP,uint32 HC,uint32 TC,float PS,const FVector4& Origin,uint32 bUseNeighborList)
  {
   uint32 W=4096u;
   SetShaderValue(C,Sh,TextureWidth,W); SetShaderValue(C,Sh,TotalTexels,T); SetShaderValue(C,Sh,DispatchGroupsX,G);
-  SetShaderValue(C,Sh,ProbeCount,PC); SetShaderValue(C,Sh,TotalRaysPerProbe,RPP); SetShaderValue(C,Sh,HashCapacity,HC);
+  SetShaderValue(C,Sh,ProbeCount,PC); SetShaderValue(C,Sh,TraceStartIndex,StartIndex);
+  SetShaderValue(C,Sh,TotalRaysPerProbe,RPP); SetShaderValue(C,Sh,HashCapacity,HC);
   SetShaderValue(C,Sh,TriangleCount,TC);
   SetShaderValue(C,Sh,ProbeSpacing,PS); SetShaderValue(C,Sh,ProbeGridOrigin,Origin);
   SetShaderValue(C,Sh,UsePrecomputedProbeNeighbors,bUseNeighborList);
@@ -422,6 +424,7 @@ private:
  LAYOUT_FIELD(FShaderParameter, TotalTexels);
  LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
  LAYOUT_FIELD(FShaderParameter, ProbeCount);
+ LAYOUT_FIELD(FShaderParameter, TraceStartIndex);
  LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
  LAYOUT_FIELD(FShaderParameter, HashCapacity);
  LAYOUT_FIELD(FShaderParameter, TriangleCount);
@@ -457,13 +460,15 @@ public:
 		TotalIntegrationTexels.Bind(Initializer.ParameterMap, TEXT("TotalIntegrationTexels"));
 		DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
+		ProbeCount.Bind(Initializer.ParameterMap, TEXT("ProbeCount"));
+		ProbeStartIndex.Bind(Initializer.ParameterMap, TEXT("ProbeStartIndex"));
 		CascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("CascadeStorageOffset"));
 		CascadeRayCount.Bind(Initializer.ParameterMap, TEXT("CascadeRayCount"));
 		NextCascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("NextCascadeStorageOffset"));
 		EffectiveSplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
+		bCopyGatherToFinal.Bind(Initializer.ParameterMap, TEXT("bCopyGatherToFinal"));
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		GatheredRadianceTexture.Bind(Initializer.ParameterMap, TEXT("GatheredRadianceTexture"));
-		ChildRadianceTexture.Bind(Initializer.ParameterMap, TEXT("ChildRadianceTexture"));
 		HitDistanceTexture.Bind(Initializer.ParameterMap, TEXT("HitDistanceTexture"));
 		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 	}
@@ -479,26 +484,31 @@ public:
 		const TShaderRHIParamRef ShaderRHI,
 		FUnorderedAccessViewRHIRef InRadianceUAV,
 		FShaderResourceViewRHIRef GatheredRadianceSRV,
-		FShaderResourceViewRHIRef ChildRadianceSRV,
 		FShaderResourceViewRHIRef HitDistanceSRV,
 		FShaderResourceViewRHIRef LogicalToPhysicalSRV,
 		uint32 InTotalIntegrationTexels,
 		uint32 InDispatchGroupsX,
 		uint32 InTotalRaysPerProbe,
+		uint32 InProbeCount,
+		uint32 InProbeStartIndex,
 		uint32 InCascadeStorageOffset,
 		uint32 InCascadeRayCount,
 		uint32 InNextCascadeStorageOffset,
-		uint32 InEffectiveSplitFactor)
+		uint32 InEffectiveSplitFactor,
+		uint32 bInCopyGatherToFinal)
 	{
 		const uint32 InTextureWidth = 4096u;
 		SetShaderValue(RHICmdList, ShaderRHI, TextureWidth, InTextureWidth);
 		SetShaderValue(RHICmdList, ShaderRHI, TotalIntegrationTexels, InTotalIntegrationTexels);
 		SetShaderValue(RHICmdList, ShaderRHI, DispatchGroupsX, InDispatchGroupsX);
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
+		SetShaderValue(RHICmdList, ShaderRHI, ProbeCount, InProbeCount);
+		SetShaderValue(RHICmdList, ShaderRHI, ProbeStartIndex, InProbeStartIndex);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeStorageOffset, InCascadeStorageOffset);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeRayCount, InCascadeRayCount);
 		SetShaderValue(RHICmdList, ShaderRHI, NextCascadeStorageOffset, InNextCascadeStorageOffset);
 		SetShaderValue(RHICmdList, ShaderRHI, EffectiveSplitFactor, InEffectiveSplitFactor);
+		SetShaderValue(RHICmdList, ShaderRHI, bCopyGatherToFinal, bInCopyGatherToFinal);
 		if (RadianceUAV.IsBound())
 		{
 			RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), InRadianceUAV);
@@ -506,10 +516,6 @@ public:
 		if (GatheredRadianceTexture.IsBound())
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, GatheredRadianceTexture.GetBaseIndex(), GatheredRadianceSRV);
-		}
-		if (ChildRadianceTexture.IsBound())
-		{
-			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ChildRadianceTexture.GetBaseIndex(), ChildRadianceSRV);
 		}
 		if (HitDistanceTexture.IsBound())
 		{
@@ -532,10 +538,6 @@ public:
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, GatheredRadianceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
 		}
-		if (ChildRadianceTexture.IsBound())
-		{
-			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ChildRadianceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
-		}
 		if (HitDistanceTexture.IsBound())
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitDistanceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
@@ -551,13 +553,15 @@ private:
 	LAYOUT_FIELD(FShaderParameter, TotalIntegrationTexels);
 	LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
 	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
+	LAYOUT_FIELD(FShaderParameter, ProbeCount);
+	LAYOUT_FIELD(FShaderParameter, ProbeStartIndex);
 	LAYOUT_FIELD(FShaderParameter, CascadeStorageOffset);
 	LAYOUT_FIELD(FShaderParameter, CascadeRayCount);
 	LAYOUT_FIELD(FShaderParameter, NextCascadeStorageOffset);
 	LAYOUT_FIELD(FShaderParameter, EffectiveSplitFactor);
+	LAYOUT_FIELD(FShaderParameter, bCopyGatherToFinal);
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, GatheredRadianceTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, ChildRadianceTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
 };
