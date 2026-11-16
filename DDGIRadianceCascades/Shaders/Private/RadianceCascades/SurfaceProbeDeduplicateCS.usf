@@ -32,27 +32,6 @@ uint DDGIHashSurfaceKey(uint3 Cell, uint NormalKey)
     return Hash;
 }
 
-bool DDGITryAllocateSurfaceProbeSlot(out uint OutSlot)
-{
-    [loop]
-    for (uint Attempt = 0u; Attempt < 64u; ++Attempt)
-    {
-        uint CurrentCount = SurfaceProbeCounters[4];
-        if (CurrentCount >= ProbeCapacity)
-        {
-            return false;
-        }
-        uint OriginalCount;
-        InterlockedCompareExchange(
-            SurfaceProbeCounters[4], CurrentCount, CurrentCount + 1u, OriginalCount);
-        if (OriginalCount == CurrentCount)
-        {
-            OutSlot = CurrentCount;
-            return true;
-        }
-    }
-    return false;
-}
 uint DDGIEncodeNormal(float3 Normal)
 {
     Normal /= max(abs(Normal.x) + abs(Normal.y) + abs(Normal.z), 1.0e-6f);
@@ -123,8 +102,10 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             if (OriginalSlot == 0u)
             {
                 uint NewSlot;
-                if (!DDGITryAllocateSurfaceProbeSlot(NewSlot))
+                InterlockedAdd(SurfaceProbeCounters[4], 1u, NewSlot);
+                if (NewSlot >= ProbeCapacity)
                 {
+                    InterlockedMin(SurfaceProbeCounters[4], ProbeCapacity);
                     InterlockedAdd(SurfaceProbeCounters[5], 1u);
                     DeviceMemoryBarrier();
                     SurfaceProbeHash[BucketIndex].w = 0u;
