@@ -253,7 +253,7 @@ float3 DDGISampleSurfaceProbeIrradiance(
         }
 
         [loop]
-        for (uint Attempt = 0u; Attempt < 32u; ++Attempt)
+        for (uint Attempt = 0u; Attempt < 64u; ++Attempt)
         {
             uint4 Entry = SurfaceProbeSpatialHash[Bucket];
             if (Entry.w == 0u)
