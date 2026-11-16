@@ -2027,7 +2027,7 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
         if (PooledBuffer.IsValid())
         {
             return GraphBuilder.RegisterExternalBuffer(
-                PooledBuffer, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
+                PooledBuffer, ERDGBufferFlags::None);
         }
 
         const FRDGBufferDesc Desc = FRDGBufferDesc::CreateStructuredDesc(
