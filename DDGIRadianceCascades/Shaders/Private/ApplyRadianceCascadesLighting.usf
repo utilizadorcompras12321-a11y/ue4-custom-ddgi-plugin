@@ -139,6 +139,13 @@ float3 DDGIProbeDiffuseIrradiance(
 
     float3 ProbeToReceiver = ReceiverPosition - ProbePosition;
     float ReceiverDistance = length(ProbeToReceiver);
+    // Do not use a probe outside the distance actually covered by its ray
+    // hierarchy: no visibility result exists there, so treating it as visible
+    // would reintroduce unoccluded light leaks beyond MaxTraceDistance.
+    if (ReceiverDistance > max(MaxTraceDistance, 1.0f))
+    {
+        return Irradiance;
+    }
     float3 ReceiverDirection = ReceiverDistance > 1.0e-3f
         ? ProbeToReceiver / ReceiverDistance : Normal;
     uint BestBaseRay = 0u;
