@@ -5,13 +5,14 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Engine/Private/DeferredShadingCommon.ush"
 #include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
+#include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadePacking.ush"
 
 Texture2D<float4> NormalTexture;
 Texture2D<float> DepthTexture;
 Texture2D<float4> BaseColorTexture;
 Texture2D<float4> MetallicTexture;
 Texture2D<float4> DirectionsTexture;
-Texture2D<float4> RadianceTexture;
+Texture2D<uint> RadianceTexture;
 Texture2D<float> HitDistanceTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<int4> ProbeSpatialHash;
@@ -178,7 +179,7 @@ float3 DDGIProbeDiffuseIrradiance(
             uint2 RadiancePixel = uint2(
                 LinearIndex % DDGI_RC_TEXTURE_WIDTH,
                 LinearIndex / DDGI_RC_TEXTURE_WIDTH);
-            Irradiance += RadianceTexture.Load(int3(RadiancePixel, 0)).rgb * Cosine;
+            Irradiance += DDGIUnpackRGB9E5(RadianceTexture.Load(int3(RadiancePixel, 0))) * Cosine;
         }
     }
 
