@@ -486,16 +486,16 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				continue;
 			}
 
-			if (UInstancedStaticMeshComponent* InstancedComponent = Cast<UInstancedStaticMeshComponent>(Component))
-			{
-				++OutStats.SkippedInstanced;
-				OutStats.SkippedInstancedInstances += InstancedComponent->GetInstanceCount();
-				continue;
-			}
-
+			UInstancedStaticMeshComponent* InstancedComponent =
+				Cast<UInstancedStaticMeshComponent>(Component);
 			if (Component->Mobility == EComponentMobility::Movable)
 			{
 				++OutStats.SkippedMovable;
+				if (InstancedComponent)
+				{
+					++OutStats.SkippedInstanced;
+					OutStats.SkippedInstancedInstances += InstancedComponent->GetInstanceCount();
+				}
 				continue;
 			}
 
@@ -521,26 +521,43 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				continue;
 			}
 
-			const FTransform ComponentTransform = Component->GetComponentTransform();
+			TArray<FTransform> GeometryTransforms;
+			if (InstancedComponent)
+			{
+				const int32 InstanceCount = InstancedComponent->GetInstanceCount();
+				GeometryTransforms.Reserve(InstanceCount);
+				for (int32 InstanceIndex = 0; InstanceIndex < InstanceCount; ++InstanceIndex)
+				{
+					FTransform InstanceTransform;
+					if (InstancedComponent->GetInstanceTransform(InstanceIndex, InstanceTransform, true))
+					{
+						GeometryTransforms.Add(InstanceTransform);
+					}
+					else
+					{
+						++OutStats.SkippedInvalidTriangles;
+					}
+				}
+			}
+			else
+			{
+				GeometryTransforms.Add(Component->GetComponentTransform());
+			}
+			if (GeometryTransforms.Num() == 0)
+			{
+				continue;
+			}
+
 			// Keep one immutable coordinate frame for this BVH. Choosing the first
-			// CPU-readable static mesh component avoids adding local vertex offsets
-			// to large absolute world coordinates before packing them as float.
+			// CPU-readable static mesh instance avoids adding large absolute world
+			// coordinates to local vertex offsets before packing them as float.
 			if (!bHasWorldOrigin)
 			{
-				OutWorldOrigin = ComponentTransform.GetLocation();
+				OutWorldOrigin = GeometryTransforms[0].GetLocation();
 				bHasWorldOrigin = true;
 			}
-			const FVector ComponentRelativeLocation = ComponentTransform.GetLocation() - OutWorldOrigin;
 			const int32 ComponentTriangleCount = static_cast<int32>(IndexCount / 3u);
 			bool bAddedAnyTriangle = false;
-
-			// Resolve section ownership incrementally. A source mesh can be much
-			// larger than the remaining accepted-triangle capacity.
-			int32 MaterialSectionIndex = 0;
-			int64 MaterialSectionFirstTriangle = LOD.Sections.Num() > 0
-				? static_cast<int64>(LOD.Sections[0].FirstIndex / 3u) : MAX_int64;
-			int64 MaterialSectionEndTriangle = LOD.Sections.Num() > 0
-				? MaterialSectionFirstTriangle + static_cast<int64>(LOD.Sections[0].NumTriangles) : MAX_int64;
 
 			TArray<FVector> MaterialEmissiveRadiance;
 			MaterialEmissiveRadiance.Init(FVector::ZeroVector, Component->GetNumMaterials());
@@ -605,8 +622,17 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				}
 			}
 
-			for (int32 TriangleIndex = 0; TriangleIndex < ComponentTriangleCount; ++TriangleIndex)
+			for (const FTransform& ComponentTransform : GeometryTransforms)
 			{
+				const FVector ComponentRelativeLocation =
+					ComponentTransform.GetLocation() - OutWorldOrigin;
+				int32 MaterialSectionIndex = 0;
+				int64 MaterialSectionFirstTriangle = LOD.Sections.Num() > 0
+					? static_cast<int64>(LOD.Sections[0].FirstIndex / 3u) : MAX_int64;
+				int64 MaterialSectionEndTriangle = LOD.Sections.Num() > 0
+					? MaterialSectionFirstTriangle + static_cast<int64>(LOD.Sections[0].NumTriangles) : MAX_int64;
+				for (int32 TriangleIndex = 0; TriangleIndex < ComponentTriangleCount; ++TriangleIndex)
+				{
 				while (MaterialSectionIndex < LOD.Sections.Num() &&
 					static_cast<int64>(TriangleIndex) >= MaterialSectionEndTriangle)
 				{
@@ -723,6 +749,11 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, B);
 				IncludePoint(Triangle.BoundsMin, Triangle.BoundsMax, C);
 				bAddedAnyTriangle = true;
+				}
+				if (bStaticMeshBudgetReached)
+				{
+					break;
+				}
 			}
 
 			if (bAddedAnyTriangle)
