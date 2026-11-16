@@ -38,7 +38,8 @@ uint DDGIEncodeNormal(float3 Normal)
     float2 Oct = Normal.xy;
     if (Normal.z < 0.0f)
     {
-        Oct = (1.0f - abs(Oct.yx)) * (Oct.xy >= 0.0f ? 1.0f : -1.0f);
+        float2 OctSign = float2(Oct.x >= 0.0f ? 1.0f : -1.0f, Oct.y >= 0.0f ? 1.0f : -1.0f);
+        Oct = (1.0f - abs(Oct.yx)) * OctSign;
     }
     uint2 Quantized = (uint2)round(saturate(Oct * 0.5f + 0.5f) * 255.0f);
     return Quantized.x | (Quantized.y << 8);
