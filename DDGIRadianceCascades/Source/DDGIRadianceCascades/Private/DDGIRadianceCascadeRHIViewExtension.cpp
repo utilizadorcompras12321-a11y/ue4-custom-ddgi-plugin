@@ -735,6 +735,24 @@ class FDDGISurfaceProbeSpatialHashBuildCS : public FGlobalShader
 IMPLEMENT_GLOBAL_SHADER(FDDGISurfaceProbeSpatialHashBuildCS,
     "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeSpatialHashCS.usf",
     "SurfaceProbeSpatialHashBuildCS", SF_Compute);
+ 
+class FDDGISurfaceProbeFallbackCounterResetCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeFallbackCounterResetCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeFallbackCounterResetCS, FGlobalShader);
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeFallbackCounters)
+        SHADER_PARAMETER(uint32, CounterCount)
+    END_SHADER_PARAMETER_STRUCT()
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+IMPLEMENT_GLOBAL_SHADER(FDDGISurfaceProbeFallbackCounterResetCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeSpatialHashCS.usf",
+    "SurfaceProbeFallbackCounterResetCS", SF_Compute);
+
 
 class FDDGISurfaceProbeCaptureCS : public FGlobalShader
 {
@@ -1233,23 +1251,38 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	{
 		// Keep every RDG SRV binding valid when the optional surface allocator
 		// could not be created. The zero hash capacity prevents shader reads.
-		FRDGBufferRef DummySurfaceProbeBuffer = GraphBuilder.CreateBuffer(
+		FRDGBufferRef DummySurfaceProbeVectorBuffer = GraphBuilder.CreateBuffer(
 			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32) * 4u, 1u),
-			TEXT("DDGI.SurfaceProbeApplyFallback"));
-		FDDGISurfaceProbeSpatialHashResetCS::FParameters* DummyResetParameters =
+			TEXT("DDGI.SurfaceProbeApplyFallbackVectors"));
+		FDDGISurfaceProbeSpatialHashResetCS::FParameters* DummyVectorResetParameters =
 			GraphBuilder.AllocParameters<FDDGISurfaceProbeSpatialHashResetCS::FParameters>();
-		DummyResetParameters->SurfaceProbeSpatialHash = GraphBuilder.CreateUAV(DummySurfaceProbeBuffer);
-		DummyResetParameters->HashCapacity = 1u;
-		TShaderMapRef<FDDGISurfaceProbeSpatialHashResetCS> DummyResetShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+		DummyVectorResetParameters->SurfaceProbeSpatialHash = GraphBuilder.CreateUAV(DummySurfaceProbeVectorBuffer);
+		DummyVectorResetParameters->HashCapacity = 1u;
+		TShaderMapRef<FDDGISurfaceProbeSpatialHashResetCS> DummyVectorResetShader(GetGlobalShaderMap(View.GetFeatureLevel()));
 		FComputeShaderUtils::AddPass(
-			GraphBuilder, RDG_EVENT_NAME("DDGI Initialize Surface Probe Apply Fallback"),
-			DummyResetShader, DummyResetParameters, FIntVector(1, 1, 1));
-		FRDGBufferSRVRef DummySurfaceProbeSRV = GraphBuilder.CreateSRV(DummySurfaceProbeBuffer);
-		PassParameters->SurfaceProbeSpatialHash = DummySurfaceProbeSRV;
-		PassParameters->SurfaceProbePositions = DummySurfaceProbeSRV;
-		PassParameters->SurfaceProbeNormals = DummySurfaceProbeSRV;
-		PassParameters->SurfaceProbeIntegratedRadiance = DummySurfaceProbeSRV;
-		PassParameters->SurfaceProbeCounters = DummySurfaceProbeSRV;
+			GraphBuilder, RDG_EVENT_NAME("DDGI Initialize Surface Probe Vector Fallback"),
+			DummyVectorResetShader, DummyVectorResetParameters, FIntVector(1, 1, 1));
+
+		// Counters use a 4-byte StructuredBuffer<uint> stride; the other
+		// surface-probe resources use 16-byte float4/uint4 elements.
+		FRDGBufferRef DummySurfaceProbeCounterBuffer = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 9u),
+			TEXT("DDGI.SurfaceProbeApplyFallbackCounters"));
+		FDDGISurfaceProbeFallbackCounterResetCS::FParameters* DummyCounterResetParameters =
+			GraphBuilder.AllocParameters<FDDGISurfaceProbeFallbackCounterResetCS::FParameters>();
+		DummyCounterResetParameters->SurfaceProbeFallbackCounters = GraphBuilder.CreateUAV(DummySurfaceProbeCounterBuffer);
+		DummyCounterResetParameters->CounterCount = 9u;
+		TShaderMapRef<FDDGISurfaceProbeFallbackCounterResetCS> DummyCounterResetShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder, RDG_EVENT_NAME("DDGI Initialize Surface Probe Counter Fallback"),
+			DummyCounterResetShader, DummyCounterResetParameters, FIntVector(1, 1, 1));
+
+		FRDGBufferSRVRef DummySurfaceProbeVectorSRV = GraphBuilder.CreateSRV(DummySurfaceProbeVectorBuffer);
+		PassParameters->SurfaceProbeSpatialHash = DummySurfaceProbeVectorSRV;
+		PassParameters->SurfaceProbePositions = DummySurfaceProbeVectorSRV;
+		PassParameters->SurfaceProbeNormals = DummySurfaceProbeVectorSRV;
+		PassParameters->SurfaceProbeIntegratedRadiance = DummySurfaceProbeVectorSRV;
+		PassParameters->SurfaceProbeCounters = GraphBuilder.CreateSRV(DummySurfaceProbeCounterBuffer);
 	}
 	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
 	PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
