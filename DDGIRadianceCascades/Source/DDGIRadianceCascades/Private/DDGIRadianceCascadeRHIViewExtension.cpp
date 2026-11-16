@@ -658,7 +658,7 @@ static void DDGIScheduleSurfaceProbeCapture(
 
     FDDGISurfaceProbeAllocatorRDGResources Resources;
     if (!DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(GraphBuilder, Scene, Resources) ||
-        !Resources.Positions || !Resources.Normals || !Resources.LastSeenFrames || !Resources.ActiveIndices)
+        !Resources.Positions || !Resources.Normals || !Resources.LastSeenFrames || !Resources.ActiveIndices || !Resources.Counters)
     {
         return;
     }
