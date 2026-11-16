@@ -22,6 +22,8 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
     TEXT("Use precomputed probe neighbors in DDGI spatial gather (0=spatial hash, 1=precomputed list; default 1)."),
     ECVF_RenderThreadSafe);
 
+static const int32 GDDGISurfaceProbeMaxTraceBudget = 512;
+
 static TAutoConsoleVariable<int32> CVarDDGISurfaceProbeTraceBudget(
     TEXT("r.DDGI.SurfaceProbeTraceBudget"),
     64,
@@ -814,7 +816,7 @@ static void DDGIScheduleSurfaceProbeCapture(
     ScheduleTraceParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
     ScheduleTraceParameters->ProbeCapacity = Resources.ProbeCapacity;
     ScheduleTraceParameters->TraceProbeBudget = static_cast<uint32>(
-        FMath::Clamp(CVarDDGISurfaceProbeTraceBudget.GetValueOnRenderThread(), 0, static_cast<int32>(Resources.ProbeCapacity)));
+        FMath::Clamp(CVarDDGISurfaceProbeTraceBudget.GetValueOnRenderThread(), 0, GDDGISurfaceProbeMaxTraceBudget));
 
     TShaderMapRef<FDDGISurfaceProbeScheduleTraceCS> ScheduleTraceShader(GetGlobalShaderMap(View.GetFeatureLevel()));
     FComputeShaderUtils::AddPass(
