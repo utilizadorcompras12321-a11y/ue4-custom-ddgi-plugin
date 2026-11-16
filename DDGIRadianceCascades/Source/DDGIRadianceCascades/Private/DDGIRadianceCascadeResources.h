@@ -52,7 +52,7 @@ bool DDGIGetRadianceCascadeScratchTexture_RenderThread(
     const FSceneInterface* Scene,
     FTexture2DRHIRef& OutRadianceScratch);
 
-/** Returns the second output buffer used to ping-pong integrated cascade results. */
+/** Returns persistent final radiance storage. Raw tracing and gather use separate textures. */
 bool DDGIGetRadianceCascadeIntegrationScratchTexture_RenderThread(
     const FSceneInterface* Scene,
     FTexture2DRHIRef& OutRadianceIntegrationScratch);
@@ -108,7 +108,7 @@ bool DDGIGetRadianceCascadeProbePositions_RenderThread(
 	uint32& OutProbeCount);
 
 /** Registers the completed per-probe cascade data with RDG for deferred lighting.
- * Storage->Radiance is kept as the final integrated texture after ping-pong swaps.
+ * OutRadiance is the persistent integrated output; raw trace radiance is separate.
  */
 bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     FRDGBuilder& GraphBuilder,
