@@ -78,6 +78,54 @@ bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
     return false;
 }
 
+uint DDGIGetCascadeChildForDirection(
+    inout float4 Region,
+    float3 Direction,
+    uint SplitFactor)
+{
+    const float TwoPi = 6.283185307179586f;
+    float Phi = atan2(Direction.z, Direction.x);
+    if (Phi < 0.0f) Phi += TwoPi;
+    while (Phi < Region.x) Phi += TwoPi;
+    while (Phi >= Region.y && Phi - TwoPi >= Region.x) Phi -= TwoPi;
+    float Z = clamp(Direction.y, -1.0f, 1.0f);
+
+    uint Child = 0u;
+    if (SplitFactor == 4u)
+    {
+        float PhiMid = 0.5f * (Region.x + Region.y);
+        float ZMid = 0.5f * (Region.z + Region.w);
+        Child = (Phi >= PhiMid ? 1u : 0u) |
+            (Z >= ZMid ? 2u : 0u);
+    }
+    else if (SplitFactor > 1u)
+    {
+        float PhiSpan = Region.y - Region.x;
+        float ZSpan = Region.w - Region.z;
+        float ZCenter = 0.5f * (Region.z + Region.w);
+        float SinTheta = sqrt(saturate(1.0f - ZCenter * ZCenter));
+        float HorizontalExtent = SinTheta * PhiSpan;
+        float VerticalExtent = ZSpan / max(SinTheta, 0.05f);
+        if (HorizontalExtent >= VerticalExtent)
+        {
+            Child = min(
+                (uint)max(floor((Phi - Region.x) /
+                    max(PhiSpan, 1.0e-6f) * (float)SplitFactor), 0.0f),
+                SplitFactor - 1u);
+        }
+        else
+        {
+            Child = min(
+                (uint)max(floor((Z - Region.z) /
+                    max(ZSpan, 1.0e-6f) * (float)SplitFactor), 0.0f),
+                SplitFactor - 1u);
+        }
+    }
+
+    DDGIRadianceCascadeSplitRegion(Region, Child, SplitFactor);
+    return Child;
+}
+
 float3 DDGIProbeDiffuseIrradiance(
     uint ProbeIndex,
     float3 Normal,
@@ -88,18 +136,47 @@ float3 DDGIProbeDiffuseIrradiance(
     const uint SafeRayCount = min(BaseRayCount, min(TotalRaysPerProbe, 64u));
     if (SafeRayCount == 0u) return Irradiance;
 
-    // Select the distance cascade that owns the receiver-to-probe segment.
-    // Then search a bounded subset of the selected base ray's descendants.
-    // This tests visibility across the complete clipmap range without scanning
-    // every ray in every cascade for every receiver pixel.
     float3 ProbeToReceiver = ReceiverPosition - ProbePosition;
     float ReceiverDistance = length(ProbeToReceiver);
     float3 ReceiverDirection = ReceiverDistance > 1.0e-3f
         ? ProbeToReceiver / ReceiverDistance : Normal;
+    float BestBaseAlignment = -1.0f;
+    uint BestBaseRay = 0u;
+    uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+
+    // The base-ray loop performs irradiance accumulation and selects the
+    // angular parent for visibility reconstruction in one pass.
+    [loop]
+    for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
+    {
+        uint2 DirectionPixel = uint2(
+            RayIndex % DDGI_RC_TEXTURE_WIDTH,
+            RayIndex / DDGI_RC_TEXTURE_WIDTH);
+        float3 Direction = normalize(
+            DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
+        float Alignment = dot(Direction, ReceiverDirection);
+        if (Alignment > BestBaseAlignment)
+        {
+            BestBaseAlignment = Alignment;
+            BestBaseRay = RayIndex;
+        }
+
+        float Cosine = saturate(dot(Normal, -Direction));
+        if (Cosine > 0.0f)
+        {
+            uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
+            uint2 RadiancePixel = uint2(
+                LinearIndex % DDGI_RC_TEXTURE_WIDTH,
+                LinearIndex / DDGI_RC_TEXTURE_WIDTH);
+            Irradiance += RadianceTexture.Load(int3(RadiancePixel, 0)).rgb * Cosine;
+        }
+    }
+
     float Visibility = 1.0f;
     if (ReceiverDistance > 1.0f &&
         ReceiverDistance <= max(MaxTraceDistance, 1.0f) &&
-        CascadeCount > 0u)
+        CascadeCount > 0u &&
+        BestBaseAlignment > 0.45f)
     {
         uint SelectedCascade = CascadeCount - 1u;
         [loop]
@@ -116,144 +193,61 @@ float3 DDGIProbeDiffuseIrradiance(
 
         uint SelectedRayCount = DDGIRadianceCascadeRayCount(
             SelectedCascade, BaseRayCount, RaySplitFactor);
-        // Cascade descendants remain grouped by their original base ray.
-        // Divide by the base count, not the previous cascade count.
         uint ChildrenPerParent = max(
             SelectedRayCount / max(SafeRayCount, 1u), 1u);
+        float4 AngularRegion = DDGIRadianceCascadeBaseRegion(
+            BestBaseRay, SafeRayCount);
+        uint DescendantIndex = 0u;
 
-        float BestBaseAlignment = -1.0f;
-        uint BestBaseRay = 0u;
         [loop]
-        for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
+        for (uint Level = 1u; Level <= SelectedCascade; ++Level)
         {
-            uint2 DirectionPixel = uint2(
-                RayIndex % DDGI_RC_TEXTURE_WIDTH,
-                RayIndex / DDGI_RC_TEXTURE_WIDTH);
-            float3 Direction = normalize(
-                DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
-            float Alignment = dot(Direction, ReceiverDirection);
-            if (Alignment > BestBaseAlignment)
+            uint ParentRayCount = DDGIRadianceCascadeRayCount(
+                Level - 1u, BaseRayCount, RaySplitFactor);
+            uint ChildRayCount = DDGIRadianceCascadeRayCount(
+                Level, BaseRayCount, RaySplitFactor);
+            uint EffectiveSplit = max(
+                ChildRayCount / max(ParentRayCount, 1u), 1u);
+            uint ChildInGroup = DDGIGetCascadeChildForDirection(
+                AngularRegion, ReceiverDirection, EffectiveSplit);
+            DescendantIndex = DescendantIndex * EffectiveSplit + ChildInGroup;
+        }
+
+        uint CascadeStorageOffset = DDGIRadianceCascadeRayStorageOffset(
+            SelectedCascade, BaseRayCount, RaySplitFactor);
+        uint CascadeRayIndex = CascadeStorageOffset +
+            BestBaseRay * ChildrenPerParent +
+            min(DescendantIndex, ChildrenPerParent - 1u);
+        uint2 VisibilityDirectionPixel = uint2(
+            CascadeRayIndex % DDGI_RC_TEXTURE_WIDTH,
+            CascadeRayIndex / DDGI_RC_TEXTURE_WIDTH);
+        float3 VisibilityRayDirection = normalize(
+            DirectionsTexture.Load(int3(VisibilityDirectionPixel, 0)).xyz);
+        if (dot(VisibilityRayDirection, ReceiverDirection) > 0.55f)
+        {
+            uint VisibilityLinearIndex =
+                PhysicalProbeIndex * TotalRaysPerProbe + CascadeRayIndex;
+            uint2 VisibilityPixel = uint2(
+                VisibilityLinearIndex % DDGI_RC_TEXTURE_WIDTH,
+                VisibilityLinearIndex / DDGI_RC_TEXTURE_WIDTH);
+            float OccluderDistance = HitDistanceTexture.Load(
+                int3(VisibilityPixel, 0));
+            if (OccluderDistance >= 0.0f)
             {
-                BestBaseAlignment = Alignment;
-                BestBaseRay = RayIndex;
+                float VisibilityBias = max(2.0f, ReceiverDistance * 0.015f);
+                Visibility = smoothstep(
+                    -VisibilityBias,
+                    VisibilityBias,
+                    OccluderDistance - ReceiverDistance);
             }
         }
-
-        if (BestBaseAlignment > 0.55f)
-        {
-            uint CandidateCount = min(ChildrenPerParent, 8u);
-            uint CascadeStorageOffset = DDGIRadianceCascadeRayStorageOffset(
-                SelectedCascade, BaseRayCount, RaySplitFactor);
-            uint BestRay = 0u;
-            float BestAlignment = -1.0f;
-            [loop]
-            for (uint Candidate = 0u; Candidate < CandidateCount; ++Candidate)
-            {
-                uint ChildIndex = (Candidate * ChildrenPerParent) / CandidateCount;
-                uint CascadeRayIndex =
-                    CascadeStorageOffset + BestBaseRay * ChildrenPerParent + ChildIndex;
-                uint2 DirectionPixel = uint2(
-                    CascadeRayIndex % DDGI_RC_TEXTURE_WIDTH,
-                    CascadeRayIndex / DDGI_RC_TEXTURE_WIDTH);
-                float3 Direction = normalize(
-                    DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
-                float Alignment = dot(Direction, ReceiverDirection);
-                if (Alignment > BestAlignment)
-                {
-                    BestAlignment = Alignment;
-                    BestRay = CascadeRayIndex;
-                }
-            }
-
-            if (BestAlignment > 0.70f)
-            {
-                uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
-                uint VisibilityLinearIndex =
-                    PhysicalProbeIndex * TotalRaysPerProbe + BestRay;
-                uint2 VisibilityPixel = uint2(
-                    VisibilityLinearIndex % DDGI_RC_TEXTURE_WIDTH,
-                    VisibilityLinearIndex / DDGI_RC_TEXTURE_WIDTH);
-                float OccluderDistance = HitDistanceTexture.Load(
-                    int3(VisibilityPixel, 0));
-                if (OccluderDistance >= 0.0f)
-                {
-                    float VisibilityBias = max(2.0f, ReceiverDistance * 0.015f);
-                    Visibility = smoothstep(
-                        -VisibilityBias,
-                        VisibilityBias,
-                        OccluderDistance - ReceiverDistance);
-                }
-            }
-        }
-    }
-    if (Visibility <= 1.0e-4f) return Irradiance;
-
-    [loop]
-    for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
-    {
-        uint2 DirectionPixel = uint2(
-            RayIndex % DDGI_RC_TEXTURE_WIDTH,
-            RayIndex / DDGI_RC_TEXTURE_WIDTH);
-        float3 Direction = normalize(
-            DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
-        float Alignment = dot(Direction, ReceiverDirection);
-        if (Alignment > BestAlignment)
-        {
-            BestAlignment = Alignment;
-            BestVisibilityRay = RayIndex;
-        }
-    }
-
-    float Visibility = 1.0f;
-    if (ReceiverDistance > 1.0f &&
-        ReceiverDistance <= max(BaseSegmentLength, 1.0f) &&
-        BestAlignment > 0.70f)
-    {
-        uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
-        uint VisibilityLinearIndex =
-            PhysicalProbeIndex * TotalRaysPerProbe + BestVisibilityRay;
-        uint2 VisibilityPixel = uint2(
-            VisibilityLinearIndex % DDGI_RC_TEXTURE_WIDTH,
-            VisibilityLinearIndex / DDGI_RC_TEXTURE_WIDTH);
-        float OccluderDistance = HitDistanceTexture.Load(int3(VisibilityPixel, 0));
-        if (OccluderDistance >= 0.0f)
-        {
-            float VisibilityBias = max(2.0f, ReceiverDistance * 0.015f);
-            Visibility = smoothstep(
-                -VisibilityBias,
-                VisibilityBias,
-                OccluderDistance - ReceiverDistance);
-        }
-    }
-    if (Visibility <= 1.0e-4f) return Irradiance;
-
-    [loop]
-    for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
-    {
-        uint2 DirectionPixel = uint2(
-            RayIndex % DDGI_RC_TEXTURE_WIDTH,
-            RayIndex / DDGI_RC_TEXTURE_WIDTH);
-        float3 Direction = normalize(
-            DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
-        // Trace directions point from the probe toward the scene. At the
-        // receiver, incoming light travels in the opposite direction.
-        float Cosine = saturate(dot(Normal, -Direction));
-        if (Cosine <= 0.0f) continue;
-
-        uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
-        uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
-        uint2 RadiancePixel = uint2(
-            LinearIndex % DDGI_RC_TEXTURE_WIDTH,
-            LinearIndex / DDGI_RC_TEXTURE_WIDTH);
-        Irradiance += RadianceTexture.Load(int3(RadiancePixel, 0)).rgb * Cosine;
     }
 
     // Equal-solid-angle base directions: each represents 4*PI/N steradians.
-    // The visibility term rejects probes whose sampled ray hits before the
-    // receiver, reducing cross-wall light leaks in the sparse clipmap.
+    // The selected cascade ray tests the actual receiver distance, so blockers
+    // in any clipmap interval can reject probes on the opposite side of a wall.
     return Irradiance * (4.0f / (float)SafeRayCount) * Visibility;
 }
-
 uint DDGIGetSpatialLevelStep(uint Level)
 {
     // Keep in sync with DDGIGetSpatialLevelStep in DDGIRadianceCascadeResources.cpp
