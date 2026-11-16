@@ -43,7 +43,7 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 			const FDDGIMasterConfig& CurrentConfig = Subsystem->GetConfig();
 			const float SafeProbeSpacing = FMath::Clamp(ProbeSpacing, 1.0f, 100000.0f);
 			const float SafeProbeGridDistance = FMath::Clamp(
-				ProbeGridDistance, 1.0f, SafeProbeSpacing * 120.0f);
+				ProbeGridDistance, 1.0f, SafeProbeSpacing * 56.0f);
 			const bool bRuntimeConfigChanged =
 				CurrentConfig.bEnableDynamicGI != bEnableDynamicGI ||
 				CurrentConfig.bEnableStaticBackground != bEnableStaticBackground ||
