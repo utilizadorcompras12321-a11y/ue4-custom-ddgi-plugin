@@ -601,6 +601,124 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 	}
 };
 
+
+class FDDGISurfaceProbeCaptureCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeCaptureCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeCaptureCS, FGlobalShader);
+
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D, NormalTexture)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbePositions)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeNormals)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeLastSeenFrames)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeActiveIndices)
+        SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
+        SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
+        SHADER_PARAMETER(FVector2D, ViewRectMin)
+        SHADER_PARAMETER(uint32, CaptureStride)
+        SHADER_PARAMETER(uint32, CaptureGridWidth)
+        SHADER_PARAMETER(uint32, CaptureGridHeight)
+        SHADER_PARAMETER(uint32, CandidateCount)
+        SHADER_PARAMETER(uint32, FrameNumber)
+    END_SHADER_PARAMETER_STRUCT()
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+    FDDGISurfaceProbeCaptureCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeCaptureCS.usf",
+    "SurfaceProbeCaptureCS",
+    SF_Compute);
+
+static void DDGIScheduleSurfaceProbeCapture(
+    FRDGBuilder& GraphBuilder,
+    const FSceneView& View,
+    const FPostProcessMaterialInputs& Inputs,
+    const FScreenPassTexture& SceneColor,
+    const FSceneInterface* Scene)
+{
+    if (!Scene || !View.Family || !Inputs.SceneTextures.SceneTextures || !SceneColor.IsValid())
+    {
+        return;
+    }
+
+    const FIntPoint ViewSize = SceneColor.ViewRect.Size();
+    if (ViewSize.X <= 0 || ViewSize.Y <= 0)
+    {
+        return;
+    }
+
+    FDDGISurfaceProbeAllocatorRDGResources Resources;
+    if (!DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(GraphBuilder, Scene, Resources) ||
+        !Resources.Positions || !Resources.Normals || !Resources.LastSeenFrames || !Resources.ActiveIndices)
+    {
+        return;
+    }
+
+    uint32 CaptureStride = 16u;
+    uint32 CaptureGridWidth = 0u;
+    uint32 CaptureGridHeight = 0u;
+    uint32 CandidateCount = 0u;
+    do
+    {
+        CaptureGridWidth = FMath::DivideAndRoundUp(static_cast<uint32>(ViewSize.X), CaptureStride);
+        CaptureGridHeight = FMath::DivideAndRoundUp(static_cast<uint32>(ViewSize.Y), CaptureStride);
+        CandidateCount = CaptureGridWidth * CaptureGridHeight;
+        if (CandidateCount <= Resources.ProbeCapacity)
+        {
+            break;
+        }
+        ++CaptureStride;
+    }
+    while (CaptureStride <= static_cast<uint32>(FMath::Max(ViewSize.X, ViewSize.Y)));
+
+    if (CandidateCount == 0u || CandidateCount > Resources.ProbeCapacity ||
+        !DDGIBeginSurfaceProbeCapture_RenderThread(Scene, View.Family->FrameNumber))
+    {
+        return;
+    }
+
+    FDDGISurfaceProbeCaptureCS::FParameters* PassParameters =
+        GraphBuilder.AllocParameters<FDDGISurfaceProbeCaptureCS::FParameters>();
+    PassParameters->View = View.ViewUniformBuffer;
+    PassParameters->NormalTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferATexture;
+    PassParameters->DepthTexture = (*Inputs.SceneTextures.SceneTextures)->SceneDepthTexture;
+    PassParameters->SurfaceProbePositions = GraphBuilder.CreateUAV(Resources.Positions);
+    PassParameters->SurfaceProbeNormals = GraphBuilder.CreateUAV(Resources.Normals);
+    PassParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateUAV(Resources.LastSeenFrames);
+    PassParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateUAV(Resources.ActiveIndices);
+    PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+    PassParameters->ScaledViewSizeAndInvSize = FVector4(
+        static_cast<float>(ViewSize.X), static_cast<float>(ViewSize.Y),
+        1.0f / static_cast<float>(ViewSize.X), 1.0f / static_cast<float>(ViewSize.Y));
+    PassParameters->ViewRectMin = FVector2D(
+        static_cast<float>(SceneColor.ViewRect.Min.X),
+        static_cast<float>(SceneColor.ViewRect.Min.Y));
+    PassParameters->CaptureStride = CaptureStride;
+    PassParameters->CaptureGridWidth = CaptureGridWidth;
+    PassParameters->CaptureGridHeight = CaptureGridHeight;
+    PassParameters->CandidateCount = CandidateCount;
+    PassParameters->FrameNumber = View.Family->FrameNumber;
+
+    TShaderMapRef<FDDGISurfaceProbeCaptureCS> ComputeShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+    FComputeShaderUtils::AddPass(
+        GraphBuilder,
+        RDG_EVENT_NAME("DDGI Capture Surface Probe Candidates"),
+        ComputeShader,
+        PassParameters,
+        FIntVector(
+            FMath::DivideAndRoundUp(static_cast<int32>(CaptureGridWidth), 8),
+            FMath::DivideAndRoundUp(static_cast<int32>(CaptureGridHeight), 8),
+            1));
+}
+
 IMPLEMENT_GLOBAL_SHADER(
 	FDDGIApplyRadianceCascadesLightingCS,
 	"/Plugin/DDGIRadianceCascades/Private/ApplyRadianceCascadesLighting.usf",
@@ -657,6 +775,10 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 
 	const FSceneInterface* Scene = View.Family->Scene;
 	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
+	if (Config && Config->bEnableDynamicGI)
+	{
+		DDGIScheduleSurfaceProbeCapture(GraphBuilder, View, Inputs, SceneColor, Scene);
+	}
 	if (!Config || !Config->bEnableDynamicGI || !Config->SoftwareBVH.IsValid())
 	{
 		static bool bLoggedMissingConfig = false;
