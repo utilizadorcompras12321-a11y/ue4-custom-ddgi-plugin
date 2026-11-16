@@ -60,6 +60,9 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
     const FSceneInterface* Scene,
     FDDGISurfaceProbeAllocatorRDGResources& OutResources);
 
+/** Claims the per-scene surface capture slot for this render frame. */
+bool DDGIBeginSurfaceProbeCapture_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber);
+
 /** Claims this scene's DDGI update slot for the supplied render frame. */
 bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber);
 
