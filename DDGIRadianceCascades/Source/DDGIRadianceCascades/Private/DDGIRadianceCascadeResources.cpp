@@ -193,6 +193,7 @@ namespace
 		uint32 BVHNodeCount = 0;
 		uint32 BVHTriangleCount = 0;
 		uint32 LastRadianceUpdateFrameNumber = MAX_uint32;
+		uint32 NextTraceProbeIndex = 0u;
 		uint32 LightingFingerprint = 0u;
 		bool bHasLightingFingerprint = false;
 		bool bNeedsInitialization = true;
@@ -285,6 +286,7 @@ namespace
 			bInvalidateAllPhysicalSlots = false;
 			bPendingPhysicalSlotsUpload = false;
 			LastRadianceUpdateFrameNumber = MAX_uint32;
+		NextTraceProbeIndex = 0u;
 			LightingFingerprint = 0u;
 			bHasLightingFingerprint = false;
 		}
@@ -928,6 +930,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         }
         Storage.bInvalidateAllPhysicalSlots = false;
         Storage.bNeedsInitialization = true;
+        // Restart the refresh cycle at the nearest-to-camera logical probes.
+        // The active probe list is ordered by camera distance by the subsystem.
+        Storage.NextTraceProbeIndex = 0u;
         Storage.bPendingPhysicalSlotsUpload = true;
     }
 
@@ -1430,6 +1435,27 @@ bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, u
 		}
 	}
 	return true;
+}
+
+uint32 DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
+	const FSceneInterface* Scene, uint32 ProbeCount, uint32 TraceProbeCount)
+{
+	check(IsInRenderingThread() || IsInParallelRenderingThread());
+	if (ProbeCount == 0u || TraceProbeCount == 0u)
+	{
+		return 0u;
+	}
+
+	FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+	if (!Storage)
+	{
+		return 0u;
+	}
+
+	const uint32 StartIndex = Storage->NextTraceProbeIndex % ProbeCount;
+	Storage->NextTraceProbeIndex =
+		(StartIndex + FMath::Min(TraceProbeCount, ProbeCount)) % ProbeCount;
+	return StartIndex;
 }
 
 bool DDGIGetRadianceCascadeInitializationTextures_RenderThread(
