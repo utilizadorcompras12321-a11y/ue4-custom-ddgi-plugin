@@ -390,14 +390,15 @@ namespace
 							}
 						}
 
-						// Clipmap extent is the requested world radius. The outermost
-						// level may overshoot by less than one factor of two so it
-						// always covers the requested radius without a sparse fringe.
+						// Retain a two-base-cell support margin for trilinear
+						// reconstruction, but do not allocate probes outside the
+						// requested outer clipmap radius.
 						const double DX = static_cast<double>(CellX - CenterCell.X) * SafeSpacing;
 						const double DY = static_cast<double>(CellY - CenterCell.Y) * SafeSpacing;
 						const double DZ = static_cast<double>(CellZ - CenterCell.Z) * SafeSpacing;
+						const double EffectiveHalfExtent = FMath::Min(HalfExtent, SafeRadius);
 						if (FMath::Max(FMath::Abs(DX), FMath::Max(FMath::Abs(DY), FMath::Abs(DZ))) >
-							HalfExtent + SafeSpacing * 2.0 ||
+							EffectiveHalfExtent + SafeSpacing * 2.0 ||
 							CellX < MIN_int32 || CellX > MAX_int32 ||
 							CellY < MIN_int32 || CellY > MAX_int32 ||
 							CellZ < MIN_int32 || CellZ > MAX_int32)
