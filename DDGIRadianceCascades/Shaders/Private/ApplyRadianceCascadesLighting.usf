@@ -140,7 +140,6 @@ float3 DDGIProbeDiffuseIrradiance(
     float ReceiverDistance = length(ProbeToReceiver);
     float3 ReceiverDirection = ReceiverDistance > 1.0e-3f
         ? ProbeToReceiver / ReceiverDistance : Normal;
-    float BestBaseAlignment = -1.0f;
     uint BestBaseRay = 0u;
     bool bFoundBaseRegion = false;
     float ReceiverPhi = atan2(ReceiverDirection.z, ReceiverDirection.x);
@@ -169,7 +168,6 @@ float3 DDGIProbeDiffuseIrradiance(
         if (bContainsDirection)
         {
             BestBaseRay = RayIndex;
-            BestBaseAlignment = dot(Direction, ReceiverDirection);
             bFoundBaseRegion = true;
         }
 
