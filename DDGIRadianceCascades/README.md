@@ -13,6 +13,8 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - Final integrated radiance uses packed R11G11B10 values in an R32_UINT texture, avoiding optional half-float typed UAV loads on DX11.0.
 - Logical-to-physical probe-slot mapping with retained history for stable world-lattice cells.
 - Trace, gather and integration process the same bounded probe batch; untouched probes retain their last valid integrated result.
+- A quantized fingerprint covers directional/local-light inputs and static-background settings; changing them invalidates cached probe radiance instead of preserving lighting from the previous state.
+- A persistent round-robin trace cursor advances only for dispatched batches and resets after global history invalidation, refreshing the nearest active probes first.
 - Spatial gather with surface/normal/plane rejection.
 - Deferred lighting application with clipmap blending and probe-to-receiver visibility rejection.
 
@@ -65,6 +67,6 @@ The plugin includes an Unreal Automation Test for cascade packing, interval cove
 
 ## Important limitations
 
-This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, SkyLight/RectLight or IES evaluation, complete material evaluation, textured albedo, or a temporal denoiser. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
+This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, SkyLight/RectLight or IES evaluation, complete material evaluation, textured albedo, or a temporal denoiser. Lighting changes invalidate the complete retained radiance cache; with a bounded trace budget this can temporarily reduce indirect lighting until probes are refreshed. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
 
 Do not treat the presence of the plugin or a successful C++ build as proof of production-ready GI. Validate the output with moving cameras, thin walls, corners, enclosed rooms, emissive surfaces and changing directional and local lights. Profile GPU time at the target resolution and on the target hardware.
