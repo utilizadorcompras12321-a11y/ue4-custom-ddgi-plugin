@@ -350,15 +350,16 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
                     BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
                     MaxDistance, RightNear);
             }
-            // Fixed order avoids the FXC dynamic float-comparison optimizer crash.
-            // LIFO traversal visits LeftChild first. Both intersecting children
-            // are still visited; only near-first ordering is sacrificed.
+            // Near distances are finite and non-negative. Their unsigned IEEE-754
+            // bit patterns preserve numeric ordering, avoiding the FXC dynamic
+            // float-comparison optimizer issue while visiting the nearer child first.
             // The CPU builder caps validated tree depth at 48, below this
             // 64-entry stack capacity.
             if (bHitLeft && bHitRight)
             {
-                Stack[StackSize++] = RightChild;
-                Stack[StackSize++] = LeftChild;
+                bool bLeftIsNearer = asuint(LeftNear) <= asuint(RightNear);
+                Stack[StackSize++] = bLeftIsNearer ? RightChild : LeftChild;
+                Stack[StackSize++] = bLeftIsNearer ? LeftChild : RightChild;
             }
             else if (bHitLeft)
             {
@@ -494,13 +495,18 @@ bool TraceClosestHit(
             // a hit child because of a defensive capacity branch.
             if (bHitLeft && bHitRight)
             {
-                // Fixed traversal order avoids an FXC optimizer crash caused by
-                // comparing the two dynamic near distances. Near distances remain
-                // cached for pruning when each child is popped from the stack.
-                Stack[StackSize] = RightChild;
-                NearStack[StackSize++] = RightNear;
-                Stack[StackSize] = LeftChild;
-                NearStack[StackSize++] = LeftNear;
+                // Compare the non-negative finite near distances as unsigned
+                // IEEE-754 bit patterns. This preserves their ordering without
+                // triggering FXC's dynamic float-comparison optimizer issue.
+                bool bLeftIsNearer = asuint(LeftNear) <= asuint(RightNear);
+                uint FarChild = bLeftIsNearer ? RightChild : LeftChild;
+                float FarNear = bLeftIsNearer ? RightNear : LeftNear;
+                uint NearChild = bLeftIsNearer ? LeftChild : RightChild;
+                float NearValue = bLeftIsNearer ? LeftNear : RightNear;
+                Stack[StackSize] = FarChild;
+                NearStack[StackSize++] = FarNear;
+                Stack[StackSize] = NearChild;
+                NearStack[StackSize++] = NearValue;
             }
             else if (bHitLeft)
             {
