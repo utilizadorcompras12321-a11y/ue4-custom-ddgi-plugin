@@ -950,6 +950,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.UploadedProbeLayoutHash = ProbeLayoutHash;
         Storage.UploadedProbeSpacing = SafeProbeSpacing;
         Storage.UploadedProbeBVHOrigin = Config.SoftwareBVH->WorldOrigin;
+        FRHITransitionInfo ProbePositionTransition(
+            ProbePositionRHI, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
+        RHICmdList.Transition(MakeArrayView(&ProbePositionTransition, 1));
     }
 
     // Build a deterministic open-addressed spatial hash for sparse probe cells.
