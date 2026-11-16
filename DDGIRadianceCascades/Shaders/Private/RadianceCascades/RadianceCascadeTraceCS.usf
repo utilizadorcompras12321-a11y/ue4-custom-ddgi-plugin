@@ -5,6 +5,7 @@ uint TextureWidth;
 uint TotalTexels;
 uint DispatchGroupsX;
 uint ProbeCount;
+uint TraceStartIndex;
 uint TotalRaysPerProbe;
 uint NodeCount;
 uint TriangleCount;
@@ -694,8 +695,9 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    uint ProbeIndex = LinearIndex / TotalRaysPerProbe;
-    uint PackedRayIndex = LinearIndex - ProbeIndex * TotalRaysPerProbe;
+    uint ScheduledProbeIndex = LinearIndex / TotalRaysPerProbe;
+    uint PackedRayIndex = LinearIndex - ScheduledProbeIndex * TotalRaysPerProbe;
+    uint ProbeIndex = (TraceStartIndex + ScheduledProbeIndex) % ProbeCount;
 
     uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
     uint PhysicalLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
