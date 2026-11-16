@@ -620,7 +620,7 @@ float3 EvaluateHitSurfaceRadiance(
     float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
 
     // The geometric normal is only needed for direct diffuse lighting.
-    // Emissive-only surfaces and scenes without a directional light can
+    // Emissive-only surfaces and scenes without any direct-light source can
     // return immediately without cross products or normal normalization.
     if (!any(BaseColor > 1.0e-6f) ||
         (bHasDirectionalLight == 0u && LocalLightCount == 0u))
