@@ -913,6 +913,10 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 
 	Config.bEnableDynamicGI = InActor->bEnableDynamicGI;
 	Config.GIIntensity = FMath::Max(0.0f, InActor->GIIntensity);
+	Config.LocalLightPositionAndRadius.SetNumZeroed(32);
+	Config.LocalLightDirectionAndCosOuter.SetNumZeroed(32);
+	Config.LocalLightColorAndIntensity.SetNumZeroed(32);
+	Config.LocalLightParameters.SetNumZeroed(32);
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 
 	if (!Config.bEnableDynamicGI)
@@ -923,6 +927,13 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		Config.DirectionalLightIntensity = 0.0f;
 		ActiveDirectionalLight.Reset();
 		bHasSearchedDirectionalLights = false;
+		Config.LocalLightCount = 0;
+		Config.LocalLightPositionAndRadius.SetNumZeroed(32);
+		Config.LocalLightDirectionAndCosOuter.SetNumZeroed(32);
+		Config.LocalLightColorAndIntensity.SetNumZeroed(32);
+		Config.LocalLightParameters.SetNumZeroed(32);
+		CachedLocalLights.Reset();
+		bHasSearchedLocalLights = false;
 		Config.SoftwareBVH.Reset();
 		Config.ProbePositions.Reset();
 		Config.ProbeCellCoordinates.Reset();
