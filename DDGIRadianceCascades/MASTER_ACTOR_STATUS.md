@@ -23,7 +23,7 @@ Supported direct-light injection:
 
 Geometry and material scope:
 - Opaque static mesh and BSP geometry with CPU-accessible mesh data.
-- Movable and instanced meshes are excluded from the software BVH.
+- Static ISM/HISM instances are expanded into world-space triangles and included. Movable components and movable instances are excluded from the software BVH.
 - Material evaluation is limited to the `DDGI_BaseColor` and
   `DDGI_EmissiveRadiance` vector parameters, with a neutral diffuse fallback.
   Arbitrary material graphs, texture sampling, opacity masks and full PBR
