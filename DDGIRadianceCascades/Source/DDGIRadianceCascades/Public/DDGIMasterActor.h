@@ -37,6 +37,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", Units = "cm"))
 	float DynamicGIDistance = 10000.0f;
 
+	// Surface probes are an additional screen-captured source of local radiance.
+	// Disabling them releases their persistent GPU allocator and stops capture,
+	// deduplication, spatial hashing and tracing without disabling regular cascades.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI")
+	bool bEnableSurfaceProbes = true;
+
 	// Radius covered by the probe lattice. A smaller local radius preserves probe density under the GPU probe budget.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", ClampMax = "12000000.0", Units = "cm"))
 	float ProbeGridDistance = 4000.0f;
