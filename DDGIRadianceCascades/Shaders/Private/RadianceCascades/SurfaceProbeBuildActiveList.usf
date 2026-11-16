@@ -1,0 +1,41 @@
+#include "/Engine/Public/Platform.ush"
+
+StructuredBuffer<uint> SurfaceProbeLastSeenFrames;
+RWStructuredBuffer<uint> SurfaceProbeActiveIndices;
+RWStructuredBuffer<uint> SurfaceProbeCounters;
+
+uint ProbeCapacity;
+uint FrameNumber;
+
+static const uint DDGI_SURFACE_PROBE_RETENTION_FRAMES = 120u;
+
+[numthreads(1, 1, 1)]
+void SurfaceProbeResetActiveListCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    SurfaceProbeCounters[6] = 0u;
+}
+
+[numthreads(64, 1, 1)]
+void SurfaceProbeBuildActiveListCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint PhysicalSlot = DispatchThreadID.x;
+    uint AllocatedCount = min(SurfaceProbeCounters[4], ProbeCapacity);
+    if (PhysicalSlot >= AllocatedCount)
+    {
+        return;
+    }
+
+    uint LastSeenFrame = SurfaceProbeLastSeenFrames[PhysicalSlot];
+    uint FrameAge = FrameNumber - LastSeenFrame;
+    if (FrameAge > DDGI_SURFACE_PROBE_RETENTION_FRAMES)
+    {
+        return;
+    }
+
+    uint ActiveIndex;
+    InterlockedAdd(SurfaceProbeCounters[6], 1u, ActiveIndex);
+    if (ActiveIndex < ProbeCapacity)
+    {
+        SurfaceProbeActiveIndices[ActiveIndex] = PhysicalSlot;
+    }
+}
