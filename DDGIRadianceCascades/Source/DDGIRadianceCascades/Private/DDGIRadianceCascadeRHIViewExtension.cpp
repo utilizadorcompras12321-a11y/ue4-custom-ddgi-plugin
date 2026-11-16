@@ -35,6 +35,12 @@ static TAutoConsoleVariable<int32> CVarDDGISurfaceProbeTraceBudget(
     TEXT("Maximum retained surface probes scheduled for tracing per frame (0 disables all surface-probe passes; persistent buffers remain allocated)."),
     ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarDDGIRadianceProbeTraceBudget(
+    TEXT("r.DDGI.RadianceProbeTraceBudget"),
+    128,
+    TEXT("Maximum sparse radiance clipmap probes traced per frame. Probe results are refreshed in deterministic round-robin order; 0 disables radiance tracing."),
+    ECVF_RenderThreadSafe);
+
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
     TEXT("r.DDGI.DebugApply"),
     0,
@@ -197,6 +203,7 @@ public:
 		TotalTexels.Bind(Initializer.ParameterMap, TEXT("TotalTexels"));
 		DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
 		ProbeCount.Bind(Initializer.ParameterMap, TEXT("ProbeCount"));
+		TraceStartIndex.Bind(Initializer.ParameterMap, TEXT("TraceStartIndex"));
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
 		NodeCount.Bind(Initializer.ParameterMap, TEXT("NodeCount"));
 		TriangleCount.Bind(Initializer.ParameterMap, TEXT("TriangleCount"));
@@ -247,6 +254,7 @@ public:
 		uint32 InTotalTexels,
 		uint32 InDispatchGroupsX,
 		uint32 InProbeCount,
+		uint32 InTraceStartIndex,
 		uint32 InTotalRaysPerProbe,
 		uint32 InNodeCount,
 		uint32 InTriangleCount,
@@ -272,6 +280,7 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, TotalTexels, InTotalTexels);
 		SetShaderValue(RHICmdList, ShaderRHI, DispatchGroupsX, InDispatchGroupsX);
 		SetShaderValue(RHICmdList, ShaderRHI, ProbeCount, InProbeCount);
+		SetShaderValue(RHICmdList, ShaderRHI, TraceStartIndex, InTraceStartIndex);
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
 		SetShaderValue(RHICmdList, ShaderRHI, NodeCount, InNodeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, TriangleCount, InTriangleCount);
@@ -321,6 +330,7 @@ private:
 	LAYOUT_FIELD(FShaderParameter, TotalTexels);
 	LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
 	LAYOUT_FIELD(FShaderParameter, ProbeCount);
+	LAYOUT_FIELD(FShaderParameter, TraceStartIndex);
 	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
 	LAYOUT_FIELD(FShaderParameter, NodeCount);
 	LAYOUT_FIELD(FShaderParameter, TriangleCount);
@@ -1681,12 +1691,26 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		bLoggedTraceLightingConfig = true;
 	}
 
-	TShaderMapRef<FDDGIRadianceCascadeTraceRHI> TraceShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-	RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
-	TraceShader->SetParameters(
-		RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
-		RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
-		TotalTexels, GroupsX, ProbeCount, TotalRaysPerProbe,
+	const uint32 TraceBudget = static_cast<uint32>(
+		FMath::Clamp(CVarDDGIRadianceProbeTraceBudget.GetValueOnRenderThread(), 0, 8192));
+	const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceBudget);
+	if (TraceProbeCount > 0u)
+	{
+		// Frame-number scheduling is deterministic and advances by exactly one
+		// contiguous batch. Modulo wrap keeps every logical clipmap probe eligible.
+		const uint32 TraceStartIndex = static_cast<uint32>(
+			(static_cast<uint64>(InView.Family->FrameNumber) * TraceProbeCount) % ProbeCount);
+		const uint32 TraceTotalTexels = TraceProbeCount * TotalRaysPerProbe;
+		const uint32 TraceTotalGroups = FMath::DivideAndRoundUp(TraceTotalTexels, 64u);
+		const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
+		const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
+
+		TShaderMapRef<FDDGIRadianceCascadeTraceRHI> TraceShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+		RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
+		TraceShader->SetParameters(
+			RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
+			RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
+			TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
 		NodeCount, TriangleCount,
 		static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
 		Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
@@ -1702,10 +1726,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		Config->bEnableStaticBackground ? 1u : 0u,
 		FVector4(Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z, 0.0f),
 		FVector4(Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B, 0.0f),
-		Config->DirectionalLightIntensity,
-		Config->bHasDirectionalLight ? 1u : 0u);
-	DispatchComputeShader(RHICmdList, TraceShader.GetShader(), GroupsX, GroupsY, 1);
-	TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
+			Config->DirectionalLightIntensity,
+			Config->bHasDirectionalLight ? 1u : 0u);
+		DispatchComputeShader(RHICmdList, TraceShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
+		TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
+	}
 
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
