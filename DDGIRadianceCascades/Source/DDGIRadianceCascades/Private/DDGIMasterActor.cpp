@@ -38,8 +38,20 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 	{
 		if (UDDGIMasterSubsystem* Subsystem = World->GetSubsystem<UDDGIMasterSubsystem>())
 		{
-			Subsystem->RefreshDirectionalLighting(this);
-			Subsystem->UpdateActiveProbeWindow(this);
+			// Blueprint/runtime changes to the two enable switches must reach
+			// the render thread too; editor property callbacks do not run here.
+			const FDDGIMasterConfig& CurrentConfig = Subsystem->GetConfig();
+			if (CurrentConfig.bEnableDynamicGI != bEnableDynamicGI ||
+				CurrentConfig.bEnableStaticBackground != bEnableStaticBackground)
+			{
+				Subsystem->RefreshConfig(this);
+			}
+
+			if (bEnableDynamicGI)
+			{
+				Subsystem->RefreshDirectionalLighting(this);
+				Subsystem->UpdateActiveProbeWindow(this);
+			}
 		}
 	}
 }
