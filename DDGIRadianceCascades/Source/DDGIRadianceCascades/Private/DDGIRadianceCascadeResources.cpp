@@ -953,7 +953,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     // Build a deterministic open-addressed spatial hash for sparse probe cells.
-    // Probe positions are world-lattice coordinates and remain stable as the camera moves.
+    // Probe identity remains on the world lattice; the uploaded positions above are BVH-local.
 
     // The active window is camera-selected, but every probe remains on the
     // immutable world-origin lattice. Rebuild logical lookup data when its
