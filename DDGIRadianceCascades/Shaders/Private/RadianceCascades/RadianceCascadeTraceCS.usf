@@ -702,14 +702,19 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    // The farthest cascade that still intersects the trace range owns the
-    // static background, even when later configured cascades are out of range.
+    // The final active cascade owns every remaining distance up to the
+    // configured trace limit. Without this extension, the geometric series
+    // can end before MaxTraceDistance and leave part of the scene untraced.
     bool bIsLastActiveCascade = CascadeIndex + 1u >= SafeCascadeCount;
     if (!bIsLastActiveCascade)
     {
         float NextCascadeStartDistance = DDGIRadianceCascadeStartDistance(
             (int)(CascadeIndex + 1u), BaseSegmentLength, CascadeScale);
         bIsLastActiveCascade = NextCascadeStartDistance >= SafeMaxTraceDistance;
+    }
+    if (bIsLastActiveCascade)
+    {
+        CascadeEndDistance = SafeMaxTraceDistance;
     }
 
     // Reuse the shared closest-hit traversal for primary and secondary rays.
