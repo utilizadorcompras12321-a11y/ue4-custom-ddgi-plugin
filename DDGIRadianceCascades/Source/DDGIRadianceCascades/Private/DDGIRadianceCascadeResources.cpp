@@ -54,6 +54,41 @@ namespace
 		}
 	};
 
+	struct FDDGISurfaceProbeHashEntry
+	{
+		uint32 X;
+		uint32 Y;
+		uint32 Z;
+		uint32 Slot;
+	};
+	static_assert(sizeof(FDDGISurfaceProbeHashEntry) == 4u * sizeof(uint32), "Surface probe hash entry must match HLSL uint4 stride.");
+
+	static const uint32 GDDGISurfaceProbeCapacity = 32768u;
+	static const uint32 GDDGISurfaceProbeHashCapacity = 65536u;
+
+	template<typename T>
+	bool DDGICreateSurfaceProbeBuffer(
+		const TCHAR* DebugName,
+		uint32 ElementCount,
+		FStructuredBufferRHIRef& OutBuffer,
+		FShaderResourceViewRHIRef& OutSRV,
+		FUnorderedAccessViewRHIRef& OutUAV)
+	{
+		TResourceArray<T> InitialData;
+		InitialData.AddZeroed(static_cast<int32>(ElementCount));
+		FRHIResourceCreateInfo CreateInfo(DebugName);
+		CreateInfo.ResourceArray = &InitialData;
+		OutBuffer = RHICreateStructuredBuffer(
+			sizeof(T),
+			static_cast<uint32>(InitialData.GetResourceDataSize()),
+			BUF_ShaderResource | BUF_UnorderedAccess,
+			CreateInfo);
+		if (!OutBuffer.IsValid()) return false;
+		OutSRV = RHICreateShaderResourceView(OutBuffer);
+		OutUAV = RHICreateUnorderedAccessView(OutBuffer, false, false);
+		return OutSRV.IsValid() && OutUAV.IsValid();
+	}
+
 	struct FDDGIRetainedPhysicalProbeSlot
 	{
 		uint32 PhysicalSlot = MAX_uint32;
@@ -95,6 +130,31 @@ namespace
 		TArray<uint32> NewlyAllocatedPhysicalSlotsCPU;
 		TArray<uint32> FreePhysicalSlots;
 		uint32 PhysicalSlotCapacity = 0;
+		// Persistent surface-probe allocator buffers. These are deliberately
+		// separate from the regular lattice hash and physical ray-history slots.
+		FStructuredBufferRHIRef SurfaceProbePositions;
+		FShaderResourceViewRHIRef SurfaceProbePositionsSRV;
+		FUnorderedAccessViewRHIRef SurfaceProbePositionsUAV;
+		FStructuredBufferRHIRef SurfaceProbeNormals;
+		FShaderResourceViewRHIRef SurfaceProbeNormalsSRV;
+		FUnorderedAccessViewRHIRef SurfaceProbeNormalsUAV;
+		FStructuredBufferRHIRef SurfaceProbeStableKeys;
+		FShaderResourceViewRHIRef SurfaceProbeStableKeysSRV;
+		FUnorderedAccessViewRHIRef SurfaceProbeStableKeysUAV;
+		FStructuredBufferRHIRef SurfaceProbeLastSeenFrames;
+		FShaderResourceViewRHIRef SurfaceProbeLastSeenFramesSRV;
+		FUnorderedAccessViewRHIRef SurfaceProbeLastSeenFramesUAV;
+		FStructuredBufferRHIRef SurfaceProbeActiveIndices;
+		FShaderResourceViewRHIRef SurfaceProbeActiveIndicesSRV;
+		FUnorderedAccessViewRHIRef SurfaceProbeActiveIndicesUAV;
+		FStructuredBufferRHIRef SurfaceProbeHash;
+		FShaderResourceViewRHIRef SurfaceProbeHashSRV;
+		FUnorderedAccessViewRHIRef SurfaceProbeHashUAV;
+		FStructuredBufferRHIRef SurfaceProbeCounters;
+		FShaderResourceViewRHIRef SurfaceProbeCountersSRV;
+		FUnorderedAccessViewRHIRef SurfaceProbeCountersUAV;
+		uint32 SurfaceProbeCapacity = 0u;
+		uint32 SurfaceProbeHashCapacity = 0u;
 		FStructuredBufferRHIRef ProbeSpatialHash;
 		FShaderResourceViewRHIRef ProbeSpatialHashSRV;
 		FStructuredBufferRHIRef ProbeNeighborIndices;
@@ -163,6 +223,29 @@ namespace
 			NewlyAllocatedPhysicalSlotsCPU.Reset();
 			FreePhysicalSlots.Reset();
 			PhysicalSlotCapacity = 0;
+			SurfaceProbePositions.SafeRelease();
+			SurfaceProbePositionsSRV.SafeRelease();
+			SurfaceProbePositionsUAV.SafeRelease();
+			SurfaceProbeNormals.SafeRelease();
+			SurfaceProbeNormalsSRV.SafeRelease();
+			SurfaceProbeNormalsUAV.SafeRelease();
+			SurfaceProbeStableKeys.SafeRelease();
+			SurfaceProbeStableKeysSRV.SafeRelease();
+			SurfaceProbeStableKeysUAV.SafeRelease();
+			SurfaceProbeLastSeenFrames.SafeRelease();
+			SurfaceProbeLastSeenFramesSRV.SafeRelease();
+			SurfaceProbeLastSeenFramesUAV.SafeRelease();
+			SurfaceProbeActiveIndices.SafeRelease();
+			SurfaceProbeActiveIndicesSRV.SafeRelease();
+			SurfaceProbeActiveIndicesUAV.SafeRelease();
+			SurfaceProbeHash.SafeRelease();
+			SurfaceProbeHashSRV.SafeRelease();
+			SurfaceProbeHashUAV.SafeRelease();
+			SurfaceProbeCounters.SafeRelease();
+			SurfaceProbeCountersSRV.SafeRelease();
+			SurfaceProbeCountersUAV.SafeRelease();
+			SurfaceProbeCapacity = 0u;
+			SurfaceProbeHashCapacity = 0u;
 			ProbeSpatialHash.SafeRelease();
 			ProbeSpatialHashSRV.SafeRelease();
 			ProbeNeighborIndices.SafeRelease();
@@ -273,6 +356,74 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
+    if (Storage.SurfaceProbeCapacity != GDDGISurfaceProbeCapacity ||
+        Storage.SurfaceProbeHashCapacity != GDDGISurfaceProbeHashCapacity ||
+        !Storage.SurfaceProbePositionsUAV.IsValid() || !Storage.SurfaceProbeNormalsUAV.IsValid() ||
+        !Storage.SurfaceProbeStableKeysUAV.IsValid() || !Storage.SurfaceProbeLastSeenFramesUAV.IsValid() ||
+        !Storage.SurfaceProbeActiveIndicesUAV.IsValid() || !Storage.SurfaceProbeHashUAV.IsValid() ||
+        !Storage.SurfaceProbeCountersUAV.IsValid())
+    {
+        Storage.SurfaceProbePositions.SafeRelease();
+        Storage.SurfaceProbePositionsSRV.SafeRelease();
+        Storage.SurfaceProbePositionsUAV.SafeRelease();
+        Storage.SurfaceProbeNormals.SafeRelease();
+        Storage.SurfaceProbeNormalsSRV.SafeRelease();
+        Storage.SurfaceProbeNormalsUAV.SafeRelease();
+        Storage.SurfaceProbeStableKeys.SafeRelease();
+        Storage.SurfaceProbeStableKeysSRV.SafeRelease();
+        Storage.SurfaceProbeStableKeysUAV.SafeRelease();
+        Storage.SurfaceProbeLastSeenFrames.SafeRelease();
+        Storage.SurfaceProbeLastSeenFramesSRV.SafeRelease();
+        Storage.SurfaceProbeLastSeenFramesUAV.SafeRelease();
+        Storage.SurfaceProbeActiveIndices.SafeRelease();
+        Storage.SurfaceProbeActiveIndicesSRV.SafeRelease();
+        Storage.SurfaceProbeActiveIndicesUAV.SafeRelease();
+        Storage.SurfaceProbeHash.SafeRelease();
+        Storage.SurfaceProbeHashSRV.SafeRelease();
+        Storage.SurfaceProbeHashUAV.SafeRelease();
+        Storage.SurfaceProbeCounters.SafeRelease();
+        Storage.SurfaceProbeCountersSRV.SafeRelease();
+        Storage.SurfaceProbeCountersUAV.SafeRelease();
+
+        const bool bSurfaceBuffersCreated =
+            DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_Positions"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbePositions, Storage.SurfaceProbePositionsSRV, Storage.SurfaceProbePositionsUAV) &&
+            DDGICreateSurfaceProbeBuffer<FVector4>(TEXT("DDGISurfaceProbe_Normals"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeNormals, Storage.SurfaceProbeNormalsSRV, Storage.SurfaceProbeNormalsUAV) &&
+            DDGICreateSurfaceProbeBuffer<FIntVector4>(TEXT("DDGISurfaceProbe_StableKeys"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeStableKeys, Storage.SurfaceProbeStableKeysSRV, Storage.SurfaceProbeStableKeysUAV) &&
+            DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_LastSeenFrames"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeLastSeenFrames, Storage.SurfaceProbeLastSeenFramesSRV, Storage.SurfaceProbeLastSeenFramesUAV) &&
+            DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_ActiveIndices"), GDDGISurfaceProbeCapacity, Storage.SurfaceProbeActiveIndices, Storage.SurfaceProbeActiveIndicesSRV, Storage.SurfaceProbeActiveIndicesUAV) &&
+            DDGICreateSurfaceProbeBuffer<FDDGISurfaceProbeHashEntry>(TEXT("DDGISurfaceProbe_Hash"), GDDGISurfaceProbeHashCapacity, Storage.SurfaceProbeHash, Storage.SurfaceProbeHashSRV, Storage.SurfaceProbeHashUAV) &&
+            DDGICreateSurfaceProbeBuffer<uint32>(TEXT("DDGISurfaceProbe_Counters"), 4u, Storage.SurfaceProbeCounters, Storage.SurfaceProbeCountersSRV, Storage.SurfaceProbeCountersUAV);
+        if (!bSurfaceBuffersCreated)
+        {
+            Storage.SurfaceProbePositions.SafeRelease();
+            Storage.SurfaceProbePositionsSRV.SafeRelease();
+            Storage.SurfaceProbePositionsUAV.SafeRelease();
+            Storage.SurfaceProbeNormals.SafeRelease();
+            Storage.SurfaceProbeNormalsSRV.SafeRelease();
+            Storage.SurfaceProbeNormalsUAV.SafeRelease();
+            Storage.SurfaceProbeStableKeys.SafeRelease();
+            Storage.SurfaceProbeStableKeysSRV.SafeRelease();
+            Storage.SurfaceProbeStableKeysUAV.SafeRelease();
+            Storage.SurfaceProbeLastSeenFrames.SafeRelease();
+            Storage.SurfaceProbeLastSeenFramesSRV.SafeRelease();
+            Storage.SurfaceProbeLastSeenFramesUAV.SafeRelease();
+            Storage.SurfaceProbeActiveIndices.SafeRelease();
+            Storage.SurfaceProbeActiveIndicesSRV.SafeRelease();
+            Storage.SurfaceProbeActiveIndicesUAV.SafeRelease();
+            Storage.SurfaceProbeHash.SafeRelease();
+            Storage.SurfaceProbeHashSRV.SafeRelease();
+            Storage.SurfaceProbeHashUAV.SafeRelease();
+            Storage.SurfaceProbeCounters.SafeRelease();
+            Storage.SurfaceProbeCountersSRV.SafeRelease();
+            Storage.SurfaceProbeCountersUAV.SafeRelease();
+            UE_LOG(LogTemp, Warning, TEXT("DDGI: GPU surface-probe storage allocation failed; regular lattice probes remain available."));
+        }
+        else
+        {
+            Storage.SurfaceProbeCapacity = GDDGISurfaceProbeCapacity;
+            Storage.SurfaceProbeHashCapacity = GDDGISurfaceProbeHashCapacity;
+        }
+    }
     // Ray textures are a grow-only capacity pool. A smaller active window must
     // not shrink/recreate the textures: doing so discards every probe's history.
     // A ray-layout change still requires new storage, but must not evict the
