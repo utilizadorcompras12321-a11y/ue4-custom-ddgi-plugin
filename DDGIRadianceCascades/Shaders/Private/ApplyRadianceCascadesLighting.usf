@@ -116,12 +116,10 @@ float3 DDGIProbeDiffuseIrradiance(
 
         uint SelectedRayCount = DDGIRadianceCascadeRayCount(
             SelectedCascade, BaseRayCount, RaySplitFactor);
-        uint ParentRayCount = SelectedCascade == 0u
-            ? SafeRayCount
-            : DDGIRadianceCascadeRayCount(
-                SelectedCascade - 1u, BaseRayCount, RaySplitFactor);
+        // Cascade descendants remain grouped by their original base ray.
+        // Divide by the base count, not the previous cascade count.
         uint ChildrenPerParent = max(
-            SelectedRayCount / max(ParentRayCount, 1u), 1u);
+            SelectedRayCount / max(SafeRayCount, 1u), 1u);
 
         float BestBaseAlignment = -1.0f;
         uint BestBaseRay = 0u;
