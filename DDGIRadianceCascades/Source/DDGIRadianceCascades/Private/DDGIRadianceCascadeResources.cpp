@@ -368,6 +368,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         return;
     }
 
+    // Disabling Dynamic GI releases every persistent GPU allocation, including
+    // surface-probe buffers, ray histories, lookup hashes and the software BVH.
+    // Re-enabling will recreate them through the normal validated path.
+    if (!Config.bEnableDynamicGI)
+    {
+        DDGIReleaseRadianceCascadeResources_RenderThread(Scene);
+        return;
+    }
+
     // MaxActiveProbes is a hard safety cap. GPU ray and probe-position textures
     // are sized from the actual active probe count to avoid reserving unused capacity.
     // Enforce the cap here as well as in the actor/subsystem for external configs.
