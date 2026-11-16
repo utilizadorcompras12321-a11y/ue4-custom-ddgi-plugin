@@ -25,7 +25,7 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
 static const int32 GDDGISurfaceProbeMaxTraceBudget = 512;
 
 static TAutoConsoleVariable<float> CVarDDGISurfaceProbeSpatialCellSize(
-    TEXT("r.DDGI.SurfaceProbeSpatialCellSize"), 300.0f,
+    TEXT("r.DDGI.SurfaceProbeSpatialCellSize"), 100.0f,
     TEXT("World-space cell size in centimeters for the surface-probe lighting lookup."),
     ECVF_RenderThreadSafe);
 
