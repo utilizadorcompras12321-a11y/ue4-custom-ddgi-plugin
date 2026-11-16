@@ -421,6 +421,7 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 	// Cache parameter evaluation for this build only; no UObject pointer survives it.
 	TMap<const UMaterialInterface*, FDDGISoftwareMaterialData> MaterialDataCache;
 	bool bHasWorldOrigin = false;
+	bool bTriangleLimitReached = false;
 
 	for (TActorIterator<AActor> ActorIt(World); ActorIt; ++ActorIt)
 	{
@@ -493,29 +494,15 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 			}
 			const FVector ComponentRelativeLocation = ComponentTransform.GetLocation() - OutWorldOrigin;
 			const int32 ComponentTriangleCount = static_cast<int32>(IndexCount / 3u);
-			const int32 RemainingTriangleCapacity = MaxTriangleCount - Triangles.Num();
-			const int32 TrianglesToProcess = FMath::Min(ComponentTriangleCount, RemainingTriangleCapacity);
-			if (TrianglesToProcess <= 0)
-			{
-				break;
-			}
 			bool bAddedAnyTriangle = false;
 
-			// Resolve material indices only for triangles that can still enter the BVH.
-			TArray<int32> TriangleMaterialIndices;
-			TriangleMaterialIndices.Init(INDEX_NONE, TrianglesToProcess);
-			for (const FStaticMeshSection& Section : LOD.Sections)
-			{
-				const int64 FirstSectionTriangle = static_cast<int64>(Section.FirstIndex / 3u);
-				const int64 SectionEndTriangle = FirstSectionTriangle + static_cast<int64>(Section.NumTriangles);
-				const int32 ClampedFirstTriangle = static_cast<int32>(FMath::Min<int64>(FirstSectionTriangle, TrianglesToProcess));
-				const int32 ClampedEndTriangle = static_cast<int32>(FMath::Min<int64>(SectionEndTriangle, TrianglesToProcess));
-				for (int32 SectionTriangle = ClampedFirstTriangle;
-					SectionTriangle < ClampedEndTriangle; ++SectionTriangle)
-				{
-					TriangleMaterialIndices[SectionTriangle] = static_cast<int32>(Section.MaterialIndex);
-				}
-			}
+			// Resolve section ownership incrementally. A source mesh can be much
+			// larger than the remaining accepted-triangle capacity.
+			int32 MaterialSectionIndex = 0;
+			int64 MaterialSectionFirstTriangle = LOD.Sections.Num() > 0
+				? static_cast<int64>(LOD.Sections[0].FirstIndex / 3u) : MAX_int64;
+			int64 MaterialSectionEndTriangle = LOD.Sections.Num() > 0
+				? MaterialSectionFirstTriangle + static_cast<int64>(LOD.Sections[0].NumTriangles) : MAX_int64;
 
 			TArray<FVector> MaterialEmissiveRadiance;
 			MaterialEmissiveRadiance.Init(FVector::ZeroVector, Component->GetNumMaterials());
@@ -576,10 +563,24 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				}
 			}
 
-			for (int32 TriangleIndex = 0; TriangleIndex < TrianglesToProcess; ++TriangleIndex)
+			for (int32 TriangleIndex = 0; TriangleIndex < ComponentTriangleCount; ++TriangleIndex)
 			{
-				const int32 MaterialIndex = TriangleMaterialIndices.IsValidIndex(TriangleIndex)
-					? TriangleMaterialIndices[TriangleIndex]
+				while (MaterialSectionIndex < LOD.Sections.Num() &&
+					static_cast<int64>(TriangleIndex) >= MaterialSectionEndTriangle)
+				{
+					++MaterialSectionIndex;
+					if (MaterialSectionIndex < LOD.Sections.Num())
+					{
+						MaterialSectionFirstTriangle = static_cast<int64>(LOD.Sections[MaterialSectionIndex].FirstIndex / 3u);
+						MaterialSectionEndTriangle = MaterialSectionFirstTriangle +
+							static_cast<int64>(LOD.Sections[MaterialSectionIndex].NumTriangles);
+					}
+				}
+				const int32 MaterialIndex =
+					MaterialSectionIndex < LOD.Sections.Num() &&
+					static_cast<int64>(TriangleIndex) >= MaterialSectionFirstTriangle &&
+					static_cast<int64>(TriangleIndex) < MaterialSectionEndTriangle
+					? static_cast<int32>(LOD.Sections[MaterialSectionIndex].MaterialIndex)
 					: INDEX_NONE;
 				if (MaterialBlocksDDGI.IsValidIndex(MaterialIndex) &&
 					MaterialBlocksDDGI[MaterialIndex] == 0)
@@ -640,6 +641,13 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 					continue;
 				}
 
+				// Only flag truncation after finding one more eligible triangle.
+				if (Triangles.Num() >= MaxTriangleCount)
+				{
+					bTriangleLimitReached = true;
+					break;
+				}
+
 				FDDGISoftwareTriangle& Triangle = Triangles.AddDefaulted_GetRef();
 				Triangle.OriginalIndex = Triangles.Num() - 1;
 				Triangle.A = A;
@@ -670,21 +678,21 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				++OutStats.IncludedComponents;
 			}
 
-			if (Triangles.Num() >= MaxTriangleCount)
+			if (bTriangleLimitReached)
 			{
 				break;
 			}
 		}
 
-		if (Triangles.Num() >= MaxTriangleCount)
+		if (bTriangleLimitReached)
 		{
 			break;
 		}
 	}
 
-	// Reaching the configured cap means later components may have been omitted.
-	// Report this explicitly rather than silently presenting a partial world BVH.
-	OutStats.bTriangleLimitReached = Triangles.Num() >= MaxTriangleCount;
+	// The cap is only considered reached when an additional valid, blocking
+	// triangle exists beyond the accepted-triangle capacity.
+	OutStats.bTriangleLimitReached = bTriangleLimitReached;
 	OutStats.TriangleCount = Triangles.Num();
 	if (Triangles.Num() == 0)
 	{
