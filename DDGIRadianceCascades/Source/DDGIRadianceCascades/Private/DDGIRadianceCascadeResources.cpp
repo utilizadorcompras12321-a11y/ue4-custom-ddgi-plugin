@@ -375,6 +375,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.RayLayoutCascadeCount == RequestedRayLayoutCascadeCount &&
         Storage.RayLayoutBaseRayCount == RequestedRayLayoutBaseRayCount &&
         Storage.RayLayoutSplitFactor == RequestedRayLayoutSplitFactor &&
+        Storage.RayMaxActiveProbes == Config.MaxActiveProbes &&
         Storage.Directions.IsValid() &&
         Storage.Radiance.IsValid() &&
         Storage.RadianceScratch.IsValid() &&
@@ -396,6 +397,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.RayLayoutCascadeCount = 0;
         Storage.RayLayoutBaseRayCount = 0;
         Storage.RayLayoutSplitFactor = 0;
+        Storage.RayMaxActiveProbes = 0;
         Storage.RayLayoutBaseSegmentLength = 0.0f;
         Storage.RayLayoutCascadeScale = 0.0f;
         Storage.RayLayoutMaxTraceDistance = 0.0f;
@@ -461,6 +463,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.RayLayoutCascadeCount = RequestedRayLayoutCascadeCount;
         Storage.RayLayoutBaseRayCount = RequestedRayLayoutBaseRayCount;
         Storage.RayLayoutSplitFactor = RequestedRayLayoutSplitFactor;
+        Storage.RayMaxActiveProbes = Config.MaxActiveProbes;
         Storage.RayLayoutBaseSegmentLength = RequestedBaseSegmentLength;
         Storage.RayLayoutCascadeScale = RequestedCascadeScale;
         Storage.RayLayoutMaxTraceDistance = RequestedMaxTraceDistance;
