@@ -41,6 +41,25 @@ bool DDGIGetSurfaceProbeAllocatorResources_RenderThread(
     const FSceneInterface* Scene,
     FDDGISurfaceProbeAllocatorRHIResources& OutResources);
 
+/** RDG views of the persistent surface-probe allocator buffers. */
+struct FDDGISurfaceProbeAllocatorRDGResources
+{
+    FRDGBufferRef Positions = nullptr;
+    FRDGBufferRef Normals = nullptr;
+    FRDGBufferRef StableKeys = nullptr;
+    FRDGBufferRef LastSeenFrames = nullptr;
+    FRDGBufferRef ActiveIndices = nullptr;
+    FRDGBufferRef Hash = nullptr;
+    FRDGBufferRef Counters = nullptr;
+    uint32 ProbeCapacity = 0u;
+    uint32 HashCapacity = 0u;
+};
+
+bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
+    FRDGBuilder& GraphBuilder,
+    const FSceneInterface* Scene,
+    FDDGISurfaceProbeAllocatorRDGResources& OutResources);
+
 /** Claims this scene's DDGI update slot for the supplied render frame. */
 bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber);
 
