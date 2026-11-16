@@ -9,7 +9,9 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - Deterministic equal-solid-angle ray directions and deterministic probe scheduling.
 - Software BVH traversal in SM5 compute shaders.
 - One secondary diffuse bounce.
-- Persistent GPU ray data with logical-to-physical probe-slot mapping and retained probe history.
+- Separate persistent raw-trace, gathered-radiance and final-integrated textures; tracing never overwrites integrated history.
+- Logical-to-physical probe-slot mapping with retained history for stable world-lattice cells.
+- Trace, gather and integration process the same bounded probe batch; untouched probes retain their last valid integrated result.
 - Spatial gather with surface/normal/plane rejection.
 - Deferred lighting application with clipmap blending and probe-to-receiver visibility rejection.
 
