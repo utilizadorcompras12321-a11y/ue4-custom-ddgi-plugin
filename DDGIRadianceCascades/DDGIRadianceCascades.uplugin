@@ -1,9 +1,9 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "1.1.40",
+	"VersionName": "0.1.0",
 	"FriendlyName": "DDGI Radiance Cascades",
-	"Description": "Dynamic Diffuse Global Illumination using Radiance Cascades",
+	"Description": "Experimental software-traced sparse clipmap Radiance Cascades global illumination for UE4.27.2",
 	"Category": "Rendering",
 	"CreatedByURL": "",
 	"DocsURL": "",
@@ -11,7 +11,7 @@
 	"SupportURL": "",
 	"EnabledByDefault": false,
 	"CanContainContent": true,
-	"IsBetaVersion": false,
+	"IsBetaVersion": true,
 	"Installed": false,
 	"Modules": [
 		{
