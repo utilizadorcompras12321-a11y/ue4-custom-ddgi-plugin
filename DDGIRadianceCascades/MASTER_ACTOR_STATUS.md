@@ -25,10 +25,13 @@ Supported direct-light injection:
 Geometry and material scope:
 - Opaque static mesh and BSP geometry with CPU-accessible mesh data.
 - Static ISM/HISM instances are expanded into world-space triangles and included. Movable components and movable instances are excluded from the software BVH.
-- Material evaluation is limited to the `DDGI_BaseColor` and
-  `DDGI_EmissiveRadiance` vector parameters, with a neutral diffuse fallback.
-  Arbitrary material graphs, texture sampling, opacity masks and full PBR
-  evaluation are not implemented.
+- Static-mesh diffuse material input supports `DDGI_BaseColor` and
+  `DDGI_EmissiveRadiance` vector parameters, `DDGI_Metallic` scalar diffuse-
+  energy reduction, and opt-in `DDGI_UseVertexColor`. Vertex colors are reduced
+  to one average per triangle because the BVH stores one material value per
+  triangle. `DDGI_BaseColor` falls back to neutral 18% diffuse when absent.
+  Arbitrary Material Graph evaluation, texture sampling, opacity masks,
+  translucency and full PBR evaluation are not implemented.
 
 The presence of the actor and shader files is not proof of a successful
 engine build or production-ready image quality. The plugin still requires
