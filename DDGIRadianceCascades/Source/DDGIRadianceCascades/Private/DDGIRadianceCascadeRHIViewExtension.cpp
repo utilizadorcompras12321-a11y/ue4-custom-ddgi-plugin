@@ -24,6 +24,11 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
 
 static const int32 GDDGISurfaceProbeMaxTraceBudget = 512;
 
+static TAutoConsoleVariable<float> CVarDDGISurfaceProbeSpatialCellSize(
+    TEXT("r.DDGI.SurfaceProbeSpatialCellSize"), 300.0f,
+    TEXT("World-space cell size in centimeters for the surface-probe lighting lookup."),
+    ECVF_RenderThreadSafe);
+
 static TAutoConsoleVariable<int32> CVarDDGISurfaceProbeTraceBudget(
     TEXT("r.DDGI.SurfaceProbeTraceBudget"),
     64,
@@ -586,6 +591,11 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbePositionsTexture)
 		SHADER_PARAMETER_SRV(StructuredBuffer<int4>, ProbeSpatialHash)
 		SHADER_PARAMETER_SRV(StructuredBuffer<uint>, LogicalToPhysicalSlots)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint4>, SurfaceProbeSpatialHash)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbePositions)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbeNormals)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbeIntegratedRadiance)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, SurfaceProbeCounters)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, SceneColorOutputUAV)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
 		SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
@@ -594,6 +604,9 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(uint32, TotalRaysPerProbe)
 		SHADER_PARAMETER(uint32, BaseRayCount)
 		SHADER_PARAMETER(uint32, HashCapacity)
+		SHADER_PARAMETER(uint32, SurfaceProbeSpatialHashCapacity)
+		SHADER_PARAMETER(uint32, SurfaceProbeCapacity)
+		SHADER_PARAMETER(float, SurfaceProbeSpatialCellSize)
 		SHADER_PARAMETER(float, ProbeSpacing)
 		SHADER_PARAMETER(float, ProbeGridDistance)
 		SHADER_PARAMETER(FVector4, ProbeGridOrigin)
@@ -682,6 +695,47 @@ IMPLEMENT_GLOBAL_SHADER(
     "SurfaceProbeTraceCS",
     SF_Compute);
 
+class FDDGISurfaceProbeSpatialHashResetCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeSpatialHashResetCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeSpatialHashResetCS, FGlobalShader);
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, SurfaceProbeSpatialHash)
+        SHADER_PARAMETER(uint32, HashCapacity)
+    END_SHADER_PARAMETER_STRUCT()
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+IMPLEMENT_GLOBAL_SHADER(FDDGISurfaceProbeSpatialHashResetCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeSpatialHashCS.usf",
+    "SurfaceProbeSpatialHashResetCS", SF_Compute);
+
+class FDDGISurfaceProbeSpatialHashBuildCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeSpatialHashBuildCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeSpatialHashBuildCS, FGlobalShader);
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbePositions)
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, SurfaceProbeLastSeenFrames)
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, SurfaceProbeCounters)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, SurfaceProbeSpatialHash)
+        SHADER_PARAMETER(FVector4, BVHWorldOrigin)
+        SHADER_PARAMETER(uint32, ProbeCapacity)
+        SHADER_PARAMETER(uint32, HashCapacity)
+        SHADER_PARAMETER(uint32, FrameNumber)
+        SHADER_PARAMETER(float, CellSize)
+    END_SHADER_PARAMETER_STRUCT()
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+IMPLEMENT_GLOBAL_SHADER(FDDGISurfaceProbeSpatialHashBuildCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeSpatialHashCS.usf",
+    "SurfaceProbeSpatialHashBuildCS", SF_Compute);
+
 class FDDGISurfaceProbeCaptureCS : public FGlobalShader
 {
     DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeCaptureCS);
@@ -766,7 +820,8 @@ static void DDGIScheduleSurfaceProbeCapture(
     const FSceneView& View,
     const FPostProcessMaterialInputs& Inputs,
     const FScreenPassTexture& SceneColor,
-    const FSceneInterface* Scene)
+    const FSceneInterface* Scene,
+    FDDGISurfaceProbeAllocatorRDGResources& OutResources)
 {
     if (!Scene || !View.Family || !Inputs.SceneTextures.SceneTextures || !SceneColor.IsValid())
     {
@@ -779,9 +834,8 @@ static void DDGIScheduleSurfaceProbeCapture(
         return;
     }
 
-    FDDGISurfaceProbeAllocatorRDGResources Resources;
-    if (!DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(GraphBuilder, Scene, Resources) ||
-        !Resources.CandidatePositions || !Resources.CandidateNormals || !Resources.Counters)
+    if (!DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(GraphBuilder, Scene, OutResources) ||
+        !OutResources.CandidatePositions || !OutResources.CandidateNormals || !OutResources.Counters)
     {
         return;
     }
@@ -795,7 +849,7 @@ static void DDGIScheduleSurfaceProbeCapture(
         CaptureGridWidth = FMath::DivideAndRoundUp(static_cast<uint32>(ViewSize.X), CaptureStride);
         CaptureGridHeight = FMath::DivideAndRoundUp(static_cast<uint32>(ViewSize.Y), CaptureStride);
         CandidateCount = CaptureGridWidth * CaptureGridHeight;
-        if (CandidateCount <= Resources.ProbeCapacity)
+        if (CandidateCount <= OutResources.ProbeCapacity)
         {
             break;
         }
@@ -803,7 +857,7 @@ static void DDGIScheduleSurfaceProbeCapture(
     }
     while (CaptureStride <= static_cast<uint32>(FMath::Max(ViewSize.X, ViewSize.Y)));
 
-    if (CandidateCount == 0u || CandidateCount > Resources.ProbeCapacity ||
+    if (CandidateCount == 0u || CandidateCount > OutResources.ProbeCapacity ||
         !DDGIBeginSurfaceProbeCapture_RenderThread(Scene, View.Family->FrameNumber))
     {
         return;
@@ -814,9 +868,9 @@ static void DDGIScheduleSurfaceProbeCapture(
     PassParameters->View = View.ViewUniformBuffer;
     PassParameters->NormalTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferATexture;
     PassParameters->DepthTexture = (*Inputs.SceneTextures.SceneTextures)->SceneDepthTexture;
-    PassParameters->SurfaceProbeCandidatePositions = GraphBuilder.CreateUAV(Resources.CandidatePositions);
-    PassParameters->SurfaceProbeCandidateNormals = GraphBuilder.CreateUAV(Resources.CandidateNormals);
-    PassParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
+    PassParameters->SurfaceProbeCandidatePositions = GraphBuilder.CreateUAV(OutResources.CandidatePositions);
+    PassParameters->SurfaceProbeCandidateNormals = GraphBuilder.CreateUAV(OutResources.CandidateNormals);
+    PassParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(OutResources.Counters);
     PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
     PassParameters->ScaledViewSizeAndInvSize = FVector4(
         static_cast<float>(ViewSize.X), static_cast<float>(ViewSize.Y),
@@ -841,17 +895,17 @@ static void DDGIScheduleSurfaceProbeCapture(
             1));
     FDDGISurfaceProbeDeduplicateCS::FParameters* DeduplicateParameters =
         GraphBuilder.AllocParameters<FDDGISurfaceProbeDeduplicateCS::FParameters>();
-    DeduplicateParameters->SurfaceProbeCandidatePositions = GraphBuilder.CreateSRV(Resources.CandidatePositions);
-    DeduplicateParameters->SurfaceProbeCandidateNormals = GraphBuilder.CreateSRV(Resources.CandidateNormals);
-    DeduplicateParameters->SurfaceProbePositions = GraphBuilder.CreateUAV(Resources.Positions);
-    DeduplicateParameters->SurfaceProbeNormals = GraphBuilder.CreateUAV(Resources.Normals);
-    DeduplicateParameters->SurfaceProbeIntegratedRadiance = GraphBuilder.CreateUAV(Resources.IntegratedRadiance);
-    DeduplicateParameters->SurfaceProbeStableKeys = GraphBuilder.CreateUAV(Resources.StableKeys);
-    DeduplicateParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateUAV(Resources.LastSeenFrames);
-    DeduplicateParameters->SurfaceProbeHash = GraphBuilder.CreateUAV(Resources.Hash);
-    DeduplicateParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
-    DeduplicateParameters->ProbeCapacity = Resources.ProbeCapacity;
-    DeduplicateParameters->HashCapacity = Resources.HashCapacity;
+    DeduplicateParameters->SurfaceProbeCandidatePositions = GraphBuilder.CreateSRV(OutResources.CandidatePositions);
+    DeduplicateParameters->SurfaceProbeCandidateNormals = GraphBuilder.CreateSRV(OutResources.CandidateNormals);
+    DeduplicateParameters->SurfaceProbePositions = GraphBuilder.CreateUAV(OutResources.Positions);
+    DeduplicateParameters->SurfaceProbeNormals = GraphBuilder.CreateUAV(OutResources.Normals);
+    DeduplicateParameters->SurfaceProbeIntegratedRadiance = GraphBuilder.CreateUAV(OutResources.IntegratedRadiance);
+    DeduplicateParameters->SurfaceProbeStableKeys = GraphBuilder.CreateUAV(OutResources.StableKeys);
+    DeduplicateParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateUAV(OutResources.LastSeenFrames);
+    DeduplicateParameters->SurfaceProbeHash = GraphBuilder.CreateUAV(OutResources.Hash);
+    DeduplicateParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(OutResources.Counters);
+    DeduplicateParameters->ProbeCapacity = OutResources.ProbeCapacity;
+    DeduplicateParameters->HashCapacity = OutResources.HashCapacity;
     DeduplicateParameters->FrameNumber = View.Family->FrameNumber;
 
     TShaderMapRef<FDDGISurfaceProbeDeduplicateCS> DeduplicateShader(GetGlobalShaderMap(View.GetFeatureLevel()));
@@ -866,10 +920,10 @@ static void DDGIScheduleSurfaceProbeCapture(
     // cannot starve probes when parallel append order changes between frames.
     FDDGISurfaceProbeBuildActiveListCS::FParameters* BuildActiveListParameters =
         GraphBuilder.AllocParameters<FDDGISurfaceProbeBuildActiveListCS::FParameters>();
-    BuildActiveListParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateSRV(Resources.LastSeenFrames);
-    BuildActiveListParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateUAV(Resources.ActiveIndices);
-    BuildActiveListParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
-    BuildActiveListParameters->ProbeCapacity = Resources.ProbeCapacity;
+    BuildActiveListParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateSRV(OutResources.LastSeenFrames);
+    BuildActiveListParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateUAV(OutResources.ActiveIndices);
+    BuildActiveListParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(OutResources.Counters);
+    BuildActiveListParameters->ProbeCapacity = OutResources.ProbeCapacity;
     BuildActiveListParameters->FrameNumber = View.Family->FrameNumber;
 
     TShaderMapRef<FDDGISurfaceProbeBuildActiveListCS> BuildActiveListShader(GetGlobalShaderMap(View.GetFeatureLevel()));
@@ -884,10 +938,10 @@ static void DDGIScheduleSurfaceProbeCapture(
     // slots; this second list is the per-frame work queue consumed by future tracing.
     FDDGISurfaceProbeScheduleTraceCS::FParameters* ScheduleTraceParameters =
         GraphBuilder.AllocParameters<FDDGISurfaceProbeScheduleTraceCS::FParameters>();
-    ScheduleTraceParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateSRV(Resources.ActiveIndices);
-    ScheduleTraceParameters->SurfaceProbeTraceIndices = GraphBuilder.CreateUAV(Resources.TraceIndices);
-    ScheduleTraceParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
-    ScheduleTraceParameters->ProbeCapacity = Resources.ProbeCapacity;
+    ScheduleTraceParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateSRV(OutResources.ActiveIndices);
+    ScheduleTraceParameters->SurfaceProbeTraceIndices = GraphBuilder.CreateUAV(OutResources.TraceIndices);
+    ScheduleTraceParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(OutResources.Counters);
+    ScheduleTraceParameters->ProbeCapacity = OutResources.ProbeCapacity;
     ScheduleTraceParameters->TraceProbeBudget = static_cast<uint32>(
         FMath::Clamp(CVarDDGISurfaceProbeTraceBudget.GetValueOnRenderThread(), 0, GDDGISurfaceProbeMaxTraceBudget));
 
@@ -917,11 +971,11 @@ static void DDGIScheduleSurfaceProbeCapture(
     {
         FDDGISurfaceProbeTraceCS::FParameters* TraceParameters =
             GraphBuilder.AllocParameters<FDDGISurfaceProbeTraceCS::FParameters>();
-        TraceParameters->SurfaceProbePositions = GraphBuilder.CreateSRV(Resources.Positions);
-        TraceParameters->SurfaceProbeNormals = GraphBuilder.CreateSRV(Resources.Normals);
-        TraceParameters->SurfaceProbeTraceIndices = GraphBuilder.CreateSRV(Resources.TraceIndices);
-        TraceParameters->SurfaceProbeCounters = GraphBuilder.CreateSRV(Resources.Counters);
-        TraceParameters->SurfaceProbeIntegratedRadiance = GraphBuilder.CreateUAV(Resources.IntegratedRadiance);
+        TraceParameters->SurfaceProbePositions = GraphBuilder.CreateSRV(OutResources.Positions);
+        TraceParameters->SurfaceProbeNormals = GraphBuilder.CreateSRV(OutResources.Normals);
+        TraceParameters->SurfaceProbeTraceIndices = GraphBuilder.CreateSRV(OutResources.TraceIndices);
+        TraceParameters->SurfaceProbeCounters = GraphBuilder.CreateSRV(OutResources.Counters);
+        TraceParameters->SurfaceProbeIntegratedRadiance = GraphBuilder.CreateUAV(OutResources.IntegratedRadiance);
         TraceParameters->BVHNodes = BVHNodesSRV;
         TraceParameters->BVHTriangles = BVHTrianglesSRV;
         TraceParameters->BVHWorldOrigin = FVector4(
@@ -956,6 +1010,57 @@ static void DDGIScheduleSurfaceProbeCapture(
             TraceParameters,
             FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(TraceDispatchBudget), 64), 1, 1));
     }
+}
+
+static FRDGBufferRef DDGIScheduleSurfaceProbeSpatialHash(
+    FRDGBuilder& GraphBuilder, const FSceneView& View,
+    const FDDGIMasterConfig& Config,
+    const FDDGISurfaceProbeAllocatorRDGResources& Resources,
+    uint32& OutHashCapacity)
+{
+    OutHashCapacity = 0u;
+    if (!Resources.Positions || !Resources.LastSeenFrames || !Resources.Counters ||
+        Resources.ProbeCapacity == 0u || Resources.HashCapacity == 0u ||
+        !Config.SoftwareBVH.IsValid())
+        return nullptr;
+
+    const uint32 HashCapacity = Resources.HashCapacity;
+    FRDGBufferRef SpatialHash = GraphBuilder.CreateBuffer(
+        FRDGBufferDesc::CreateStructuredDesc(sizeof(FUintVector4), HashCapacity),
+        TEXT("DDGI.SurfaceProbeSpatialHash"));
+
+    FDDGISurfaceProbeSpatialHashResetCS::FParameters* ResetParameters =
+        GraphBuilder.AllocParameters<FDDGISurfaceProbeSpatialHashResetCS::FParameters>();
+    ResetParameters->SurfaceProbeSpatialHash = GraphBuilder.CreateUAV(SpatialHash);
+    ResetParameters->HashCapacity = HashCapacity;
+    TShaderMapRef<FDDGISurfaceProbeSpatialHashResetCS> ResetShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+    FComputeShaderUtils::AddPass(GraphBuilder,
+        RDG_EVENT_NAME("DDGI Reset Surface Probe Spatial Hash"),
+        ResetShader, ResetParameters,
+        FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(HashCapacity), 64), 1, 1));
+
+    FDDGISurfaceProbeSpatialHashBuildCS::FParameters* BuildParameters =
+        GraphBuilder.AllocParameters<FDDGISurfaceProbeSpatialHashBuildCS::FParameters>();
+    BuildParameters->SurfaceProbePositions = GraphBuilder.CreateSRV(Resources.Positions);
+    BuildParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateSRV(Resources.LastSeenFrames);
+    BuildParameters->SurfaceProbeCounters = GraphBuilder.CreateSRV(Resources.Counters);
+    BuildParameters->SurfaceProbeSpatialHash = GraphBuilder.CreateUAV(SpatialHash);
+    BuildParameters->BVHWorldOrigin = FVector4(
+        Config.SoftwareBVH->WorldOrigin.X, Config.SoftwareBVH->WorldOrigin.Y,
+        Config.SoftwareBVH->WorldOrigin.Z, 0.0f);
+    BuildParameters->ProbeCapacity = Resources.ProbeCapacity;
+    BuildParameters->HashCapacity = HashCapacity;
+    BuildParameters->FrameNumber = View.Family ? View.Family->FrameNumber : 0u;
+    BuildParameters->CellSize = FMath::Clamp(
+        CVarDDGISurfaceProbeSpatialCellSize.GetValueOnRenderThread(), 50.0f, 2000.0f);
+    TShaderMapRef<FDDGISurfaceProbeSpatialHashBuildCS> BuildShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+    FComputeShaderUtils::AddPass(GraphBuilder,
+        RDG_EVENT_NAME("DDGI Build Surface Probe Spatial Hash"),
+        BuildShader, BuildParameters,
+        FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(Resources.ProbeCapacity), 64), 1, 1));
+
+    OutHashCapacity = HashCapacity;
+    return SpatialHash;
 }
 
 IMPLEMENT_GLOBAL_SHADER(
@@ -1014,10 +1119,17 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 
 	const FSceneInterface* Scene = View.Family->Scene;
 	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
+	FDDGISurfaceProbeAllocatorRDGResources SurfaceProbeResources;
 	if (Config && Config->bEnableDynamicGI)
 	{
-		DDGIScheduleSurfaceProbeCapture(GraphBuilder, View, Inputs, SceneColor, Scene);
+		DDGIScheduleSurfaceProbeCapture(
+			GraphBuilder, View, Inputs, SceneColor, Scene, SurfaceProbeResources);
 	}
+	uint32 SurfaceProbeSpatialHashCapacity = 0u;
+	FRDGBufferRef SurfaceProbeSpatialHash = Config && Config->bEnableDynamicGI
+		? DDGIScheduleSurfaceProbeSpatialHash(
+			GraphBuilder, View, *Config, SurfaceProbeResources, SurfaceProbeSpatialHashCapacity)
+		: nullptr;
 	if (!Config || !Config->bEnableDynamicGI || !Config->SoftwareBVH.IsValid())
 	{
 		static bool bLoggedMissingConfig = false;
@@ -1109,6 +1221,14 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->ProbePositionsTexture = ProbePositionsTexture;
 	PassParameters->ProbeSpatialHash = ProbeSpatialHashSRV;
 	PassParameters->LogicalToPhysicalSlots = LogicalToPhysicalSRV;
+	if (SurfaceProbeSpatialHash && SurfaceProbeSpatialHashCapacity > 0u)
+	{
+		PassParameters->SurfaceProbeSpatialHash = GraphBuilder.CreateSRV(SurfaceProbeSpatialHash);
+		PassParameters->SurfaceProbePositions = GraphBuilder.CreateSRV(SurfaceProbeResources.Positions);
+		PassParameters->SurfaceProbeNormals = GraphBuilder.CreateSRV(SurfaceProbeResources.Normals);
+		PassParameters->SurfaceProbeIntegratedRadiance = GraphBuilder.CreateSRV(SurfaceProbeResources.IntegratedRadiance);
+		PassParameters->SurfaceProbeCounters = GraphBuilder.CreateSRV(SurfaceProbeResources.Counters);
+	}
 	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
 	PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->ScaledViewSizeAndInvSize = FVector4(
@@ -1122,6 +1242,10 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->BaseRayCount = static_cast<uint32>(FMath::Clamp(
 		Config->RadianceCascades.BaseRayCount, 1, 64));
 	PassParameters->HashCapacity = HashCapacity;
+	PassParameters->SurfaceProbeSpatialHashCapacity = SurfaceProbeSpatialHashCapacity;
+	PassParameters->SurfaceProbeCapacity = SurfaceProbeSpatialHash ? SurfaceProbeResources.ProbeCapacity : 0u;
+	PassParameters->SurfaceProbeSpatialCellSize = FMath::Clamp(
+		CVarDDGISurfaceProbeSpatialCellSize.GetValueOnRenderThread(), 50.0f, 2000.0f);
 	PassParameters->ProbeSpacing = ProbeSpacing;
 	PassParameters->ProbeGridDistance = Config->ProbeGridDistance;
 	PassParameters->ProbeGridOrigin = FVector4(
