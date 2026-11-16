@@ -115,6 +115,6 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     RadianceUAV[Pixel] = 0.0f;
     HitDistanceUAV[Pixel] = -1.0f;
     RadianceScratchUAV[Pixel] = 0.0f;
-    RadianceIntegrationScratchUAV[Pixel] = 0.0f;
+    RadianceIntegrationScratchUAV[Pixel] = 0u;
     HitTriangleIndexUAV[Pixel] = 0u;
 }
