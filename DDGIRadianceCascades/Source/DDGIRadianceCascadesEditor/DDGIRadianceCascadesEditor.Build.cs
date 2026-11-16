@@ -25,9 +25,7 @@ public class DDGIRadianceCascadesEditor : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"CoreUObject",
-			"Engine",
-			"PropertyEditor",
-			"Slate",
+			"Engine",			"Slate",
 			"SlateCore",
 			"UnrealEd",
 			"PlacementMode",
