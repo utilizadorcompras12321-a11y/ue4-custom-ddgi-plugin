@@ -736,7 +736,7 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 
 	// Discover components occasionally, but read cached transforms/intensities
 	// every frame so moving point/spot lights update without an actor scan.
-	// A 2-second discovery interval also catches lights spawned at runtime.
+	// A bounded 120-frame discovery interval also catches lights spawned at runtime.
 	if (!bHasSearchedLocalLights || GFrameCounter - LastLocalLightDiscoveryFrame >= 120u)
 	{
 		CachedLocalLights.Reset();
