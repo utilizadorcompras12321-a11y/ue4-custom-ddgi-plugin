@@ -258,6 +258,24 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float Metallic = MetallicTexture.SampleLevel(PointClampSampler, BufferUV, 0).r;
     float3 Albedo = BaseColor * (1.0f - Metallic);
 
+    // Diagnostic modes 8-9 separate probe coverage from the surface-side
+    // visibility fade. A bright coverage view with a dark radiance view means
+    // probes are found, but their traced/integrated radiance is near zero.
+    if (DebugMode == 8u || DebugMode == 9u)
+    {
+        const uint DebugLevel = DebugMode == 8u ? 0u : 3u;
+        float SpatialWeightSum = 0.0f;
+        float VisibleWeightSum = 0.0f;
+        DDGISampleProbeLevel(
+            LocalPosition, Normal, DebugLevel,
+            SpatialWeightSum, VisibleWeightSum);
+        float DebugValue = DebugMode == 8u
+            ? saturate(SpatialWeightSum)
+            : saturate(VisibleWeightSum / max(SpatialWeightSum, 0.00001f));
+        SceneColorOutputUAV[BufferPixelIndex] = float4(DebugValue.xxx, 1.0f);
+        return;
+    }
+
     // Diagnostic modes 4-7 isolate each spatial probe level. This bypasses
     // distance-based level selection so sparse/coarse-level failures can be
     // distinguished from transition blending.
