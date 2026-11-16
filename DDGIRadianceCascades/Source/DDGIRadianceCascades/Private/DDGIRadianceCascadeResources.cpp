@@ -1990,6 +1990,7 @@ bool DDGIGetSurfaceProbeAllocatorResources_RenderThread(
         !Storage->SurfaceProbeStableKeysSRV.IsValid() || !Storage->SurfaceProbeStableKeysUAV.IsValid() ||
         !Storage->SurfaceProbeLastSeenFramesSRV.IsValid() || !Storage->SurfaceProbeLastSeenFramesUAV.IsValid() ||
         !Storage->SurfaceProbeActiveIndicesSRV.IsValid() || !Storage->SurfaceProbeActiveIndicesUAV.IsValid() ||
+        !Storage->SurfaceProbeTraceIndicesSRV.IsValid() || !Storage->SurfaceProbeTraceIndicesUAV.IsValid() ||
         !Storage->SurfaceProbeHashSRV.IsValid() || !Storage->SurfaceProbeHashUAV.IsValid() ||
         !Storage->SurfaceProbeCountersSRV.IsValid() || !Storage->SurfaceProbeCountersUAV.IsValid())
     {
@@ -2092,6 +2093,7 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
     OutResources.StableKeys = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeStableKeysPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
     OutResources.LastSeenFrames = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeLastSeenFramesPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
     OutResources.ActiveIndices = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeActiveIndicesPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
+    OutResources.TraceIndices = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeTraceIndicesPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
     OutResources.Hash = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeHashPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
     OutResources.Counters = GraphBuilder.RegisterExternalBuffer(Storage->SurfaceProbeCountersPooled, ERDGBufferFlags::None, ERHIAccess::SRVCompute);
 
@@ -2099,7 +2101,7 @@ bool DDGIRegisterSurfaceProbeAllocatorBuffers_RenderThread(
     OutResources.HashCapacity = Storage->SurfaceProbeHashCapacity;
     return OutResources.CandidatePositions && OutResources.CandidateNormals &&
         OutResources.Positions && OutResources.Normals && OutResources.StableKeys &&
-        OutResources.LastSeenFrames && OutResources.ActiveIndices && OutResources.Hash && OutResources.Counters;
+        OutResources.LastSeenFrames && OutResources.ActiveIndices && OutResources.TraceIndices && OutResources.Hash && OutResources.Counters;
 }
 
 bool DDGIBeginSurfaceProbeCapture_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber)
