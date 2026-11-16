@@ -898,7 +898,7 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 	}
 
 	// Lighting changes do not alter probe layout or BVH data. Capture only
-	// the four lighting values instead of copying the full master config
+	// the small lighting payload instead of copying the full master config
 	// (which can contain tens of thousands of probe positions).
 	const bool bHasDirectionalLight = Config.bHasDirectionalLight;
 	const bool bDirectionalLightCastsShadows = Config.bDirectionalLightCastsShadows;
