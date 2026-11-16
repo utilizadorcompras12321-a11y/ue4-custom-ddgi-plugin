@@ -1026,7 +1026,7 @@ static FRDGBufferRef DDGIScheduleSurfaceProbeSpatialHash(
 
     const uint32 HashCapacity = Resources.HashCapacity;
     FRDGBufferRef SpatialHash = GraphBuilder.CreateBuffer(
-        FRDGBufferDesc::CreateStructuredDesc(sizeof(FUintVector4), HashCapacity),
+        FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32) * 4u, HashCapacity),
         TEXT("DDGI.SurfaceProbeSpatialHash"));
 
     FDDGISurfaceProbeSpatialHashResetCS::FParameters* ResetParameters =
