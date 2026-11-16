@@ -635,6 +635,38 @@ IMPLEMENT_GLOBAL_SHADER(
     "SurfaceProbeCaptureCS",
     SF_Compute);
 
+class FDDGISurfaceProbeDeduplicateCS : public FGlobalShader
+{
+    DECLARE_GLOBAL_SHADER(FDDGISurfaceProbeDeduplicateCS);
+    SHADER_USE_PARAMETER_STRUCT(FDDGISurfaceProbeDeduplicateCS, FGlobalShader);
+
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbeCandidatePositions)
+        SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, SurfaceProbeCandidateNormals)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbePositions)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeNormals)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, SurfaceProbeStableKeys)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeLastSeenFrames)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeActiveIndices)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, SurfaceProbeHash)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeCounters)
+        SHADER_PARAMETER(uint32, ProbeCapacity)
+        SHADER_PARAMETER(uint32, HashCapacity)
+        SHADER_PARAMETER(uint32, FrameNumber)
+    END_SHADER_PARAMETER_STRUCT()
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+    FDDGISurfaceProbeDeduplicateCS,
+    "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/SurfaceProbeDeduplicateCS.usf",
+    "SurfaceProbeDeduplicateCS",
+    SF_Compute);
+
 static void DDGIScheduleSurfaceProbeCapture(
     FRDGBuilder& GraphBuilder,
     const FSceneView& View,
@@ -713,6 +745,28 @@ static void DDGIScheduleSurfaceProbeCapture(
             FMath::DivideAndRoundUp(static_cast<int32>(CaptureGridWidth), 8),
             FMath::DivideAndRoundUp(static_cast<int32>(CaptureGridHeight), 8),
             1));
+    FDDGISurfaceProbeDeduplicateCS::FParameters* DeduplicateParameters =
+        GraphBuilder.AllocParameters<FDDGISurfaceProbeDeduplicateCS::FParameters>();
+    DeduplicateParameters->SurfaceProbeCandidatePositions = GraphBuilder.CreateSRV(Resources.CandidatePositions);
+    DeduplicateParameters->SurfaceProbeCandidateNormals = GraphBuilder.CreateSRV(Resources.CandidateNormals);
+    DeduplicateParameters->SurfaceProbePositions = GraphBuilder.CreateUAV(Resources.Positions);
+    DeduplicateParameters->SurfaceProbeNormals = GraphBuilder.CreateUAV(Resources.Normals);
+    DeduplicateParameters->SurfaceProbeStableKeys = GraphBuilder.CreateUAV(Resources.StableKeys);
+    DeduplicateParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateUAV(Resources.LastSeenFrames);
+    DeduplicateParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateUAV(Resources.ActiveIndices);
+    DeduplicateParameters->SurfaceProbeHash = GraphBuilder.CreateUAV(Resources.Hash);
+    DeduplicateParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
+    DeduplicateParameters->ProbeCapacity = Resources.ProbeCapacity;
+    DeduplicateParameters->HashCapacity = Resources.HashCapacity;
+    DeduplicateParameters->FrameNumber = View.Family->FrameNumber;
+
+    TShaderMapRef<FDDGISurfaceProbeDeduplicateCS> DeduplicateShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+    FComputeShaderUtils::AddPass(
+        GraphBuilder,
+        RDG_EVENT_NAME("DDGI Deduplicate Surface Probes"),
+        DeduplicateShader,
+        DeduplicateParameters,
+        FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(CandidateCount), 64), 1, 1));
 }
 
 IMPLEMENT_GLOBAL_SHADER(
