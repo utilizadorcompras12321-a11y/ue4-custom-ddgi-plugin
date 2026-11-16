@@ -48,7 +48,7 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 				CurrentConfig.bEnableDynamicGI != bEnableDynamicGI ||
 				CurrentConfig.bEnableStaticBackground != bEnableStaticBackground ||
 				!FMath::IsNearlyEqual(CurrentConfig.GIIntensity, FMath::Max(0.0f, GIIntensity), 1.0e-4f) ||
-				!FMath::IsNearlyEqual(CurrentConfig.LocalLightGIIntensityScale, LocalLightGIIntensityScale, 1.0e-4f) ||
+				!FMath::IsNearlyEqual(CurrentConfig.LocalLightGIIntensityScale, FMath::Max(0.0f, LocalLightGIIntensityScale), 1.0e-4f) ||
 				!FMath::IsNearlyEqual(CurrentConfig.DynamicGIDistance, FMath::Max(1.0f, DynamicGIDistance), 1.0e-3f) ||
 				!FMath::IsNearlyEqual(CurrentConfig.ProbeGridDistance, SafeProbeGridDistance, 1.0e-3f) ||
 				!FMath::IsNearlyEqual(CurrentConfig.ProbeSpacing, SafeProbeSpacing, 1.0e-4f) ||
