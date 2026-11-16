@@ -831,11 +831,15 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 		}
 
 		const bool bInverseSquared = Light->bUseInverseSquaredFalloff != 0;
-		// UE4 inverse-square point lights expose lumens. Convert to an
-		// approximate candela scale (lumens / 4PI), then cm^-2 to m^-2.
+		// UE4 inverse-square point lights expose lumens. Convert to approximate
+		// candela using 4PI sr for points or the spot cone's solid angle, then
+		// convert the distance denominator from cm^2 to m^2 in the shader.
+		const float LightSolidAngle = CosOuter > -1.0f
+			? FMath::Max(0.01f, 2.0f * PI * (1.0f - CosOuter))
+			: (4.0f * PI);
 		const float ScaledIntensity = bInverseSquared
 			? Light->Intensity * FMath::Max(0.0f, Light->IndirectLightingIntensity) *
-				(10000.0f / (4.0f * PI)) * IntensityScale
+				(10000.0f / LightSolidAngle) * IntensityScale
 			: Light->Intensity * FMath::Max(0.0f, Light->IndirectLightingIntensity) * IntensityScale;
 		const FLinearColor Color = Light->LightColor.ReinterpretAsLinear();
 
