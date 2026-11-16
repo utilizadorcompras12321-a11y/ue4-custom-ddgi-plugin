@@ -599,6 +599,10 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(uint32, HashCapacity)
 		SHADER_PARAMETER(float, ProbeSpacing)
 		SHADER_PARAMETER(float, BaseSegmentLength)
+		SHADER_PARAMETER(float, CascadeScale)
+		SHADER_PARAMETER(float, MaxTraceDistance)
+		SHADER_PARAMETER(uint32, CascadeCount)
+		SHADER_PARAMETER(uint32, RaySplitFactor)
 		SHADER_PARAMETER(float, ProbeGridDistance)
 		SHADER_PARAMETER(FVector4, ProbeGridOrigin)
 		SHADER_PARAMETER(FVector4, ActiveWindowCenter)
@@ -746,6 +750,10 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->HashCapacity = HashCapacity;
 	PassParameters->ProbeSpacing = ProbeSpacing;
 	PassParameters->BaseSegmentLength = Config->RadianceCascades.BaseSegmentLength;
+	PassParameters->CascadeScale = Config->RadianceCascades.CascadeScale;
+	PassParameters->MaxTraceDistance = Config->RadianceCascades.MaxTraceDistance;
+	PassParameters->CascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
+	PassParameters->RaySplitFactor = static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.RaySplitFactor, 1, 4));
 	PassParameters->ProbeGridDistance = Config->ProbeGridDistance;
 	PassParameters->ProbeGridOrigin = FVector4(
 		Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f);
