@@ -611,8 +611,8 @@ class FDDGISurfaceProbeCaptureCS : public FGlobalShader
         SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D, NormalTexture)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
-        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbePositions)
-        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeNormals)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeCandidatePositions)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, SurfaceProbeCandidateNormals)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeLastSeenFrames)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeActiveIndices)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, SurfaceProbeCounters)
@@ -691,8 +691,8 @@ static void DDGIScheduleSurfaceProbeCapture(
     PassParameters->View = View.ViewUniformBuffer;
     PassParameters->NormalTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferATexture;
     PassParameters->DepthTexture = (*Inputs.SceneTextures.SceneTextures)->SceneDepthTexture;
-    PassParameters->SurfaceProbePositions = GraphBuilder.CreateUAV(Resources.Positions);
-    PassParameters->SurfaceProbeNormals = GraphBuilder.CreateUAV(Resources.Normals);
+    PassParameters->SurfaceProbeCandidatePositions = GraphBuilder.CreateUAV(Resources.CandidatePositions);
+    PassParameters->SurfaceProbeCandidateNormals = GraphBuilder.CreateUAV(Resources.CandidateNormals);
     PassParameters->SurfaceProbeLastSeenFrames = GraphBuilder.CreateUAV(Resources.LastSeenFrames);
     PassParameters->SurfaceProbeActiveIndices = GraphBuilder.CreateUAV(Resources.ActiveIndices);
     PassParameters->SurfaceProbeCounters = GraphBuilder.CreateUAV(Resources.Counters);
