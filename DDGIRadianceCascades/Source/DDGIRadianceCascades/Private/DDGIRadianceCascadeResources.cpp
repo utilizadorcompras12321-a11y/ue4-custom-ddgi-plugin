@@ -610,7 +610,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             if (FramesSinceVisible > GDDGIPhysicalProbeRetentionFrames)
             {
                 const uint32 ExpiredSlot = It.Value().PhysicalSlot;
-                Storage.FreePhysicalSlots.AddUnique(ExpiredSlot);
+                // A retained identity owns exactly one physical slot; expired map entries
+                // are removed immediately below, so this slot cannot already be free.
+                Storage.FreePhysicalSlots.Add(ExpiredSlot);
                 if (Storage.NewlyAllocatedPhysicalSlotsCPU.Remove(ExpiredSlot) > 0)
                 {
                     Storage.bPendingPhysicalSlotsUpload = true;
@@ -661,6 +663,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         }
         int32 NextEvictionCandidate = 0;
 
+        // Physical slots are unique by allocator invariant. Track pending initialization
+        // membership in a hash set so adding thousands of probes is O(N), not O(N^2).
+        TSet<uint32> NewlyAllocatedSlotSet;
+        NewlyAllocatedSlotSet.Reserve(Storage.NewlyAllocatedPhysicalSlotsCPU.Num() + ActiveProbeCount);
+        for (const uint32 PendingSlot : Storage.NewlyAllocatedPhysicalSlotsCPU)
+        {
+            NewlyAllocatedSlotSet.Add(PendingSlot);
+        }
+
         Storage.LogicalToPhysicalSlotCPU.SetNumUninitialized(ActiveProbeCount);
         for (int32 LogicalIndex = 0; LogicalIndex < ActiveProbeCount; ++LogicalIndex)
         {
@@ -701,7 +712,11 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             NewSlot.LastSeenUpdate = Storage.ProbeUpdateSerial;
             Storage.ProbeCellToPhysicalSlot.Add(Key, NewSlot);
             Storage.LogicalToPhysicalSlotCPU[LogicalIndex] = NewPhysicalSlot;
-            Storage.NewlyAllocatedPhysicalSlotsCPU.AddUnique(NewPhysicalSlot);
+            if (!NewlyAllocatedSlotSet.Contains(NewPhysicalSlot))
+            {
+                NewlyAllocatedSlotSet.Add(NewPhysicalSlot);
+                Storage.NewlyAllocatedPhysicalSlotsCPU.Add(NewPhysicalSlot);
+            }
             Storage.bPendingPhysicalSlotsUpload = true;
             Storage.bNeedsInitialization = true;
         }
@@ -734,10 +749,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     if (Storage.bInvalidateAllPhysicalSlots)
     {
         Storage.NewlyAllocatedPhysicalSlotsCPU.Reset();
-        for (const uint32 PhysicalSlot : Storage.LogicalToPhysicalSlotCPU)
-        {
-            Storage.NewlyAllocatedPhysicalSlotsCPU.AddUnique(PhysicalSlot);
-        }
+        // Logical-to-physical mapping is one-to-one, so every slot appears once.
+        Storage.NewlyAllocatedPhysicalSlotsCPU.Append(Storage.LogicalToPhysicalSlotCPU);
         Storage.bInvalidateAllPhysicalSlots = false;
         Storage.bPendingPhysicalSlotsUpload = true;
     }
