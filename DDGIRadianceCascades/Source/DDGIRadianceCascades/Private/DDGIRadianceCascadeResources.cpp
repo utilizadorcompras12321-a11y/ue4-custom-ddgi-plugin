@@ -154,6 +154,7 @@ namespace
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeStableKeysPooled;
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeLastSeenFramesPooled;
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeActiveIndicesPooled;
+		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeTraceIndicesPooled;
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeHashPooled;
 		TRefCountPtr<FRDGPooledBuffer> SurfaceProbeCountersPooled;
 		FStructuredBufferRHIRef SurfaceProbePositions;
@@ -177,6 +178,9 @@ namespace
 		FStructuredBufferRHIRef SurfaceProbeActiveIndices;
 		FShaderResourceViewRHIRef SurfaceProbeActiveIndicesSRV;
 		FUnorderedAccessViewRHIRef SurfaceProbeActiveIndicesUAV;
+		FStructuredBufferRHIRef SurfaceProbeTraceIndices;
+		FShaderResourceViewRHIRef SurfaceProbeTraceIndicesSRV;
+		FUnorderedAccessViewRHIRef SurfaceProbeTraceIndicesUAV;
 		FStructuredBufferRHIRef SurfaceProbeHash;
 		FShaderResourceViewRHIRef SurfaceProbeHashSRV;
 		FUnorderedAccessViewRHIRef SurfaceProbeHashUAV;
