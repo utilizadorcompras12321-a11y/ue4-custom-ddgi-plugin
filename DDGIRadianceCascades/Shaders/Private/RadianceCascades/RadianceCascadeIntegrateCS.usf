@@ -4,13 +4,15 @@ uint TextureWidth;
 uint TotalIntegrationTexels;
 uint DispatchGroupsX;
 uint TotalRaysPerProbe;
+uint ProbeCount;
+uint ProbeStartIndex;
 uint CascadeStorageOffset;
 uint CascadeRayCount;
 uint NextCascadeStorageOffset;
 uint EffectiveSplitFactor;
+uint bCopyGatherToFinal;
 
 Texture2D<float4> GatheredRadianceTexture;
-Texture2D<float4> ChildRadianceTexture;
 Texture2D<float> HitDistanceTexture;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
 RWTexture2D<float4> RadianceUAV;
@@ -21,21 +23,29 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
     if (LinearIndex >= TotalIntegrationTexels ||
         TotalRaysPerProbe == 0u ||
-        CascadeRayCount == 0u)
+        CascadeRayCount == 0u ||
+        ProbeCount == 0u)
     {
         return;
     }
 
-    // Dispatch indices cover only the parent rays of this cascade.
-    uint ProbeIndex = LinearIndex / CascadeRayCount;
-    uint LocalRayIndex = LinearIndex - ProbeIndex * CascadeRayCount;
+    uint ScheduledProbeIndex = LinearIndex / CascadeRayCount;
+    uint ProbeIndex = (ProbeStartIndex + ScheduledProbeIndex) % ProbeCount;
+    uint LocalRayIndex = LinearIndex - ScheduledProbeIndex * CascadeRayCount;
     uint PackedRayIndex = CascadeStorageOffset + LocalRayIndex;
     uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
     uint LinearTextureIndex = PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
     uint2 Pixel = uint2(LinearTextureIndex % TextureWidth, LinearTextureIndex / TextureWidth);
 
-    // A hit in this interval, or an earlier interval, terminates transport.
-    // The gathered radiance is already valid, so leave the texel untouched.
+    // First copy the newly gathered raw cascade data into persistent final
+    // storage. Subsequent dispatches integrate parent levels in place.
+    if (bCopyGatherToFinal != 0u)
+    {
+        RadianceUAV[Pixel] = GatheredRadianceTexture.Load(int3(Pixel, 0));
+        return;
+    }
+
+    // A hit terminates transport. Preserve the gathered surface radiance.
     if (HitDistanceTexture.Load(int3(Pixel, 0)) >= 0.0f)
     {
         RadianceUAV[Pixel] = GatheredRadianceTexture.Load(int3(Pixel, 0));
@@ -53,12 +63,13 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ChildLinearIndexBase / TextureWidth);
     float3 IntegratedRadiance = 0.0f;
 
-    // Child radiance comes from the previous cascade result. GatheredRadianceTexture
-    // remains immutable so hit parents can preserve their spatially filtered value.
+    // Child rays occupy a disjoint range from the parent rays being written.
+    // The previous cascade pass has already integrated those child values in
+    // this same persistent output texture.
     [loop]
     for (uint ChildIndex = 0u; ChildIndex < SafeSplitFactor; ++ChildIndex)
     {
-        IntegratedRadiance += ChildRadianceTexture.Load(int3(ChildPixel, 0)).rgb;
+        IntegratedRadiance += RadianceUAV[ChildPixel].rgb;
         ++ChildPixel.x;
         if (ChildPixel.x >= TextureWidth)
         {
