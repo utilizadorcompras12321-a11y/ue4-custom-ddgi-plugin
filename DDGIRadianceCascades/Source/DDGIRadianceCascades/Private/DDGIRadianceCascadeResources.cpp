@@ -244,6 +244,58 @@ namespace
 		uint32 UploadedProbeLayoutHash = 0;
 		float UploadedProbeSpacing = 0.0f;
 
+		void ReleaseSurfaceProbeAllocator()
+		{
+			SurfaceProbePositionsPooled.SafeRelease();
+			SurfaceProbeIntegratedRadiancePooled.SafeRelease();
+			SurfaceProbeCandidatePositionsPooled.SafeRelease();
+			SurfaceProbeCandidateNormalsPooled.SafeRelease();
+			SurfaceProbeNormalsPooled.SafeRelease();
+			SurfaceProbeStableKeysPooled.SafeRelease();
+			SurfaceProbeLastSeenFramesPooled.SafeRelease();
+			SurfaceProbeActiveIndicesPooled.SafeRelease();
+			SurfaceProbeTraceIndicesPooled.SafeRelease();
+			SurfaceProbeHashPooled.SafeRelease();
+			SurfaceProbeCountersPooled.SafeRelease();
+			SurfaceProbePositions.SafeRelease();
+			SurfaceProbeIntegratedRadiance.SafeRelease();
+			SurfaceProbeIntegratedRadianceSRV.SafeRelease();
+			SurfaceProbeIntegratedRadianceUAV.SafeRelease();
+			SurfaceProbeCandidatePositions.SafeRelease();
+			SurfaceProbeCandidatePositionsSRV.SafeRelease();
+			SurfaceProbeCandidatePositionsUAV.SafeRelease();
+			SurfaceProbeCandidateNormals.SafeRelease();
+			SurfaceProbeCandidateNormalsSRV.SafeRelease();
+			SurfaceProbeCandidateNormalsUAV.SafeRelease();
+			SurfaceProbePositionsSRV.SafeRelease();
+			SurfaceProbePositionsUAV.SafeRelease();
+			SurfaceProbeNormals.SafeRelease();
+			SurfaceProbeNormalsSRV.SafeRelease();
+			SurfaceProbeNormalsUAV.SafeRelease();
+			SurfaceProbeStableKeys.SafeRelease();
+			SurfaceProbeStableKeysSRV.SafeRelease();
+			SurfaceProbeStableKeysUAV.SafeRelease();
+			SurfaceProbeLastSeenFrames.SafeRelease();
+			SurfaceProbeLastSeenFramesSRV.SafeRelease();
+			SurfaceProbeLastSeenFramesUAV.SafeRelease();
+			SurfaceProbeActiveIndices.SafeRelease();
+			SurfaceProbeActiveIndicesSRV.SafeRelease();
+			SurfaceProbeActiveIndicesUAV.SafeRelease();
+			SurfaceProbeTraceIndices.SafeRelease();
+			SurfaceProbeTraceIndicesSRV.SafeRelease();
+			SurfaceProbeTraceIndicesUAV.SafeRelease();
+			SurfaceProbeHash.SafeRelease();
+			SurfaceProbeHashSRV.SafeRelease();
+			SurfaceProbeHashUAV.SafeRelease();
+			SurfaceProbeCounters.SafeRelease();
+			SurfaceProbeCountersSRV.SafeRelease();
+			SurfaceProbeCountersUAV.SafeRelease();
+			SurfaceProbeCapacity = 0u;
+			SurfaceProbeHashCapacity = 0u;
+			SurfaceProbeRetryCountdown = 0u;
+			LastSurfaceProbeCaptureFrameNumber = MAX_uint32;
+		}
+
 		void Release()
 		{
 			Directions.SafeRelease();
@@ -430,7 +482,13 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
 
     FDDGIRadianceCascadeGPUStorage& Storage = GDDGIRadianceCascadeStorage_RenderThread.FindOrAdd(Scene);
-    if (Storage.SurfaceProbeRetryCountdown > 0u)
+    if (!Config.bEnableSurfaceProbes)
+    {
+        // Unlike a zero trace budget, the explicit actor switch releases the
+        // persistent surface-probe allocation as well as stopping all passes.
+        Storage.ReleaseSurfaceProbeAllocator();
+    }
+    else if (Storage.SurfaceProbeRetryCountdown > 0u)
     {
         --Storage.SurfaceProbeRetryCountdown;
     }
