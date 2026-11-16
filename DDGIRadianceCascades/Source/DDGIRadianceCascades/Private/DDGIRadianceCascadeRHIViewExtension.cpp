@@ -1150,8 +1150,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
 	const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
 
-	DDGITransitionTexture(RHICmdList, DirectionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
-	DDGITransitionTexture(RHICmdList, ProbePositionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
