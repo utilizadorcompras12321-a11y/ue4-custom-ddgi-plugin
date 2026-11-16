@@ -15,7 +15,7 @@ namespace
 {
 	FORCEINLINE int32 DDGIGetSpatialLevelStep(int32 Level)
 	{
-		static const int32 Steps[4] = { 1, 2, 3, 4 };
+		static const int32 Steps[4] = { 1, 2, 4, 8 };
 		return Level >= 0 && Level < UE_ARRAY_COUNT(Steps) ? Steps[Level] : 0;
 	}
 
