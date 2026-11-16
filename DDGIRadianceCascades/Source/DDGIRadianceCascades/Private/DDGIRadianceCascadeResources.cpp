@@ -610,7 +610,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
 
             const uint32 FramesSinceVisible =
                 Storage.ProbeUpdateSerial - It.Value().LastSeenUpdate;
-            if (FramesSinceVisible > GDDGIPhysicalProbeRetentionFrames)
+            if (FramesSinceVisible >= GDDGIPhysicalProbeRetentionFrames)
             {
                 const uint32 ExpiredSlot = It.Value().PhysicalSlot;
                 // A retained identity owns exactly one physical slot; expired map entries
