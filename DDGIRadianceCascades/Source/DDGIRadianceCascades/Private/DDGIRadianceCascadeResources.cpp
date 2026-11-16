@@ -519,6 +519,17 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     const uint32 RequiredHashCapacity = FMath::RoundUpToPowerOfTwo(
         FMath::Max(2u, ProbeCountForHash * 2u));
     const float SafeProbeSpacing = FMath::Max(1.0f, Config.ProbeSpacing);
+    const bool bProbeSpacingChanged =
+        Storage.UploadedProbeSpacing > 0.0f &&
+        !FMath::IsNearlyEqual(Storage.UploadedProbeSpacing, SafeProbeSpacing, 1.0e-4f);
+    if (bProbeSpacingChanged)
+    {
+        // Integer cell keys are expressed in units of ProbeSpacing. Reusing a
+        // key after spacing changes would attach old radiance to a different
+        // world position, so clear every active and retained physical slot.
+        Storage.bInvalidateAllPhysicalSlots = true;
+        Storage.bNeedsInitialization = true;
+    }
 
     // Probe identity is immutable for a published lattice. Check its snapshot
     // before doing per-probe validation/quantization so steady-state scene
