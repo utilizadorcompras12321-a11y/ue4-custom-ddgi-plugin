@@ -58,6 +58,73 @@ bool FDDGIRadianceCascadeLayoutTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Packed ray count shrinks with active cascade count"),
 		Config.GetTotalRayCount(), 42);
 
+	// Exercise the complete supported configuration range. The CPU layout
+	// helpers are mirrored by RadianceCascadeLayout.ush and must never produce
+	// overlapping storage ranges or gaps in the distance intervals.
+	const float TraceDistances[] = { 1.0f, 249.0f, 250.0f, 1000.0f, 7750.0f, 1000000.0f };
+	for (int32 CascadeCount = 1; CascadeCount <= 8; ++CascadeCount)
+	{
+		for (int32 BaseRays = 1; BaseRays <= 64; ++BaseRays)
+		{
+			for (int32 Split = 1; Split <= 4; ++Split)
+			{
+				for (float TraceDistance : TraceDistances)
+				{
+					FDDGIRadianceCascadeConfig Sweep;
+					Sweep.CascadeCount = CascadeCount;
+					Sweep.BaseRayCount = BaseRays;
+					Sweep.RaySplitFactor = Split;
+					Sweep.BaseSegmentLength = 250.0f;
+					Sweep.CascadeScale = 2.0f;
+					Sweep.MaxTraceDistance = TraceDistance;
+
+					const int32 ActiveCount = Sweep.GetSafeCascadeCount();
+					TestTrue(TEXT("At least one cascade remains active"),
+						ActiveCount >= 1 && ActiveCount <= CascadeCount);
+					TestTrue(TEXT("Packed ray storage remains positive and bounded"),
+						Sweep.GetTotalRayCount() >= BaseRays &&
+						Sweep.GetTotalRayCount() <= 8 * 65536);
+
+					int32 ExpectedOffset = 0;
+					for (int32 Level = 0; Level < ActiveCount; ++Level)
+					{
+						TestEqual(TEXT("Cascade storage begins at the previous cascade end"),
+							Sweep.GetRayStorageOffset(Level), ExpectedOffset);
+						ExpectedOffset += Sweep.GetRayCount(Level);
+						TestEqual(TEXT("Next offset follows this cascade's complete ray group"),
+							Sweep.GetRayStorageOffset(Level + 1), ExpectedOffset);
+						TestTrue(TEXT("Cascade interval has positive length"),
+							Sweep.GetCascadeEndDistance(Level) >
+							Sweep.GetCascadeStartDistance(Level));
+						if (Level + 1 < ActiveCount)
+						{
+							TestTrue(TEXT("Adjacent cascade intervals meet exactly"),
+								FMath::IsNearlyEqual(
+									Sweep.GetCascadeEndDistance(Level),
+									Sweep.GetCascadeStartDistance(Level + 1), 1.0e-3f));
+						}
+					}
+					TestTrue(TEXT("Final active cascade reaches the trace limit"),
+						FMath::IsNearlyEqual(
+							Sweep.GetCascadeEndDistance(ActiveCount - 1),
+							TraceDistance, 1.0e-3f));
+				}
+			}
+		}
+	}
+
+	// The shader's 16-bit mantissa/exponent storage is independent of this
+	// configuration calculation; verify that byte estimates remain monotonic.
+	FDDGIRadianceCascadeConfig MemoryConfig;
+	MemoryConfig.CascadeCount = 5;
+	MemoryConfig.BaseRayCount = 6;
+	MemoryConfig.RaySplitFactor = 2;
+	const int64 OneProbeBytes = MemoryConfig.GetEstimatedStorageBytes(1);
+	TestTrue(TEXT("Storage estimate grows with probe count"),
+		MemoryConfig.GetEstimatedStorageBytes(2) > OneProbeBytes);
+	TestTrue(TEXT("Storage estimate includes shared ray directions"),
+		OneProbeBytes > MemoryConfig.GetTotalRayCount() * 28ll);
+
 	return true;
 }
 
