@@ -45,6 +45,8 @@ uint DDGIEncodeNormal(float3 Normal)
     return Quantized.x | (Quantized.y << 8);
 }
 
+static const uint DDGI_SURFACE_PROBE_RETENTION_FRAMES = 120u;
+
 [numthreads(64, 1, 1)]
 void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
@@ -68,6 +70,12 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     uint4 Key = uint4(CellBits, NormalKey);
     uint Bucket = DDGIHashSurfaceKey(CellBits, NormalKey) & (HashCapacity - 1u);
 
+    // Remember the first expired entry, but continue probing. A matching key
+    // may still exist later in the collision chain and must take precedence.
+    uint ReusableBucket = 0xffffffffu;
+    uint ReusableSlot = 0xffffffffu;
+    uint ReusableBucketValue = 0u;
+
     [loop]
     for (uint Probe = 0u; Probe < HashCapacity; ++Probe)
     {
@@ -76,69 +84,131 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         if (ExistingSlot == DDGI_HASH_LOCKED)
         {
-            // Never spin on a GPU-side reservation: the owning wave may not be
-            // scheduled while this wave occupies the execution resources. Dropping
-            // this candidate is safe; a later frame can retry it.
+            // A concurrent insertion owns this bucket. Retry this candidate
+            // on a later frame instead of spinning on a GPU-side lock.
             return;
         }
 
         if (ExistingSlot == 0u)
         {
-            uint OriginalSlot;
-            InterlockedCompareExchange(
-                SurfaceProbeHash[BucketIndex].w, 0u, DDGI_HASH_LOCKED, OriginalSlot);
-            if (OriginalSlot == 0u)
+            // An empty bucket terminates the search: the key cannot exist
+            // later in this linear-probing chain.
+            if (ReusableBucket != 0xffffffffu)
             {
-                uint NewSlot;
-                InterlockedAdd(SurfaceProbeCounters[4], 1u, NewSlot);
-                if (NewSlot >= ProbeCapacity)
+                uint OriginalSlot;
+                InterlockedCompareExchange(
+                    SurfaceProbeHash[ReusableBucket].w,
+                    ReusableBucketValue,
+                    DDGI_HASH_LOCKED,
+                    OriginalSlot);
+
+                if (OriginalSlot != ReusableBucketValue)
                 {
-                    InterlockedMin(SurfaceProbeCounters[4], ProbeCapacity);
-                    InterlockedAdd(SurfaceProbeCounters[5], 1u);
-                    DeviceMemoryBarrier();
-                    SurfaceProbeHash[BucketIndex].w = 0u;
                     return;
                 }
 
-                SurfaceProbePositions[NewSlot] = CandidatePosition;
-                SurfaceProbeNormals[NewSlot] = CandidateNormal;
-                SurfaceProbeStableKeys[NewSlot] = Key;
-                SurfaceProbeLastSeenFrames[NewSlot] = FrameNumber;
-                SurfaceProbeActiveIndices[NewSlot] = NewSlot;
-                SurfaceProbeHash[BucketIndex].xyz = CellBits;
+                // Reuse the physical slot in-place. Keeping the bucket
+                // occupied preserves the collision chain for all other keys.
+                SurfaceProbePositions[ReusableSlot] = CandidatePosition;
+                SurfaceProbeNormals[ReusableSlot] = CandidateNormal;
+                SurfaceProbeStableKeys[ReusableSlot] = Key;
+                SurfaceProbeLastSeenFrames[ReusableSlot] = FrameNumber;
+                SurfaceProbeActiveIndices[ReusableSlot] = ReusableSlot;
+                SurfaceProbeHash[ReusableBucket].xyz = CellBits;
                 DeviceMemoryBarrier();
-                SurfaceProbeHash[BucketIndex].w = NewSlot + 1u;
+                SurfaceProbeHash[ReusableBucket].w = ReusableSlot + 1u;
                 return;
             }
-            ExistingSlot = OriginalSlot;
-            if (ExistingSlot == DDGI_HASH_LOCKED)
+
+            uint OriginalEmptySlot;
+            InterlockedCompareExchange(
+                SurfaceProbeHash[BucketIndex].w, 0u, DDGI_HASH_LOCKED, OriginalEmptySlot);
+            if (OriginalEmptySlot != 0u)
             {
-                // Another thread owns this bucket. Do not wait on it; waiting
-                // can deadlock under GPU wave scheduling constraints.
                 return;
             }
+
+            uint NewSlot;
+            InterlockedAdd(SurfaceProbeCounters[4], 1u, NewSlot);
+            if (NewSlot >= ProbeCapacity)
+            {
+                InterlockedMin(SurfaceProbeCounters[4], ProbeCapacity);
+                InterlockedAdd(SurfaceProbeCounters[5], 1u);
+                DeviceMemoryBarrier();
+                SurfaceProbeHash[BucketIndex].w = 0u;
+                return;
+            }
+
+            SurfaceProbePositions[NewSlot] = CandidatePosition;
+            SurfaceProbeNormals[NewSlot] = CandidateNormal;
+            SurfaceProbeStableKeys[NewSlot] = Key;
+            SurfaceProbeLastSeenFrames[NewSlot] = FrameNumber;
+            SurfaceProbeActiveIndices[NewSlot] = NewSlot;
+            SurfaceProbeHash[BucketIndex].xyz = CellBits;
+            DeviceMemoryBarrier();
+            SurfaceProbeHash[BucketIndex].w = NewSlot + 1u;
+            return;
         }
 
         uint ExistingProbeSlot = ExistingSlot - 1u;
-        if (ExistingProbeSlot < ProbeCapacity)
+        if (ExistingProbeSlot >= ProbeCapacity)
         {
-            uint4 ExistingKey = SurfaceProbeStableKeys[ExistingProbeSlot];
-            if (all(SurfaceProbeHash[BucketIndex].xyz == CellBits) &&
-                all(ExistingKey.xyz == CellBits) &&
-                ExistingKey.w == NormalKey)
-            {
-                // Keep the first position/normal for this stable key. Multiple
-                // candidates can resolve to the same slot in parallel; writing
-                // those float4 values concurrently would be an unordered UAV race.
-                // The timestamp is monotonic and therefore updated atomically.
-                uint PreviousLastSeenFrame;
-                InterlockedMax(
-                    SurfaceProbeLastSeenFrames[ExistingProbeSlot],
-                    FrameNumber,
-                    PreviousLastSeenFrame);
-                return;
-            }
+            // Invalid hash data: do not mutate the table based on a corrupt slot.
+            InterlockedAdd(SurfaceProbeCounters[5], 1u);
+            return;
         }
+
+        uint3 ExistingCell = SurfaceProbeHash[BucketIndex].xyz;
+        uint4 ExistingKey = SurfaceProbeStableKeys[ExistingProbeSlot];
+        if (all(ExistingCell == CellBits) &&
+            all(ExistingKey.xyz == CellBits) &&
+            ExistingKey.w == NormalKey)
+        {
+            // Avoid concurrent float writes for duplicate screen candidates.
+            uint PreviousLastSeenFrame;
+            InterlockedMax(
+                SurfaceProbeLastSeenFrames[ExistingProbeSlot],
+                FrameNumber,
+                PreviousLastSeenFrame);
+            return;
+        }
+
+        uint LastSeenFrame = SurfaceProbeLastSeenFrames[ExistingProbeSlot];
+        uint FrameAge = FrameNumber - LastSeenFrame;
+        if (FrameAge > DDGI_SURFACE_PROBE_RETENTION_FRAMES &&
+            ReusableBucket == 0xffffffffu)
+        {
+            ReusableBucket = BucketIndex;
+            ReusableSlot = ExistingProbeSlot;
+            ReusableBucketValue = ExistingSlot;
+        }
+    }
+
+    // The table may have no empty buckets. A previously found expired entry
+    // is still reusable after the full chain has been checked for duplicates.
+    if (ReusableBucket != 0xffffffffu)
+    {
+        uint OriginalSlot;
+        InterlockedCompareExchange(
+            SurfaceProbeHash[ReusableBucket].w,
+            ReusableBucketValue,
+            DDGI_HASH_LOCKED,
+            OriginalSlot);
+
+        if (OriginalSlot != ReusableBucketValue)
+        {
+            return;
+        }
+
+        SurfaceProbePositions[ReusableSlot] = CandidatePosition;
+        SurfaceProbeNormals[ReusableSlot] = CandidateNormal;
+        SurfaceProbeStableKeys[ReusableSlot] = Key;
+        SurfaceProbeLastSeenFrames[ReusableSlot] = FrameNumber;
+        SurfaceProbeActiveIndices[ReusableSlot] = ReusableSlot;
+        SurfaceProbeHash[ReusableBucket].xyz = CellBits;
+        DeviceMemoryBarrier();
+        SurfaceProbeHash[ReusableBucket].w = ReusableSlot + 1u;
+        return;
     }
 
     InterlockedAdd(SurfaceProbeCounters[5], 1u);
