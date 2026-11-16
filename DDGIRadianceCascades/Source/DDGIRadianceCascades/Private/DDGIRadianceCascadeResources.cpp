@@ -262,6 +262,7 @@ namespace
 			SurfaceProbeStableKeysPooled.SafeRelease();
 			SurfaceProbeLastSeenFramesPooled.SafeRelease();
 			SurfaceProbeActiveIndicesPooled.SafeRelease();
+			SurfaceProbeTraceIndicesPooled.SafeRelease();
 			SurfaceProbeHashPooled.SafeRelease();
 			SurfaceProbeCountersPooled.SafeRelease();
 			SurfaceProbePositions.SafeRelease();
@@ -285,6 +286,9 @@ namespace
 			SurfaceProbeActiveIndices.SafeRelease();
 			SurfaceProbeActiveIndicesSRV.SafeRelease();
 			SurfaceProbeActiveIndicesUAV.SafeRelease();
+			SurfaceProbeTraceIndices.SafeRelease();
+			SurfaceProbeTraceIndicesSRV.SafeRelease();
+			SurfaceProbeTraceIndicesUAV.SafeRelease();
 			SurfaceProbeHash.SafeRelease();
 			SurfaceProbeHashSRV.SafeRelease();
 			SurfaceProbeHashUAV.SafeRelease();
