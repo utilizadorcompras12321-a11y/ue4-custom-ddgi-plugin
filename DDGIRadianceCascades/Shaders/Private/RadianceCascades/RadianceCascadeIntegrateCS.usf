@@ -1,4 +1,5 @@
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadePacking.ush"
 
 uint TextureWidth;
 uint TotalIntegrationTexels;
@@ -15,7 +16,7 @@ uint bCopyGatherToFinal;
 Texture2D<float4> GatheredRadianceTexture;
 Texture2D<float> HitDistanceTexture;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
-RWTexture2D<float4> RadianceUAV;
+RWTexture2D<uint> RadianceUAV;
 
 [numthreads(64, 1, 1)]
 void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -41,7 +42,7 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // storage. Subsequent dispatches integrate parent levels in place.
     if (bCopyGatherToFinal != 0u)
     {
-        RadianceUAV[Pixel] = GatheredRadianceTexture.Load(int3(Pixel, 0));
+        RadianceUAV[Pixel] = DDGIPackRGB9E5(GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
         return;
     }
 
@@ -69,7 +70,7 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     [loop]
     for (uint ChildIndex = 0u; ChildIndex < SafeSplitFactor; ++ChildIndex)
     {
-        IntegratedRadiance += RadianceUAV[ChildPixel].rgb;
+        IntegratedRadiance += DDGIUnpackRGB9E5(RadianceUAV[ChildPixel]);
         ++ChildPixel.x;
         if (ChildPixel.x >= TextureWidth)
         {
@@ -78,5 +79,5 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         }
     }
 
-    RadianceUAV[Pixel] = float4(IntegratedRadiance / (float)SafeSplitFactor, 1.0f);
+    RadianceUAV[Pixel] = DDGIPackRGB9E5(IntegratedRadiance / (float)SafeSplitFactor);
 }
