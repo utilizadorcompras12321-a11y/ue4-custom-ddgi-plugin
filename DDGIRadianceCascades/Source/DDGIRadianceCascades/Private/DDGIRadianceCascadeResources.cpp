@@ -62,7 +62,7 @@ namespace
 
 	// Keep recently invisible lattice probes alive long enough for the camera
 	// window to move back without discarding their accumulated ray history.
-	static const uint32 GDDGIPhysicalProbeRetentionUpdates = 30u;
+	static const uint32 GDDGIPhysicalProbeRetentionFrames = 30u;
 }
 
 namespace
@@ -605,9 +605,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
                 continue;
             }
 
-            const uint32 UpdatesSinceVisible =
+            const uint32 FramesSinceVisible =
                 Storage.ProbeUpdateSerial - It.Value().LastSeenUpdate;
-            if (UpdatesSinceVisible > GDDGIPhysicalProbeRetentionUpdates)
+            if (FramesSinceVisible > GDDGIPhysicalProbeRetentionFrames)
             {
                 const uint32 ExpiredSlot = It.Value().PhysicalSlot;
                 Storage.FreePhysicalSlots.AddUnique(ExpiredSlot);
