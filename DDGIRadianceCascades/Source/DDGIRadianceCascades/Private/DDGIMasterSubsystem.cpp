@@ -757,6 +757,10 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 				}
 			}
 		}
+		LastLocalLightDiscoveryFrame = GFrameCounter;
+		bHasSearchedLocalLights = true;
+	}
+
 		// Keep the highest-contribution lights first. The shader deliberately
 		// shadows only a small prefix per hit to bound software-BVH traversal cost.
 		CachedLocalLights.Sort([](
@@ -775,9 +779,6 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 				: -1.0f;
 			return ScoreA > ScoreB;
 		});
-		LastLocalLightDiscoveryFrame = GFrameCounter;
-		bHasSearchedLocalLights = true;
-	}
 
 	static const uint32 MaxLocalLights = 32u;
 	TArray<FVector4> NewPositionAndRadius;
