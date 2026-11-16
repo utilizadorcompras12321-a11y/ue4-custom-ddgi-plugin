@@ -4,26 +4,38 @@
 
 uint DDGIPackUnsignedFloat(float Value, uint MantissaBits)
 {
+    const uint MantissaMask = (1u << MantissaBits) - 1u;
+    const float MantissaScale = (float)(1u << MantissaBits);
+    const float MinNormal = exp2(-14.0f);
+    const float MaxFinite = (2.0f - 1.0f / MantissaScale) * exp2(15.0f);
+    const uint MaxFinitePacked = (30u << MantissaBits) | MantissaMask;
+
+    // Radiance is non-negative. Map NaN/negative infinity to zero and
+    // positive infinity to the largest finite value instead of allowing
+    // undefined float-to-uint conversions in the pack path.
+    if (!isfinite(Value))
+    {
+        return Value > 0.0f ? MaxFinitePacked : 0u;
+    }
     if (Value <= 0.0f)
     {
         return 0u;
     }
 
-    const uint MantissaMask = (1u << MantissaBits) - 1u;
-    const float MantissaScale = (float)(1u << MantissaBits);
-    const float MinNormal = exp2(-14.0f);
-    const float MaxFinite = (2.0f - 1.0f / MantissaScale) * exp2(15.0f);
-
     if (Value >= MaxFinite)
     {
-        return (30u << MantissaBits) | MantissaMask;
+        return MaxFinitePacked;
     }
 
     if (Value < MinNormal)
     {
         uint SubnormalMantissa = (uint)floor(
             Value / (MinNormal / MantissaScale) + 0.5f);
-        return min(SubnormalMantissa, MantissaMask);
+        // Rounding the largest subnormal upward produces the smallest
+        // normal value (exponent 1, mantissa 0), not the largest subnormal.
+        return SubnormalMantissa >= (uint)MantissaScale
+            ? (1u << MantissaBits)
+            : SubnormalMantissa;
     }
 
     float UnbiasedExponent = floor(log2(Value));
