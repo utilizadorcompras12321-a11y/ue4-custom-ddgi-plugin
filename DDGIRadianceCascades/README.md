@@ -22,7 +22,7 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - Windows 64-bit, deferred renderer, SM5-capable GPU.
 - The current tracing backend is software BVH; it does not use DXR or hardware ray tracing.
 - The current BVH is built from supported static geometry. Movable components and instanced geometry are skipped and are not represented in indirect lighting.
-- The current direct-light injection supports the strongest visible directional light. Point lights, spot lights, arbitrary material graphs, textured albedo and animated geometry are not fully represented by the software scene snapshot.
+- Direct-light injection supports the strongest visible directional light plus up to 32 visible point/spot lights. Local-light transforms, intensity, radius and spot cones are refreshed at runtime; their attenuation is an approximation of UE4's light falloff.
 - This is a custom experimental renderer feature. GPU cost and image quality depend on scene triangle count, active probe count, cascade settings and trace budget. A fixed 60 FPS guarantee is not possible without profiling on the target scene and GPU.
 
 ## Setup
@@ -44,6 +44,7 @@ The plugin accepts one Master Actor per world. Additional actors are ignored.
 | `ProbeGridDistance` | Spatial radius covered by the active clipmaps, in cm |
 | `MaxActiveProbes` | Hard cap on active sparse probes |
 | `ProbeUpdateBudget` | Maximum number of probes traced per frame |
+| `LocalLightGIIntensityScale` | Scale applied to point/spot-light contributions |
 | `MaxSoftwareTriangles` | Maximum number of triangles admitted to the static software BVH |
 | `CascadeCount` | Number of distance cascades |
 | `BaseRayCount` | Number of base angular regions |
@@ -64,6 +65,6 @@ The plugin includes an Unreal Automation Test for cascade packing, interval cove
 
 ## Important limitations
 
-This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, complete material evaluation, multiple direct-light types, or a temporal denoiser. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
+This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, complete material evaluation, textured albedo, or a temporal denoiser. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
 
-Do not treat the presence of the plugin or a successful C++ build as proof of production-ready GI. Validate the output with moving cameras, thin walls, corners, enclosed rooms, emissive surfaces and changing directional light. Profile GPU time at the target resolution and on the target hardware.
+Do not treat the presence of the plugin or a successful C++ build as proof of production-ready GI. Validate the output with moving cameras, thin walls, corners, enclosed rooms, emissive surfaces and changing directional and local lights. Profile GPU time at the target resolution and on the target hardware.
