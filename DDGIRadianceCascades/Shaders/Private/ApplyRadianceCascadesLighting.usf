@@ -11,6 +11,7 @@ Texture2D<float4> BaseColorTexture;
 Texture2D<float4> MetallicTexture;
 Texture2D<float4> DirectionsTexture;
 Texture2D<float4> RadianceTexture;
+Texture2D<float> HitDistanceTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<int4> ProbeSpatialHash;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
@@ -71,11 +72,61 @@ bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
     return false;
 }
 
-float3 DDGIProbeDiffuseIrradiance(uint ProbeIndex, float3 Normal)
+float3 DDGIProbeDiffuseIrradiance(
+    uint ProbeIndex,
+    float3 Normal,
+    float3 ReceiverPosition,
+    float3 ProbePosition)
 {
     float3 Irradiance = 0.0f;
     const uint SafeRayCount = min(BaseRayCount, min(TotalRaysPerProbe, 64u));
     if (SafeRayCount == 0u) return Irradiance;
+
+    // Approximate probe-to-receiver visibility with the closest deterministic
+    // base ray. The threshold deliberately rejects poorly aligned rays rather
+    // than allowing an unrelated wall hit to darken the receiver.
+    float3 ProbeToReceiver = ReceiverPosition - ProbePosition;
+    float ReceiverDistance = length(ProbeToReceiver);
+    float3 ReceiverDirection = ReceiverDistance > 1.0e-3f
+        ? ProbeToReceiver / ReceiverDistance : Normal;
+    float BestAlignment = -1.0f;
+    uint BestVisibilityRay = 0u;
+    [loop]
+    for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
+    {
+        uint2 DirectionPixel = uint2(
+            RayIndex % DDGI_RC_TEXTURE_WIDTH,
+            RayIndex / DDGI_RC_TEXTURE_WIDTH);
+        float3 Direction = normalize(
+            DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
+        float Alignment = dot(Direction, ReceiverDirection);
+        if (Alignment > BestAlignment)
+        {
+            BestAlignment = Alignment;
+            BestVisibilityRay = RayIndex;
+        }
+    }
+
+    float Visibility = 1.0f;
+    if (ReceiverDistance > 1.0f && BestAlignment > 0.70f)
+    {
+        uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+        uint VisibilityLinearIndex =
+            PhysicalProbeIndex * TotalRaysPerProbe + BestVisibilityRay;
+        uint2 VisibilityPixel = uint2(
+            VisibilityLinearIndex % DDGI_RC_TEXTURE_WIDTH,
+            VisibilityLinearIndex / DDGI_RC_TEXTURE_WIDTH);
+        float OccluderDistance = HitDistanceTexture.Load(int3(VisibilityPixel, 0));
+        if (OccluderDistance >= 0.0f)
+        {
+            float VisibilityBias = max(2.0f, ReceiverDistance * 0.015f);
+            Visibility = smoothstep(
+                -VisibilityBias,
+                VisibilityBias,
+                OccluderDistance - ReceiverDistance);
+        }
+    }
+    if (Visibility <= 1.0e-4f) return Irradiance;
 
     [loop]
     for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
@@ -99,8 +150,9 @@ float3 DDGIProbeDiffuseIrradiance(uint ProbeIndex, float3 Normal)
     }
 
     // Equal-solid-angle base directions: each represents 4*PI/N steradians.
-    // Dividing irradiance by PI yields the Lambertian diffuse response.
-    return Irradiance * (4.0f / (float)SafeRayCount);
+    // The visibility term rejects probes whose sampled ray hits before the
+    // receiver, reducing cross-wall light leaks in the sparse clipmap.
+    return Irradiance * (4.0f / (float)SafeRayCount) * Visibility;
 }
 
 uint DDGIGetSpatialLevelStep(uint Level)
@@ -162,7 +214,8 @@ float3 DDGISampleProbeLevel(
             SurfaceSide);
         if (Weight <= 0.00001f) continue;
 
-        Irradiance += DDGIProbeDiffuseIrradiance(ProbeIndex, Normal) * Weight;
+        Irradiance += DDGIProbeDiffuseIrradiance(
+            ProbeIndex, Normal, LocalPosition, ProbePosition) * Weight;
         OutVisibleWeightSum += Weight;
     }
 
