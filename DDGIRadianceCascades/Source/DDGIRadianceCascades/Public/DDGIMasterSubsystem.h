@@ -8,6 +8,7 @@
 
 class ADDGIMasterActor;
 class UDirectionalLightComponent;
+class UPointLightComponent;
 class FSceneInterface;
 
 struct FDDGISoftwareBVHData
@@ -42,6 +43,13 @@ struct FDDGIMasterConfig
 	UPROPERTY() FVector DirectionalLightDirection = FVector(0.0f, 0.0f, -1.0f);
 	UPROPERTY() FLinearColor DirectionalLightColor = FLinearColor::White;
 	UPROPERTY() float DirectionalLightIntensity = 0.0f;
+	// Fixed-size shader arrays are copied with the scene config. The arrays are
+	// always 32 elements so SetShaderValueArray never reads uninitialized data.
+	TArray<FVector4> LocalLightPositionAndRadius;
+	TArray<FVector4> LocalLightDirectionAndCosOuter;
+	TArray<FVector4> LocalLightColorAndIntensity;
+	TArray<FVector4> LocalLightParameters;
+	uint32 LocalLightCount = 0;
 	UPROPERTY() float DynamicGIDistance = 10000.0f;
 	UPROPERTY() float ProbeGridDistance = 4000.0f;
 	UPROPERTY() FDDGIRadianceCascadeConfig RadianceCascades;
@@ -98,6 +106,10 @@ private:
 	TWeakObjectPtr<UDirectionalLightComponent> ActiveDirectionalLight;
 	bool bHasSearchedDirectionalLights = false;
 	bool UpdateDirectionalLighting(const ADDGIMasterActor* InActor);
+	TArray<TWeakObjectPtr<UPointLightComponent>> CachedLocalLights;
+	uint64 LastLocalLightDiscoveryFrame = 0;
+	bool bHasSearchedLocalLights = false;
+	bool UpdateLocalLighting(const ADDGIMasterActor* InActor);
 	void PublishConfigValuesOnly();
 	void PublishConfigActiveWindowCenterOnly();
 	void CopyConfigFromActor(const ADDGIMasterActor* InActor, bool bForceSoftwareBVHRebuild = false);
