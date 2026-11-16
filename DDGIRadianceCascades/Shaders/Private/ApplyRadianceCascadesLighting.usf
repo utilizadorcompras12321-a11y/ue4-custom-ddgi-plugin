@@ -297,7 +297,9 @@ float3 DDGISampleProbeLevel(
         uint2 ProbePixel = uint2(
             ProbeIndex % DDGI_RC_TEXTURE_WIDTH,
             ProbeIndex / DDGI_RC_TEXTURE_WIDTH);
-        float3 ProbePosition = ProbeGridOrigin.xyz +
+        // Probe positions are already BVH-local; ProbeGridOrigin is kept
+        // separately for converting local receiver coordinates to world cells.
+        float3 ProbePosition =
             ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
         // Track geometric support separately from the surface-side visibility
         // fade. Sparse coarse levels can then be renormalized without cancelling
