@@ -15,6 +15,11 @@ Texture2D<float4> RadianceTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<int4> ProbeSpatialHash;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
+StructuredBuffer<uint4> SurfaceProbeSpatialHash;
+StructuredBuffer<float4> SurfaceProbePositions;
+StructuredBuffer<float4> SurfaceProbeNormals;
+StructuredBuffer<float4> SurfaceProbeIntegratedRadiance;
+StructuredBuffer<uint> SurfaceProbeCounters;
 Texture2D<float4> SceneColorTexture;
 RWTexture2D<float4> SceneColorOutputUAV;
 SamplerState PointClampSampler;
@@ -25,6 +30,9 @@ uint ProbeCount;
 uint TotalRaysPerProbe;
 uint BaseRayCount;
 uint HashCapacity;
+uint SurfaceProbeSpatialHashCapacity;
+uint SurfaceProbeCapacity;
+float SurfaceProbeSpatialCellSize;
 float ProbeSpacing;
 float ProbeGridDistance;
 float4 ProbeGridOrigin;
@@ -187,6 +195,114 @@ float3 DDGISampleLevelValue(
     return Value * saturate(VisibleWeightSum / max(SpatialWeightSum, 0.00001f));
 }
 
+uint DDGIHashSurfaceSpatialCell(int3 Cell)
+{
+    uint Hash = asuint(Cell.x) * 0x8DA6B343u;
+    Hash ^= asuint(Cell.y) * 0xD8163841u;
+    Hash ^= asuint(Cell.z) * 0xCB1AB31Fu;
+    Hash ^= Hash >> 16u;
+    Hash *= 0x7FEB352Du;
+    Hash ^= Hash >> 15u;
+    Hash *= 0x846CA68Bu;
+    Hash ^= Hash >> 16u;
+    return Hash;
+}
+
+float3 DDGISampleSurfaceProbeIrradiance(
+    float3 LocalPosition,
+    float3 Normal,
+    out bool OutValid,
+    out float OutConfidence)
+{
+    OutValid = false;
+    OutConfidence = 0.0f;
+    if (SurfaceProbeSpatialHashCapacity == 0u || SurfaceProbeCapacity == 0u)
+    {
+        return 0.0f;
+    }
+
+    const float CellSize = max(SurfaceProbeSpatialCellSize, 1.0f);
+    const uint ProbeCount = min(SurfaceProbeCounters[4], SurfaceProbeCapacity);
+    if (ProbeCount == 0u)
+    {
+        return 0.0f;
+    }
+
+    float3 GridPosition = LocalPosition / CellSize - 0.5f;
+    int3 BaseCell = int3(floor(GridPosition));
+    float3 CellFraction = frac(GridPosition);
+    float3 IrradianceSum = 0.0f;
+    float WeightSum = 0.0f;
+    float NearestDistanceSquared = 3.402823466e+38f;
+
+    [unroll]
+    for (int Z = 0; Z <= 1; ++Z)
+    [unroll]
+    for (int Y = 0; Y <= 1; ++Y)
+    [unroll]
+    for (int X = 0; X <= 1; ++X)
+    {
+        int3 Cell = BaseCell + int3(X, Y, Z);
+        uint Bucket = DDGIHashSurfaceSpatialCell(Cell) & (SurfaceProbeSpatialHashCapacity - 1u);
+        float3 AxisWeight = lerp(
+            1.0f - CellFraction, CellFraction, float3(X, Y, Z));
+        float CellWeight = AxisWeight.x * AxisWeight.y * AxisWeight.z;
+        if (CellWeight <= 0.00001f)
+        {
+            continue;
+        }
+
+        [loop]
+        for (uint Attempt = 0u; Attempt < 32u; ++Attempt)
+        {
+            uint4 Entry = SurfaceProbeSpatialHash[Bucket];
+            if (Entry.w == 0u)
+            {
+                break;
+            }
+            if (Entry.w != 0xffffffffu && all(Entry.xyz == asuint(Cell)))
+            {
+                uint PhysicalSlot = Entry.w - 1u;
+                if (PhysicalSlot < ProbeCount)
+                {
+                    float4 PackedPosition = SurfaceProbePositions[PhysicalSlot];
+                    float4 PackedNormal = SurfaceProbeNormals[PhysicalSlot];
+                    float4 PackedRadiance = SurfaceProbeIntegratedRadiance[PhysicalSlot];
+                    if (PackedPosition.w > 0.5f && PackedNormal.w > 0.5f && PackedRadiance.w > 0.5f)
+                    {
+                        float3 ProbeNormal = normalize(PackedNormal.xyz);
+                        float NormalAgreement = saturate((dot(Normal, ProbeNormal) - 0.5f) * 2.0f);
+                        float3 ProbeLocalPosition = PackedPosition.xyz - BVHWorldOrigin.xyz;
+                        float3 ToProbe = ProbeLocalPosition - LocalPosition;
+                        float SurfaceSide = dot(Normal, ToProbe);
+                        float SideWeight = smoothstep(-100.0f, -10.0f, SurfaceSide);
+                        float DistanceSquared = dot(ToProbe, ToProbe);
+                        float DistanceWeight = rcp(DistanceSquared + 2500.0f);
+                        float Weight = CellWeight * NormalAgreement * SideWeight * DistanceWeight;
+                        if (Weight > 1.0e-9f && all(isfinite(PackedRadiance.rgb)))
+                        {
+                            IrradianceSum += PackedRadiance.rgb * Weight;
+                            WeightSum += Weight;
+                            NearestDistanceSquared = min(NearestDistanceSquared, DistanceSquared);
+                        }
+                    }
+                }
+            }
+            Bucket = (Bucket + 1u) & (SurfaceProbeSpatialHashCapacity - 1u);
+        }
+    }
+
+    OutValid = WeightSum > 1.0e-8f;
+    if (!OutValid)
+    {
+        return 0.0f;
+    }
+
+    OutConfidence = saturate(
+        1.0f - sqrt(NearestDistanceSquared) / max(CellSize * 2.0f, 1.0f));
+    return IrradianceSum / WeightSum;
+}
+
 float3 DDGIInterpolateLevelPair(
     float3 LocalPosition,
     float3 Normal,
@@ -328,6 +444,22 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 3u, bHasIrradiance);
         if (!bHasIrradiance)
             Irradiance = DDGISampleLevelValue(LocalPosition, Normal, 2u, bHasIrradiance);
+    }
+
+    // Surface probes provide a local, view-sampled correction to the
+    // regular cascaded lattice. Blend only when a nearby probe with a
+    // compatible normal and surface side is available.
+    bool bHasSurfaceProbeIrradiance = false;
+    float SurfaceProbeConfidence = 0.0f;
+    float3 SurfaceProbeIrradiance = DDGISampleSurfaceProbeIrradiance(
+        LocalPosition, Normal, bHasSurfaceProbeIrradiance, SurfaceProbeConfidence);
+    if (bHasSurfaceProbeIrradiance)
+    {
+        float SurfaceProbeBlend = 0.75f * SurfaceProbeConfidence;
+        Irradiance = bHasIrradiance
+            ? lerp(Irradiance, SurfaceProbeIrradiance, SurfaceProbeBlend)
+            : SurfaceProbeIrradiance;
+        bHasIrradiance = true;
     }
 
     if (!bHasIrradiance)
