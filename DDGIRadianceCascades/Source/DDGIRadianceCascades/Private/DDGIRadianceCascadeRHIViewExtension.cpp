@@ -1229,6 +1229,28 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		PassParameters->SurfaceProbeIntegratedRadiance = GraphBuilder.CreateSRV(SurfaceProbeResources.IntegratedRadiance);
 		PassParameters->SurfaceProbeCounters = GraphBuilder.CreateSRV(SurfaceProbeResources.Counters);
 	}
+	else
+	{
+		// Keep every RDG SRV binding valid when the optional surface allocator
+		// could not be created. The zero hash capacity prevents shader reads.
+		FRDGBufferRef DummySurfaceProbeBuffer = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32) * 4u, 1u),
+			TEXT("DDGI.SurfaceProbeApplyFallback"));
+		FDDGISurfaceProbeSpatialHashResetCS::FParameters* DummyResetParameters =
+			GraphBuilder.AllocParameters<FDDGISurfaceProbeSpatialHashResetCS::FParameters>();
+		DummyResetParameters->SurfaceProbeSpatialHash = GraphBuilder.CreateUAV(DummySurfaceProbeBuffer);
+		DummyResetParameters->HashCapacity = 1u;
+		TShaderMapRef<FDDGISurfaceProbeSpatialHashResetCS> DummyResetShader(GetGlobalShaderMap(View.GetFeatureLevel()));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder, RDG_EVENT_NAME("DDGI Initialize Surface Probe Apply Fallback"),
+			DummyResetShader, DummyResetParameters, FIntVector(1, 1, 1));
+		FRDGBufferSRVRef DummySurfaceProbeSRV = GraphBuilder.CreateSRV(DummySurfaceProbeBuffer);
+		PassParameters->SurfaceProbeSpatialHash = DummySurfaceProbeSRV;
+		PassParameters->SurfaceProbePositions = DummySurfaceProbeSRV;
+		PassParameters->SurfaceProbeNormals = DummySurfaceProbeSRV;
+		PassParameters->SurfaceProbeIntegratedRadiance = DummySurfaceProbeSRV;
+		PassParameters->SurfaceProbeCounters = DummySurfaceProbeSRV;
+	}
 	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
 	PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->ScaledViewSizeAndInvSize = FVector4(
