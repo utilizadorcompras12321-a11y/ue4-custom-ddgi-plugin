@@ -1005,10 +1005,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	// before the frame is claimed.
 	bool bClaimedUpdateFrame = false;
 
-	const uint32 TotalGroups = FMath::DivideAndRoundUp(TotalTexels, 64u);
-	const uint32 GroupsX = FMath::Min(TotalGroups, 65535u);
-	const uint32 GroupsY = FMath::DivideAndRoundUp(TotalGroups, GroupsX);
-
 	// Initialize shared ray directions when their texture is created, and clear
 	// history only for newly allocated or explicitly invalidated physical slots.
 	// Keep initialization outputs separate from the tracing resources.
@@ -1104,6 +1100,29 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
+	const int32 TraceBudgetOverride = CVarDDGIRadianceProbeTraceBudget.GetValueOnRenderThread();
+	const int32 RequestedTraceBudget = TraceBudgetOverride < 0
+		? Config->ProbeUpdateBudget
+		: TraceBudgetOverride;
+	const uint32 TraceBudget = static_cast<uint32>(
+		FMath::Clamp(RequestedTraceBudget, 0, 8192));
+	const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceBudget);
+	if (TraceProbeCount == 0u)
+	{
+		// Persistent final radiance remains valid. Do not run a full-grid Gather
+		// or Integrate pass when the trace budget is zero.
+		return;
+	}
+
+	// Frame-number scheduling is deterministic and advances by one contiguous
+	// logical-probe batch. Trace, Gather and Integrate consume the same batch.
+	const uint32 TraceStartIndex = static_cast<uint32>(
+		(static_cast<uint64>(InView.Family->FrameNumber) * TraceProbeCount) % ProbeCount);
+	const uint32 TraceTotalTexels = TraceProbeCount * TotalRaysPerProbe;
+	const uint32 TraceTotalGroups = FMath::DivideAndRoundUp(TraceTotalTexels, 64u);
+	const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
+	const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
+
 	DDGITransitionTexture(RHICmdList, DirectionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, ProbePositionsTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
@@ -1127,30 +1146,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		bLoggedTraceLightingConfig = true;
 	}
 
-	const int32 TraceBudgetOverride = CVarDDGIRadianceProbeTraceBudget.GetValueOnRenderThread();
-	const int32 RequestedTraceBudget = TraceBudgetOverride < 0
-		? Config->ProbeUpdateBudget
-		: TraceBudgetOverride;
-	const uint32 TraceBudget = static_cast<uint32>(
-		FMath::Clamp(RequestedTraceBudget, 0, 8192));
-	const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceBudget);
-	if (TraceProbeCount > 0u)
-	{
-		// Frame-number scheduling is deterministic and advances by exactly one
-		// contiguous batch. Modulo wrap keeps every logical clipmap probe eligible.
-		const uint32 TraceStartIndex = static_cast<uint32>(
-			(static_cast<uint64>(InView.Family->FrameNumber) * TraceProbeCount) % ProbeCount);
-		const uint32 TraceTotalTexels = TraceProbeCount * TotalRaysPerProbe;
-		const uint32 TraceTotalGroups = FMath::DivideAndRoundUp(TraceTotalTexels, 64u);
-		const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
-		const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
-
-		TShaderMapRef<FDDGIRadianceCascadeTraceRHI> TraceShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-		RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
-		TraceShader->SetParameters(
-			RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
-			RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
-			TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
+	TShaderMapRef<FDDGIRadianceCascadeTraceRHI> TraceShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
+	TraceShader->SetParameters(
+		RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
+		RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
+		TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
 		NodeCount, TriangleCount,
 		static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
 		Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
@@ -1166,111 +1167,90 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		Config->bEnableStaticBackground ? 1u : 0u,
 		FVector4(Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z, 0.0f),
 		FVector4(Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B, 0.0f),
-			Config->DirectionalLightIntensity,
-			Config->bHasDirectionalLight ? 1u : 0u);
-		DispatchComputeShader(RHICmdList, TraceShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
-		TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
-	}
+		Config->DirectionalLightIntensity,
+		Config->bHasDirectionalLight ? 1u : 0u);
+	DispatchComputeShader(RHICmdList, TraceShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
+	TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
 
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 
+	// Spatial gather touches only probes traced this frame. It reads the
+	// immutable raw-trace texture and never consumes already integrated output.
 	DDGITransitionTexture(RHICmdList, RadianceScratchTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
 	TShaderMapRef<FDDGIRadianceCascadeSpatialGatherRHI> GatherShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(GatherShader.GetComputeShader());
-	GatherShader->SetParameters(RHICmdList,GatherShader.GetComputeShader(),GatherRadianceSRV,GatherHitSRV,GatherHitIndicesSRV,GatherDirectionsSRV,
-		GatherPositionsSRV,LogicalToPhysicalSRV,TrianglesSRV,SpatialHashSRV,NeighborListSRV,GatherOutputUAV,TotalTexels,GroupsX,ProbeCount,
-		TotalRaysPerProbe,HashCapacity,TriangleCount,ProbeSpacing,
-		FVector4(Config->ProbeGridOrigin.X,Config->ProbeGridOrigin.Y,Config->ProbeGridOrigin.Z,0.0f),bUseNeighborList);
-	DispatchComputeShader(RHICmdList,GatherShader.GetShader(),GroupsX,GroupsY,1);
-	GatherShader->UnbindResources(RHICmdList,GatherShader.GetComputeShader());
-	
+	GatherShader->SetParameters(
+		RHICmdList, GatherShader.GetComputeShader(),
+		GatherRadianceSRV, GatherHitSRV, GatherHitIndicesSRV, GatherDirectionsSRV,
+		GatherPositionsSRV, LogicalToPhysicalSRV, TrianglesSRV, SpatialHashSRV,
+		NeighborListSRV, GatherOutputUAV,
+		TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex,
+		TotalRaysPerProbe, HashCapacity, TriangleCount, ProbeSpacing,
+		FVector4(Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f),
+		bUseNeighborList);
+	DispatchComputeShader(RHICmdList, GatherShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
+	GatherShader->UnbindResources(RHICmdList, GatherShader.GetComputeShader());
+	DDGITransitionTexture(RHICmdList, RadianceScratchTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 
-	// Gather output remains immutable during integration. Each dispatch reads
-	// its child cascade from the previous result and writes only the parent range
-	// into the alternate output texture. The first cascade is the only result
-	// consumed by deferred lighting.
+	// Copy this batch's gathered rays into persistent final storage. Only the
+	// scheduled physical probe slots are overwritten; all other probes retain
+	// their previous integrated result.
+	DDGITransitionTexture(RHICmdList, RadianceIntegrationScratchTexture,
+		ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
+	TShaderMapRef<FDDGIRadianceCascadeIntegrateRHI> IntegrateShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	RHICmdList.SetComputeShader(IntegrateShader.GetComputeShader());
+	IntegrateShader->SetParameters(
+		RHICmdList, IntegrateShader.GetComputeShader(),
+		IntegrationScratchUAV, GatherOutputSRV, IntegrationHitDistanceSRV,
+		LogicalToPhysicalSRV,
+		TraceTotalTexels, TraceGroupsX, TotalRaysPerProbe,
+		ProbeCount, TraceStartIndex, 0u, TotalRaysPerProbe, 0u, 1u, 1u);
+	DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
+	IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
+	DDGITransitionTexture(RHICmdList, RadianceIntegrationScratchTexture,
+		ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+
+	// Integrate from far to near in the same persistent output texture. Each
+	// pass reads child rays from a disjoint range and writes only its parent
+	// range, so untouched probes retain their prior final radiance.
+	const uint32 CascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
+	for (int32 CascadeIndex = static_cast<int32>(CascadeCount) - 2; CascadeIndex >= 0; --CascadeIndex)
 	{
-		const uint32 CascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
-		const uint32 TotalRays = static_cast<uint32>(Config->TotalRaysPerProbe);
-		TShaderMapRef<FDDGIRadianceCascadeIntegrateRHI> IntegrateShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+		const uint32 CurrentCascadeRayCount = static_cast<uint32>(
+			Config->RadianceCascades.GetRayCount(CascadeIndex));
+		const uint32 IntegrationTexels = TraceProbeCount * CurrentCascadeRayCount;
+		if (IntegrationTexels == 0u)
+		{
+			continue;
+		}
 
-		FShaderResourceViewRHIRef ChildRadianceSRV = GatherOutputSRV;
-		FTexture2DRHIRef IntegrationDestinationTexture = RadianceTexture;
-		FUnorderedAccessViewRHIRef IntegrationDestinationUAV = RadianceUAV;
-		bool bIntegrationDestinationIsPrimary = true;
-		bool bFinalRadianceIsPrimary = false;
-		bool bDispatchedIntegration = false;
+		const uint32 IntegrationGroups = FMath::Max(
+			1u, FMath::Min(FMath::DivideAndRoundUp(IntegrationTexels, 64u), 65535u));
+		const uint32 IntegrationGroupsY = FMath::DivideAndRoundUp(
+			IntegrationTexels, IntegrationGroups * 64u);
 
-		DDGITransitionTexture(RHICmdList, RadianceScratchTexture,
+		DDGITransitionTexture(RHICmdList, RadianceIntegrationScratchTexture,
+			ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
+		RHICmdList.SetComputeShader(IntegrateShader.GetComputeShader());
+		IntegrateShader->SetParameters(
+			RHICmdList, IntegrateShader.GetComputeShader(),
+			IntegrationScratchUAV, GatherOutputSRV, IntegrationHitDistanceSRV,
+			LogicalToPhysicalSRV,
+			IntegrationTexels, IntegrationGroups, TotalRaysPerProbe,
+			ProbeCount, TraceStartIndex,
+			static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
+			CurrentCascadeRayCount,
+			static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex + 1)),
+			static_cast<uint32>(FMath::Max(1,
+				Config->RadianceCascades.GetRayCount(CascadeIndex + 1) /
+				FMath::Max(1, Config->RadianceCascades.GetRayCount(CascadeIndex)))),
+			0u);
+		DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), IntegrationGroups, IntegrationGroupsY, 1);
+		IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
+		DDGITransitionTexture(RHICmdList, RadianceIntegrationScratchTexture,
 			ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
-
-		for (int32 CascadeIndex = static_cast<int32>(CascadeCount) - 2; CascadeIndex >= 0; --CascadeIndex)
-		{
-			const uint32 CurrentCascadeRayCount = static_cast<uint32>(
-				Config->RadianceCascades.GetRayCount(CascadeIndex));
-			const uint32 IntegrationTexels = ProbeCount * CurrentCascadeRayCount;
-			if (IntegrationTexels == 0u)
-			{
-				continue;
-			}
-
-			const uint32 IntegrationGroups = FMath::Min(
-				FMath::DivideAndRoundUp(IntegrationTexels, 64u), 65535u);
-			const uint32 IntegrationGroupsY = FMath::DivideAndRoundUp(
-				IntegrationTexels, IntegrationGroups * 64u);
-
-			DDGITransitionTexture(RHICmdList, IntegrationDestinationTexture,
-				ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
-
-			RHICmdList.SetComputeShader(IntegrateShader.GetComputeShader());
-			IntegrateShader->SetParameters(
-				RHICmdList, IntegrateShader.GetComputeShader(),
-				IntegrationDestinationUAV, GatherOutputSRV, ChildRadianceSRV,
-				IntegrationHitDistanceSRV, LogicalToPhysicalSRV,
-				IntegrationTexels, IntegrationGroups, TotalRays,
-				static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
-				CurrentCascadeRayCount,
-				static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex + 1)),
-				static_cast<uint32>(FMath::Max(1,
-					Config->RadianceCascades.GetRayCount(CascadeIndex + 1) /
-					FMath::Max(1, Config->RadianceCascades.GetRayCount(CascadeIndex)))));
-			DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), IntegrationGroups, IntegrationGroupsY, 1);
-			IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
-
-			DDGITransitionTexture(RHICmdList, IntegrationDestinationTexture,
-				ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
-			bFinalRadianceIsPrimary = bIntegrationDestinationIsPrimary;
-			bDispatchedIntegration = true;
-
-			ChildRadianceSRV = bIntegrationDestinationIsPrimary
-				? GatherRadianceSRV
-				: IntegrationScratchSRV;
-
-			if (bIntegrationDestinationIsPrimary)
-			{
-				IntegrationDestinationTexture = RadianceIntegrationScratchTexture;
-				IntegrationDestinationUAV = IntegrationScratchUAV;
-				bIntegrationDestinationIsPrimary = false;
-			}
-			else
-			{
-				IntegrationDestinationTexture = RadianceTexture;
-				IntegrationDestinationUAV = RadianceUAV;
-				bIntegrationDestinationIsPrimary = true;
-			}
-		}
-
-		if (!bDispatchedIntegration)
-		{
-			// With one cascade, Gather already produced the complete result.
-			DDGISwapRadianceCascadeRadianceBuffers_RenderThread(Scene);
-		}
-		else if (!bFinalRadianceIsPrimary)
-		{
-			DDGISwapRadianceCascadeIntegrationBuffers_RenderThread(Scene);
-		}
 	}
 
 }
