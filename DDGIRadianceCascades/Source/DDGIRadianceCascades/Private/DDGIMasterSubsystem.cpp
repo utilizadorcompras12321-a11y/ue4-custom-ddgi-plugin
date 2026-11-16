@@ -721,7 +721,7 @@ void UDDGIMasterSubsystem::RefreshConfig(ADDGIMasterActor* InActor)
 
 void UDDGIMasterSubsystem::RebuildSoftwareBVH(ADDGIMasterActor* InActor)
 {
-	if (!IsValid(InActor) || ActiveMasterActor.Get() != InActor)
+	if (!IsValid(InActor) || ActiveMasterActor.Get() != InActor || !InActor->bEnableDynamicGI)
 	{
 		return;
 	}
@@ -732,7 +732,8 @@ void UDDGIMasterSubsystem::RebuildSoftwareBVH(ADDGIMasterActor* InActor)
 
 void UDDGIMasterSubsystem::RefreshDirectionalLighting(ADDGIMasterActor* InActor)
 {
-	if (IsValid(InActor) && ActiveMasterActor.Get() == InActor && UpdateDirectionalLighting(InActor))
+	if (IsValid(InActor) && ActiveMasterActor.Get() == InActor &&
+		InActor->bEnableDynamicGI && Config.bEnableDynamicGI && UpdateDirectionalLighting(InActor))
 	{
 		PublishConfigValuesOnly();
 	}
@@ -864,6 +865,30 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 
 	Config.bEnableDynamicGI = InActor->bEnableDynamicGI;
 	Config.GIIntensity = FMath::Max(0.0f, InActor->GIIntensity);
+
+	if (!Config.bEnableDynamicGI)
+	{
+		// A disabled master must stop CPU scene extraction as well as GPU work.
+		// Drop the CPU BVH and lattice so re-enabling forces a clean rebuild.
+		Config.bHasDirectionalLight = false;
+		Config.DirectionalLightIntensity = 0.0f;
+		ActiveDirectionalLight.Reset();
+		bHasSearchedDirectionalLights = false;
+		Config.SoftwareBVH.Reset();
+		Config.ProbePositions.Reset();
+		Config.ProbeCellCoordinates.Reset();
+		Config.ProbeLevels.Reset();
+		Config.ProbeCount = 0;
+		Config.EstimatedRadianceStorageBytes = 0;
+		Config.ProbeLayoutHash = 0;
+		Config.ProbeGridOrigin = FVector::ZeroVector;
+		Config.ActiveProbeWindowCenter = FVector::ZeroVector;
+		CachedSoftwareBVHTriangleLimit = INDEX_NONE;
+		ActiveWindowCenterCell = FIntVector::ZeroValue;
+		bHasActiveWindowCenterCell = false;
+		PublishConfig(true);
+		return;
+	}
 
 	UpdateDirectionalLighting(InActor);
 	Config.DynamicGIDistance = FMath::Max(1.0f, InActor->DynamicGIDistance);
@@ -1002,7 +1027,8 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 
 void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InActor)
 {
-	if (!IsValid(InActor) || ActiveMasterActor.Get() != InActor || !Config.SoftwareBVH.IsValid())
+	if (!IsValid(InActor) || ActiveMasterActor.Get() != InActor ||
+		!Config.bEnableDynamicGI || !Config.SoftwareBVH.IsValid())
 	{
 		return;
 	}
