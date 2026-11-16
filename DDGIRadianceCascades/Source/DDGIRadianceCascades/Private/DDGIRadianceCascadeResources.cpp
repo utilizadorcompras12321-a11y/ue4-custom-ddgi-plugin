@@ -134,6 +134,7 @@ namespace
 		int32 RayLayoutCascadeCount = 0;
 		int32 RayLayoutBaseRayCount = 0;
 		int32 RayLayoutSplitFactor = 0;
+		int32 RayMaxActiveProbes = 0;
 		float RayLayoutBaseSegmentLength = 0.0f;
 		float RayLayoutCascadeScale = 0.0f;
 		float RayLayoutMaxTraceDistance = 0.0f;
@@ -202,6 +203,7 @@ namespace
 			RayLayoutCascadeCount = 0;
 			RayLayoutBaseRayCount = 0;
 			RayLayoutSplitFactor = 0;
+			RayMaxActiveProbes = 0;
 			RayLayoutBaseSegmentLength = 0.0f;
 			RayLayoutCascadeScale = 0.0f;
 			RayLayoutMaxTraceDistance = 0.0f;
@@ -323,7 +325,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         (Storage.TotalRaysPerProbe != Config.TotalRaysPerProbe ||
             Storage.RayLayoutCascadeCount != RequestedRayLayoutCascadeCount ||
             Storage.RayLayoutBaseRayCount != RequestedRayLayoutBaseRayCount ||
-            Storage.RayLayoutSplitFactor != RequestedRayLayoutSplitFactor);
+            Storage.RayLayoutSplitFactor != RequestedRayLayoutSplitFactor ||
+            Storage.RayMaxActiveProbes != Config.MaxActiveProbes);
     const int64 ExistingProbeCapacity =
         (!bRayLayoutChanged && Storage.RayProbeCapacity > 0)
         ? static_cast<int64>(Storage.RayProbeCapacity)
