@@ -164,12 +164,23 @@ void SurfaceProbeDeduplicateCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             all(ExistingKey.xyz == CellBits) &&
             ExistingKey.w == NormalKey)
         {
-            // Avoid concurrent float writes for duplicate screen candidates.
-            uint PreviousLastSeenFrame;
-            InterlockedMax(
-                SurfaceProbeLastSeenFrames[ExistingProbeSlot],
-                FrameNumber,
-                PreviousLastSeenFrame);
+            // Serialize the timestamp refresh with stale-slot recycling.
+            // Without taking the bucket lock, an old-key refresh could race
+            // with a new-key overwrite after the eviction thread's age test.
+            uint OriginalMatchingSlot;
+            InterlockedCompareExchange(
+                SurfaceProbeHash[BucketIndex].w,
+                ExistingSlot,
+                DDGI_HASH_LOCKED,
+                OriginalMatchingSlot);
+            if (OriginalMatchingSlot != ExistingSlot)
+            {
+                return;
+            }
+
+            SurfaceProbeLastSeenFrames[ExistingProbeSlot] = FrameNumber;
+            DeviceMemoryBarrier();
+            SurfaceProbeHash[BucketIndex].w = ExistingSlot;
             return;
         }
 
