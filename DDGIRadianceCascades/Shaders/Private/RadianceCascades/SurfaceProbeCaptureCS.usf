@@ -53,10 +53,6 @@ void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float4 ScreenPosition = float4(
         GBufferUV * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f),
         0.0f, 1.0f);
-    float3 InScreenVector = mul(
-        float4(ScreenPosition.xy, 1.0f, 0.0f),
-        View.ScreenToTranslatedWorld).xyz;
-
     float2 BufferUV = (ScreenUV * View.ViewSizeAndInvSize.xy + ViewRectMin) *
         View.BufferSizeAndInvSize.zw;
     float DeviceZ = DepthTexture.SampleLevel(PointClampSampler, BufferUV, 0).r;
@@ -78,7 +74,18 @@ void SurfaceProbeCaptureCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     float SceneDepth = ConvertFromDeviceZ(DeviceZ);
-    float3 WorldPosition = InScreenVector * SceneDepth + View.WorldCameraOrigin;
+
+    // Match UE4.27's screen-to-translated-world reconstruction. Perspective
+    // views scale XY by depth; orthographic views must keep XY unscaled.
+    float PerspectiveScale = View.ViewToClip[3][3] < 1.0f ? SceneDepth : 1.0f;
+    float4 ClipPosition = float4(
+        ScreenPosition.xy * PerspectiveScale,
+        SceneDepth,
+        1.0f);
+    float3 TranslatedWorldPosition = mul(
+        ClipPosition,
+        View.ScreenToTranslatedWorld).xyz;
+    float3 WorldPosition = TranslatedWorldPosition - View.PreViewTranslation.xyz;
 
     // This is a screen-sampled staging set, not yet the stable world-space
     // probe set. The following deduplication pass must assign persistent slots.
