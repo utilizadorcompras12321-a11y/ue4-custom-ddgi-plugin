@@ -21,8 +21,12 @@ struct FDDGISurfaceProbeAllocatorRHIResources
 {
     FShaderResourceViewRHIRef PositionsSRV;
     FUnorderedAccessViewRHIRef PositionsUAV;
+    FShaderResourceViewRHIRef CandidatePositionsSRV;
+    FUnorderedAccessViewRHIRef CandidatePositionsUAV;
     FShaderResourceViewRHIRef NormalsSRV;
     FUnorderedAccessViewRHIRef NormalsUAV;
+    FShaderResourceViewRHIRef CandidateNormalsSRV;
+    FUnorderedAccessViewRHIRef CandidateNormalsUAV;
     FShaderResourceViewRHIRef StableKeysSRV;
     FUnorderedAccessViewRHIRef StableKeysUAV;
     FShaderResourceViewRHIRef LastSeenFramesSRV;
@@ -46,6 +50,8 @@ struct FDDGISurfaceProbeAllocatorRDGResources
 {
     FRDGBufferRef Positions = nullptr;
     FRDGBufferRef Normals = nullptr;
+    FRDGBufferRef CandidatePositions = nullptr;
+    FRDGBufferRef CandidateNormals = nullptr;
     FRDGBufferRef StableKeys = nullptr;
     FRDGBufferRef LastSeenFrames = nullptr;
     FRDGBufferRef ActiveIndices = nullptr;
