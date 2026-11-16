@@ -1434,23 +1434,6 @@ bool DDGIGetRadianceCascadeIntegrationScratchTexture_RenderThread(
     return OutRadianceIntegrationScratch.IsValid();
 }
 
-void DDGISwapRadianceCascadeRadianceBuffers_RenderThread(const FSceneInterface* Scene)
-{
-	check(IsInRenderingThread() || IsInParallelRenderingThread());
-	if (FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene))
-	{
-		Swap(Storage->Radiance, Storage->RadianceScratch);
-	}
-}
-
-void DDGISwapRadianceCascadeIntegrationBuffers_RenderThread(const FSceneInterface* Scene)
-{
-    check(IsInRenderingThread() || IsInParallelRenderingThread());
-    if (FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene))
-    {
-        Swap(Storage->Radiance, Storage->RadianceIntegrationScratch);
-    }
-}
 
 bool DDGIGetSoftwareBVHResources_RenderThread(
 	const FSceneInterface* Scene,
@@ -1692,6 +1675,7 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     if (!Storage ||
         !Storage->Directions.IsValid() ||
         !Storage->Radiance.IsValid() ||
+        !Storage->RadianceIntegrationScratch.IsValid() ||
         !Storage->HitDistance.IsValid() ||
         !Storage->HitTriangleIndex.IsValid() ||
         !Storage->ProbePositions.IsValid() ||
@@ -1702,10 +1686,10 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
         return false;
     }
 
-    // The integration loop promotes whichever ping-pong output contains the
-    // completed first-cascade result, so Radiance always identifies that result.
+    // Radiance remains immutable raw trace data. The integration output is
+    // persistent and contains the final first-cascade result for every probe.
     OutDirections = GraphBuilder.RegisterExternalTexture(Storage->Directions);
-    OutRadiance = GraphBuilder.RegisterExternalTexture(Storage->Radiance);
+    OutRadiance = GraphBuilder.RegisterExternalTexture(Storage->RadianceIntegrationScratch);
     OutHitDistance = GraphBuilder.RegisterExternalTexture(Storage->HitDistance);
     OutHitTriangleIndex = GraphBuilder.RegisterExternalTexture(Storage->HitTriangleIndex);
     OutProbePositions = GraphBuilder.RegisterExternalTexture(Storage->ProbePositions);
