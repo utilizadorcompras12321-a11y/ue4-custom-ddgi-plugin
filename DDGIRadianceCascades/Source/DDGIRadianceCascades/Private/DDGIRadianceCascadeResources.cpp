@@ -389,7 +389,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         const FPooledRenderTargetDesc RadianceDesc = FPooledRenderTargetDesc::Create2DDesc(
             RequiredDimensions, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_None,
             TexCreate_ShaderResource | TexCreate_UAV, false);
-        // Persistent integrated radiance is packed into R32_UINT (RGB9E5).
+        // Persistent integrated radiance is packed into R32_UINT (R11G11B10).
         // Typed UAV loads for R32_UINT are required by DX11.0; half-float typed
         // UAV loads are optional and cannot be assumed on SM5 hardware.
         const FPooledRenderTargetDesc IntegratedRadianceDesc = FPooledRenderTargetDesc::Create2DDesc(
