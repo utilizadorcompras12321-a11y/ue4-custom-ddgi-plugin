@@ -43,6 +43,7 @@ struct FDDGIMasterConfig
 	UPROPERTY() FVector DirectionalLightDirection = FVector(0.0f, 0.0f, -1.0f);
 	UPROPERTY() FLinearColor DirectionalLightColor = FLinearColor::White;
 	UPROPERTY() float DirectionalLightIntensity = 0.0f;
+	UPROPERTY() float LocalLightGIIntensityScale = 0.01f;
 	// Fixed-size shader arrays are copied with the scene config. The arrays are
 	// always 32 elements so SetShaderValueArray never reads uninitialized data.
 	TArray<FVector4> LocalLightPositionAndRadius;
