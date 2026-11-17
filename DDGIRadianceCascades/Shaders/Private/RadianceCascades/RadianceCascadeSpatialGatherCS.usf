@@ -73,7 +73,7 @@ bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
 void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
     uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
-    if (LinearIndex >= TotalTexels || ProbeCount == 0u || TotalRaysPerProbe == 0u) return;
+    if (LinearIndex >= TotalTexels || ProbeCount == 0u || TotalRaysPerProbe == 0u || BaseRayCount == 0u) return;
     uint ScheduledProbeIndex = LinearIndex / TotalRaysPerProbe;
     uint ProbeIndex = (TraceStartIndex + ScheduledProbeIndex) % ProbeCount;
     uint RayIndex = LinearIndex - ScheduledProbeIndex * TotalRaysPerProbe;
@@ -81,16 +81,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     uint PhysicalLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
     uint2 Pixel = uint2(PhysicalLinearIndex % TextureWidth, PhysicalLinearIndex / TextureWidth);
 
-    // Only the farthest cascade contains freshly traced radiance now that
-    // angular splitting is disabled. Earlier cascade slots are propagated
-    // from their child during integration, so skip their 26-neighbor gather.
-    uint SafeBaseRayCount = min(BaseRayCount, TotalRaysPerProbe);
-    uint LastCascadeStorageOffset = TotalRaysPerProbe - SafeBaseRayCount;
-    if (RayIndex < LastCascadeStorageOffset)
-    {
-        OutputRadianceUAV[Pixel] = 0.0f;
-        return;
-    }
+    // Gather corresponding angular samples independently for every cascade.
     // ProbePositionsTexture stores BVH-local positions. Keep this coordinate
     // space for hit-plane tests; convert to world-lattice coordinates only
     // when looking up neighboring probe cells.
