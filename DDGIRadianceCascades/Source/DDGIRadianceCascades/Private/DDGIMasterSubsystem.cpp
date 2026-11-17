@@ -1007,7 +1007,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	const float RequestedProbeSpacingFromActor = InActor->ProbeSpacing;
 	Config.ProbeSpacing = std::isfinite(static_cast<double>(RequestedProbeSpacingFromActor))
 		? FMath::Clamp(RequestedProbeSpacingFromActor, 1.0f, 100000.0f)
-		: 200.0f;
+		: 100.0f;
 	const float RequestedProbeGridDistance = InActor->ProbeGridDistance;
 	const float MaxProbeGridDistance = Config.ProbeSpacing * 56.0f;
 	Config.ProbeGridDistance = std::isfinite(static_cast<double>(RequestedProbeGridDistance))
