@@ -31,7 +31,7 @@ public:
 
 	// Scales only the directional-light contribution injected into DDGI. Does not change the scene light or exposure.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Lighting", meta = (ClampMin = "0.0", ClampMax = "10000.0", UIMin = "0.0", UIMax = "500.0"))
-	float DirectionalLightGIIntensityScale = 1.0f;
+	float DirectionalLightGIIntensityScale = 100.0f;
 
 	// Scale for local point/spot-light irradiance captured by the software tracer.
 	// Inverse-square lights are converted from lumens to approximate candela.
