@@ -254,7 +254,8 @@ float3 DDGISampleLevelValue(
     float3 Normal,
     uint Level,
     out bool OutValid,
-    out float OutConfidence)
+    out float OutConfidence,
+    out float OutCoverage)
 {
     float SpatialWeightSum = 0.0f;
     float VisibleWeightSum = 0.0f;
@@ -262,6 +263,10 @@ float3 DDGISampleLevelValue(
         LocalPosition, Normal, Level, SpatialWeightSum, VisibleWeightSum);
     OutConfidence = saturate(
         VisibleWeightSum / max(SpatialWeightSum, 0.00001f));
+    // Preserve partial trilinear support as a continuous blend weight.
+    // A boolean valid/invalid switch caused abrupt changes when a sparse
+    // level gained or lost one of its eight interpolation corners.
+    OutCoverage = saturate(VisibleWeightSum);
     OutValid = SpatialWeightSum > 0.00001f && VisibleWeightSum > 0.00001f;
     return Value;
 }
@@ -278,32 +283,44 @@ float3 DDGIInterpolateLevelPair(
     bool bValidB = false;
     float ConfidenceA = 0.0f;
     float ConfidenceB = 0.0f;
+    float CoverageA = 0.0f;
+    float CoverageB = 0.0f;
     float3 ValueA = DDGISampleLevelValue(
-        LocalPosition, Normal, LevelA, bValidA, ConfidenceA);
+        LocalPosition, Normal, LevelA, bValidA, ConfidenceA, CoverageA);
     float3 ValueB = DDGISampleLevelValue(
-        LocalPosition, Normal, LevelB, bValidB, ConfidenceB);
+        LocalPosition, Normal, LevelB, bValidB, ConfidenceB, CoverageB);
 
-    // If one sparse level has no valid support, keep the other level alive
-    // for the entire transition. Multiplying its weight by (1-T) alone made
-    // it vanish at the far edge and produced hard seams / black bands.
-    OutValid = bValidA || bValidB;
+    const float Blend = saturate(T);
+    // Blend by continuous visible trilinear support, not a binary validity
+    // flag. Missing corners fade out over their interpolation footprint.
+    float WeightA = (1.0f - Blend) * CoverageA;
+    float WeightB = Blend * CoverageB;
+    float TotalWeight = WeightA + WeightB;
+
+    OutValid = TotalWeight > 0.00001f;
     if (!OutValid)
     {
+        // At the exact transition endpoint the nominally selected level may
+        // have zero support. Retain whichever level has usable support.
+        if (CoverageA >= CoverageB && bValidA)
+        {
+            OutValid = true;
+            return ValueA;
+        }
+        if (bValidB)
+        {
+            OutValid = true;
+            return ValueB;
+        }
+        if (bValidA)
+        {
+            OutValid = true;
+            return ValueA;
+        }
         return 0.0f;
     }
-    if (!bValidA) return ValueB;
-    if (!bValidB) return ValueA;
 
-    // When both levels are valid, confidence changes their relative influence
-    // but is normalized so sparse support cannot change total irradiance.
-    const float Blend = saturate(T);
-    const float WeightA = (1.0f - Blend) * max(ConfidenceA, 0.001f);
-    const float WeightB = Blend * max(ConfidenceB, 0.001f);
-    const float TotalWeight = WeightA + WeightB;
-    if (TotalWeight <= 0.00001f)
-    {
-        return lerp(ValueA, ValueB, Blend);
-    }
+    // Normalize to avoid dimming when either sparse level has fewer corners.
     return (ValueA * WeightA + ValueB * WeightB) / TotalWeight;
 }
 
@@ -368,8 +385,9 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         const uint DebugLevel = DebugMode - 4u;
         bool bDebugLevelValid = false;
         float DebugLevelConfidence = 0.0f;
+        float DebugLevelCoverage = 0.0f;
         float3 DebugLevelIrradiance = DDGISampleLevelValue(
-            LocalPosition, Normal, DebugLevel, bDebugLevelValid, DebugLevelConfidence);
+            LocalPosition, Normal, DebugLevel, bDebugLevelValid, DebugLevelConfidence, DebugLevelCoverage);
         if (!bDebugLevelValid)
         {
             SceneColorOutputUAV[BufferPixelIndex] = float4(1.0f, 0.0f, 1.0f, 1.0f);
@@ -438,9 +456,10 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             {
                 bool bCurrentLevelValid = false;
                 float CurrentLevelConfidence = 0.0f;
+                float CurrentLevelCoverage = 0.0f;
                 float3 CurrentLevelIrradiance = DDGISampleLevelValue(
                     LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid,
-                    CurrentLevelConfidence);
+                    CurrentLevelConfidence, CurrentLevelCoverage);
                 if (bCurrentLevelValid)
                 {
                     Irradiance = CurrentLevelIrradiance;
@@ -462,9 +481,10 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         {
             bool bFallbackValid = false;
             float FallbackConfidence = 0.0f;
+            float FallbackCoverage = 0.0f;
             float3 FallbackIrradiance = DDGISampleLevelValue(
                 LocalPosition, Normal, FallbackLevel, bFallbackValid,
-                FallbackConfidence);
+                FallbackConfidence, FallbackCoverage);
             if (bFallbackValid)
             {
                 Irradiance = FallbackIrradiance;
