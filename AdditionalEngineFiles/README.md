@@ -9,7 +9,7 @@ Copy each file over the matching file in your local Unreal Engine 4.27.2 source 
 | File in this folder | Replace this local file |
 |---|---|
 | `SceneViewExtension.h` | `Engine/Source/Runtime/Engine/Public/SceneViewExtension.h` |
-| `PostProcessing.cpp` | `Engine/Source/Runtime/Renderer/Private/PostProcessing.cpp` |
+| `PostProcessing.cpp` | `Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp` |
 
 For this checkout, the full destination paths are:
 
