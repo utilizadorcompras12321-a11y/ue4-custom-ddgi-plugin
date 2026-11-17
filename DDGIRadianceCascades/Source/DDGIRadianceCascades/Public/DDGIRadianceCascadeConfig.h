@@ -7,7 +7,8 @@
  * World-level Radiance Cascades layout.
  *
  * Each cascade stores radiance for a non-overlapping distance interval.
- * Every cascade reuses the same fixed angular ray count.
+ * Angular cells are hierarchically bisected in azimuth: each parent cell
+ * maps to two equal-solid-angle child cells in the next cascade.
  * This describes the ray hierarchy and packed per-probe ray-data layout;
  * it does not perform scene tracing or allocate GPU resources.
  */
@@ -68,6 +69,9 @@ struct FDDGIRadianceCascadeConfig
 		const float SafeMaxDistance = FMath::Max(1.0f, MaxTraceDistance);
 
 		int32 ActiveCount = 0;
+		int32 TotalRays = 0;
+		const int32 SafeBaseRayCount = FMath::Clamp(BaseRayCount, 1, 64);
+		const int32 MaxRaysPerProbe = 256;
 		for (int32 Index = 0; Index < ConfiguredCount; ++Index)
 		{
 			const float CascadePower = FMath::Pow(SafeScale, static_cast<float>(Index));
@@ -77,6 +81,12 @@ struct FDDGIRadianceCascadeConfig
 			{
 				break;
 			}
+			const int32 CascadeRays = SafeBaseRayCount << Index;
+			if (TotalRays + CascadeRays > MaxRaysPerProbe)
+			{
+				break;
+			}
+			TotalRays += CascadeRays;
 			++ActiveCount;
 		}
 		// Cascade zero starts at distance zero and is always active for a
@@ -86,10 +96,9 @@ struct FDDGIRadianceCascadeConfig
 
 	FORCEINLINE int32 GetRayCount(int32 CascadeIndex) const
 	{
-		// Ray splitting is disabled: every distance interval reuses the
-		// same angular directions and fixed ray count.
-		(void)CascadeIndex;
-		return FMath::Clamp(BaseRayCount, 1, 64);
+		const int32 SafeIndex = FMath::Clamp(CascadeIndex, 0, 7);
+		const int32 SafeBaseRayCount = FMath::Clamp(BaseRayCount, 1, 64);
+		return SafeBaseRayCount << SafeIndex;
 	}
 
 	FORCEINLINE int32 GetRayStorageOffset(int32 CascadeIndex) const
@@ -168,6 +177,7 @@ struct FDDGIRadianceCascadeConfig
 		}
 	}
 
+	// Hierarchical angular storage is capped at 256 rays per probe.
 	// Current GPU layout: raw radiance (8) + gather scratch (8) + packed final radiance (4) +
 	// hit distance (4) + hit triangle index (4) = 28 bytes per ray per probe.
 	// Direction (8 bytes) is stored once per ray layout and shared by every probe.
