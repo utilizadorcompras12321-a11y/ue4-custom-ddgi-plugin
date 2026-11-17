@@ -863,8 +863,6 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, BaseColorTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MetallicTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ScreenSpaceAOTexture)
-		SHADER_PARAMETER(uint32, bHasScreenSpaceAO)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HitDistanceTexture)
@@ -875,7 +873,6 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_SRV(StructuredBuffer<uint>, LogicalToPhysicalSlots)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, SceneColorOutputUAV)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
-		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearClampSampler)
 		SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
 		SHADER_PARAMETER(FVector2D, ViewRectMin)
 		SHADER_PARAMETER(uint32, ProbeCount)
@@ -1034,11 +1031,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	PassParameters->BaseColorTexture = BaseColorTexture;
 	PassParameters->MetallicTexture = MetallicTexture;
 
-	// The engine's normal diffuse-indirect/AO composite runs after this delegate.
-	// Do not apply a second, custom AO term here: UE4 will apply its own SSAO/DFAO.
-	PassParameters->bHasScreenSpaceAO = 0u;
-	PassParameters->ScreenSpaceAOTexture = DepthTexture;
-
 	PassParameters->DirectionsTexture = DirectionsTexture;
 	PassParameters->RadianceTexture = RadianceTexture;
 	PassParameters->HitDistanceTexture = HitDistanceTexture;
@@ -1052,7 +1044,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	PassParameters->UsePrecomputedProbeNeighbors = bHasPrecomputedNeighbors ? 1u : 0u;
 	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
 	PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-	PassParameters->BilinearClampSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->ScaledViewSizeAndInvSize = FVector4(
 		static_cast<float>(ViewSize.X), static_cast<float>(ViewSize.Y),
 		1.0f / static_cast<float>(ViewSize.X), 1.0f / static_cast<float>(ViewSize.Y));
