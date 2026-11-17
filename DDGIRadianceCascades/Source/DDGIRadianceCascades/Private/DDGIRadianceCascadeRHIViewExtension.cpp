@@ -1199,8 +1199,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	const uint32 ActiveCascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
 	const uint32 BaseRayCount = static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64));
-	// Both persistent masks are kept in SRV state between frames. Each cascade
-	// transitions only its output mask to UAV, then returns it to SRV.
+	// Reuse Gather and Integration scratch as alternating masks. Each level
+	// reads the previous scratch texture and writes the other; both are SRV again
+	// before Gather and Integrate overwrite them.
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
