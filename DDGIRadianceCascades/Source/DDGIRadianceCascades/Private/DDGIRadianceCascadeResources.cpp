@@ -657,6 +657,10 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     }
     if (bProbeLayoutChanged)
     {
+        // The subsystem orders active probes from nearest to farthest from the camera.
+        // Restart the round-robin cursor whenever that ordered active window changes,
+        // so newly exposed near-camera probes are traced before stale distant probes.
+        Storage.NextTraceProbeIndex = 0u;
         Storage.bPendingPhysicalSlotsUpload = true;
         TSet<FDDGIProbeCellKey> ActiveKeys;
         ActiveKeys.Reserve(ActiveProbeCount);
