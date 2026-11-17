@@ -274,7 +274,6 @@ bool TraceBVH(
     float3 Direction,
     float MaxDistance,
     uint IgnoreTriangleIndex,
-    bool bAnyHit,
     out float ClosestDistance,
     out uint ClosestTriangleIndex,
     out float3 ClosestA,
@@ -291,12 +290,14 @@ bool TraceBVH(
         return false;
     }
 
+    // Closest-hit traversal visits nearer child bounds first and tightens the
+    // ray limit whenever a triangle is found.
     uint Stack[49];
     float NearStack[49];
-    uint StackSize = 0u;
+    uint StackSize = 1u;
     uint IterationCount = 0u;
-    Stack[StackSize] = 0u;
-    NearStack[StackSize++] = -1.0f;
+    Stack[0] = 0u;
+    NearStack[0] = -1.0f;
 
     bool bFoundHit = false;
     [loop]
@@ -350,11 +351,6 @@ bool TraceBVH(
                     CandidateDistance) &&
                     CandidateDistance < ClosestDistance)
                 {
-                    if (bAnyHit)
-                    {
-                        return true;
-                    }
-
                     ClosestDistance = CandidateDistance;
                     ClosestTriangleIndex = TriangleIndex;
                     ClosestA = CandidateA;
@@ -419,20 +415,94 @@ bool TraceBVH(
     return bFoundHit;
 }
 
+// Any-hit is deliberately a separate, minimal traversal. It does not maintain
+// nearest distances, child ordering, or hit attributes: the first valid
+// triangle inside the light segment terminates the query.
 bool TraceAnyHit(
     float3 Origin,
     float3 Direction,
     float MaxDistance,
     uint IgnoreTriangleIndex)
 {
-    float ClosestDistance;
-    uint ClosestTriangleIndex;
-    float3 ClosestA;
-    float3 ClosestB;
-    float3 ClosestC;
-    return TraceBVH(
-        Origin, Direction, MaxDistance, IgnoreTriangleIndex, true,
-        ClosestDistance, ClosestTriangleIndex, ClosestA, ClosestB, ClosestC);
+    if (NodeCount == 0u || TriangleCount == 0u || MaxDistance <= 0.0f)
+    {
+        return false;
+    }
+
+    uint Stack[49];
+    uint StackSize = 1u;
+    uint IterationCount = 0u;
+    Stack[0] = 0u;
+
+    [loop]
+    while (StackSize > 0u && IterationCount < NodeCount)
+    {
+        ++IterationCount;
+        uint NodeIndex = Stack[--StackSize];
+        if (NodeIndex >= NodeCount)
+        {
+            continue;
+        }
+
+        uint NodeBase = NodeIndex * 3u;
+        if (!IntersectBounds(
+            Origin, Direction,
+            BVHNodes[NodeBase + 0u].xyz,
+            BVHNodes[NodeBase + 1u].xyz,
+            MaxDistance))
+        {
+            continue;
+        }
+
+        float4 Metadata = BVHNodes[NodeBase + 2u];
+        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
+        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
+        if (LeafTriangleCount > 0u)
+        {
+            [loop]
+            for (uint LocalTriangle = 0u;
+                 LocalTriangle < LeafTriangleCount;
+                 ++LocalTriangle)
+            {
+                uint TriangleIndex = FirstTriangle + LocalTriangle;
+                if (TriangleIndex >= TriangleCount ||
+                    TriangleIndex == IgnoreTriangleIndex)
+                {
+                    continue;
+                }
+
+                uint TriangleBase = TriangleIndex * 4u;
+                float CandidateDistance;
+                if (IntersectTriangle(
+                    Origin, Direction,
+                    BVHTriangles[TriangleBase + 0u].xyz,
+                    BVHTriangles[TriangleBase + 1u].xyz,
+                    BVHTriangles[TriangleBase + 2u].xyz,
+                    CandidateDistance) &&
+                    CandidateDistance < MaxDistance)
+                {
+                    return true;
+                }
+            }
+        }
+        else
+        {
+            uint LeftChild = (uint)max(Metadata.x, 0.0f);
+            uint RightChild = (uint)max(Metadata.y, 0.0f);
+            // Traversal order is irrelevant for any-hit. Bounds are tested
+            // when popped, keeping this path smaller than closest-hit.
+            if (LeftChild < NodeCount)
+            {
+                Stack[StackSize++] = LeftChild;
+            }
+            if (RightChild < NodeCount)
+            {
+                Stack[StackSize++] = RightChild;
+            }
+        }
+    }
+
+    return false;
 }
 
 bool TraceClosestHit(
@@ -447,7 +517,7 @@ bool TraceClosestHit(
     out float3 ClosestC)
 {
     return TraceBVH(
-        Origin, Direction, MaxDistance, IgnoreTriangleIndex, false,
+        Origin, Direction, MaxDistance, IgnoreTriangleIndex,
         ClosestDistance, ClosestTriangleIndex, ClosestA, ClosestB, ClosestC);
 }
 
