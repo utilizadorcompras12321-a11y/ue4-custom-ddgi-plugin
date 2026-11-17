@@ -842,23 +842,32 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     // Trace only this interval; earlier and farther intervals are handled by
     // adjacent cascades instead of repeating the full BVH traversal.
-    // A child ray starts at its parent ray's endpoint, anchoring the child
-    // angular cone to the parent's spatial sample.
+    // Reconstruct the complete ancestor path. A cascade-2 ray starts at the
+    // end of its cascade-1 parent segment, which itself starts at the end of
+    // cascade 0; a single offset along the immediate parent is insufficient.
     float3 CascadeRayOrigin = Origin;
     if (CascadeIndex > 0u)
     {
         uint SafeBaseRayCount = clamp(BaseRayCount, 1u, 64u);
         uint CascadeOffset = SafeBaseRayCount * ((1u << CascadeIndex) - 1u);
         uint LocalCascadeRayIndex = PackedRayIndex - CascadeOffset;
-        uint ParentCascadeOffset =
-            SafeBaseRayCount * ((1u << (CascadeIndex - 1u)) - 1u);
-        uint ParentRayIndex = ParentCascadeOffset + (LocalCascadeRayIndex >> 1u);
-        uint2 ParentDirectionPixel = uint2(
-            ParentRayIndex % TextureWidth,
-            ParentRayIndex / TextureWidth);
-        float3 ParentDirection = normalize(
-            DirectionsTexture.Load(int3(ParentDirectionPixel, 0)).xyz);
-        CascadeRayOrigin += ParentDirection * CascadeStartDistance;
+        [loop]
+        for (uint AncestorCascade = 0u; AncestorCascade < CascadeIndex; ++AncestorCascade)
+        {
+            uint AncestorShift = CascadeIndex - AncestorCascade;
+            uint AncestorLocalRayIndex = LocalCascadeRayIndex >> AncestorShift;
+            uint AncestorStorageOffset =
+                SafeBaseRayCount * ((1u << AncestorCascade) - 1u);
+            uint AncestorRayIndex = AncestorStorageOffset + AncestorLocalRayIndex;
+            uint2 AncestorDirectionPixel = uint2(
+                AncestorRayIndex % TextureWidth,
+                AncestorRayIndex / TextureWidth);
+            float3 AncestorDirection = normalize(
+                DirectionsTexture.Load(int3(AncestorDirectionPixel, 0)).xyz);
+            float AncestorSegmentLength = DDGIRadianceCascadeSegmentLength(
+                (int)AncestorCascade, BaseSegmentLength, CascadeScale);
+            CascadeRayOrigin += AncestorDirection * AncestorSegmentLength;
+        }
     }
     float CascadeRayLength = max(CascadeEndDistance - CascadeStartDistance, 0.0f);
     if (CascadeRayLength <= 0.0f)
