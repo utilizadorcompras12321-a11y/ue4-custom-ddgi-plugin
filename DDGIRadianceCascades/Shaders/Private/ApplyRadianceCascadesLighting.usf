@@ -212,15 +212,68 @@ float3 DDGIProbeDiffuseIrradiance(
                 int3(VisibilityPixel, 0));
             if (OccluderDistance >= 0.0f)
             {
+                // HitDistance is local to the selected cascade's ray origin,
+                // not measured from the probe. Reconstruct the complete
+                // piecewise path before comparing the hit with the receiver.
+                float3 CascadeRayOrigin = ProbePosition;
+                uint LocalCascadeRayIndex = BestBaseRay * ChildCount + ChildPath;
+                [loop]
+                for (uint AncestorCascade = 0u;
+                    AncestorCascade < SelectedCascade;
+                    ++AncestorCascade)
+                {
+                    uint AncestorShift = SelectedCascade - AncestorCascade;
+                    uint AncestorLocalRayIndex =
+                        LocalCascadeRayIndex >> AncestorShift;
+                    uint AncestorStorageOffset =
+                        SafeRayCount * ((1u << AncestorCascade) - 1u);
+                    uint AncestorRayIndex =
+                        AncestorStorageOffset + AncestorLocalRayIndex;
+                    uint2 AncestorDirectionPixel = uint2(
+                        AncestorRayIndex % DDGI_RC_TEXTURE_WIDTH,
+                        AncestorRayIndex / DDGI_RC_TEXTURE_WIDTH);
+                    float3 AncestorDirection = normalize(
+                        DirectionsTexture.Load(
+                            int3(AncestorDirectionPixel, 0)).xyz);
+                    CascadeRayOrigin += AncestorDirection *
+                        DDGIRadianceCascadeSegmentLength(
+                            (int)AncestorCascade,
+                            BaseSegmentLength,
+                            CascadeScale);
+                }
+
+                uint2 SelectedDirectionPixel = uint2(
+                    CascadeRayIndex % DDGI_RC_TEXTURE_WIDTH,
+                    CascadeRayIndex / DDGI_RC_TEXTURE_WIDTH);
+                float3 SelectedDirection = normalize(
+                    DirectionsTexture.Load(
+                        int3(SelectedDirectionPixel, 0)).xyz);
+                float3 OccluderPosition =
+                    CascadeRayOrigin + SelectedDirection * OccluderDistance;
+
+                // Project the reconstructed world-space hit onto the
+                // probe-to-receiver direction. This handles the bent,
+                // piecewise cascade path and avoids comparing a local segment
+                // distance with a probe-relative receiver distance.
+                float OccluderDistanceAlongReceiver = dot(
+                    OccluderPosition - ProbePosition,
+                    ReceiverDirection);
+
                 // Keep the bias in world centimetres small enough not to skip thin walls.
                 float VisibilityBias = clamp(ReceiverDistance * 0.0015f, 1.0f, 5.0f);
-                // A hit at the receiver distance is the receiver surface,
-                // not an occluder. Only a hit clearly before the receiver fades
-                // the probe contribution.
-                Visibility = 1.0f - smoothstep(
-                    VisibilityBias,
-                    VisibilityBias * 2.0f,
-                    ReceiverDistance - OccluderDistance);
+                float DistanceBeforeReceiver =
+                    ReceiverDistance - OccluderDistanceAlongReceiver;
+                if (OccluderDistanceAlongReceiver > 0.0f &&
+                    DistanceBeforeReceiver > 0.0f)
+                {
+                    // A hit at the receiver distance is the receiver surface,
+                    // not an occluder. Only a hit clearly before the receiver fades
+                    // the probe contribution.
+                    Visibility = 1.0f - smoothstep(
+                        VisibilityBias,
+                        VisibilityBias * 2.0f,
+                        DistanceBeforeReceiver);
+                }
             }
         }
     }
