@@ -221,16 +221,21 @@ float3 DDGIProbeDiffuseIrradiance(
             uint2 CandidatePixel = uint2(
                 CandidateLinearIndex % DDGI_RC_TEXTURE_WIDTH,
                 CandidateLinearIndex / DDGI_RC_TEXTURE_WIDTH);
-            float CandidateDistance = HitDistanceTexture.Load(
-                int3(CandidatePixel, 0));
+            // Misses and blocked descendants have no triangle tag. Avoid
+            // loading hit distance for those common cases.
             uint CandidateTriangleTag = HitTriangleIndexTexture.Load(
                 int3(CandidatePixel, 0));
-            if (CandidateDistance >= 0.0f && CandidateTriangleTag > 0u)
+            if (CandidateTriangleTag > 0u)
             {
-                OccluderDistance = CandidateDistance;
-                OccluderCascade = CandidateCascade;
-                OccluderRayIndex = CandidateRayIndex;
-                break;
+                float CandidateDistance = HitDistanceTexture.Load(
+                    int3(CandidatePixel, 0));
+                if (CandidateDistance >= 0.0f)
+                {
+                    OccluderDistance = CandidateDistance;
+                    OccluderCascade = CandidateCascade;
+                    OccluderRayIndex = CandidateRayIndex;
+                    break;
+                }
             }
         }
 
