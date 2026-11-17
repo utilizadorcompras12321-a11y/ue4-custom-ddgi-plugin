@@ -983,6 +983,10 @@ void UDDGIMasterSubsystem::PublishConfigValuesOnly()
 				ExistingConfig->LocalLightColorAndIntensity = LocalLightColorAndIntensity;
 				ExistingConfig->LocalLightParameters = LocalLightParameters;
 				ExistingConfig->LocalLightCount = LocalLightCount;
+				// The scene geometry is static, but a changed light alters every
+				// captured probe. Invalidate once so the next DDGI update refreshes
+				// the complete active lattice instead of leaving stale lighting.
+				DDGIInvalidateRadianceCascadeHistory_RenderThread(Scene);
 			}
 		});
 }
