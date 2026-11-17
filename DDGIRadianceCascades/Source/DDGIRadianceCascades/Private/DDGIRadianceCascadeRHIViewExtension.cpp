@@ -652,6 +652,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HitTriangleIndexTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbePositionsTexture)
 		SHADER_PARAMETER_SRV(StructuredBuffer<int4>, ProbeSpatialHash)
+		SHADER_PARAMETER_SRV(StructuredBuffer<uint>, ProbeNeighborIndices)
 		SHADER_PARAMETER_SRV(StructuredBuffer<uint>, LogicalToPhysicalSlots)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, SceneColorOutputUAV)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
@@ -661,6 +662,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(uint32, TotalRaysPerProbe)
 		SHADER_PARAMETER(uint32, BaseRayCount)
 		SHADER_PARAMETER(uint32, HashCapacity)
+		SHADER_PARAMETER(uint32, UsePrecomputedProbeNeighbors)
 		SHADER_PARAMETER(float, ProbeSpacing)
 		SHADER_PARAMETER(float, BaseSegmentLength)
 		SHADER_PARAMETER(float, CascadeScale)
@@ -769,6 +771,14 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 		return SceneColor;
 	}
 
+	FShaderResourceViewRHIRef ProbeNeighborIndicesSRV;
+	uint32 NeighborListProbeCount = 0u;
+	const bool bHasPrecomputedNeighbors =
+		DDGIGetRadianceCascadeProbeNeighborList_RenderThread(
+			Scene, ProbeNeighborIndicesSRV, NeighborListProbeCount) &&
+		ProbeNeighborIndicesSRV.IsValid() &&
+		NeighborListProbeCount == ProbeCount;
+
 	if (!Inputs.SceneTextures.SceneTextures)
 	{
 		static bool bLoggedMissingSceneTextures = false;
@@ -805,7 +815,9 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->HitTriangleIndexTexture = HitTriangleIndexTexture;
 	PassParameters->ProbePositionsTexture = ProbePositionsTexture;
 	PassParameters->ProbeSpatialHash = ProbeSpatialHashSRV;
+	PassParameters->ProbeNeighborIndices = ProbeNeighborIndicesSRV;
 	PassParameters->LogicalToPhysicalSlots = LogicalToPhysicalSRV;
+	PassParameters->UsePrecomputedProbeNeighbors = bHasPrecomputedNeighbors ? 1u : 0u;
 	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
 	PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->ScaledViewSizeAndInvSize = FVector4(
