@@ -649,6 +649,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HitDistanceTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HitTriangleIndexTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbePositionsTexture)
 		SHADER_PARAMETER_SRV(StructuredBuffer<int4>, ProbeSpatialHash)
 		SHADER_PARAMETER_SRV(StructuredBuffer<uint>, LogicalToPhysicalSlots)
@@ -801,6 +802,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->DirectionsTexture = DirectionsTexture;
 	PassParameters->RadianceTexture = RadianceTexture;
 	PassParameters->HitDistanceTexture = HitDistanceTexture;
+	PassParameters->HitTriangleIndexTexture = HitTriangleIndexTexture;
 	PassParameters->ProbePositionsTexture = ProbePositionsTexture;
 	PassParameters->ProbeSpatialHash = ProbeSpatialHashSRV;
 	PassParameters->LogicalToPhysicalSlots = LogicalToPhysicalSRV;
