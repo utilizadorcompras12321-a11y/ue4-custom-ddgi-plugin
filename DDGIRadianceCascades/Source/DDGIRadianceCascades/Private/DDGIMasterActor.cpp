@@ -54,7 +54,6 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 				!FMath::IsNearlyEqual(CurrentConfig.ProbeSpacing, SafeProbeSpacing, 1.0e-4f) ||
 				CurrentConfig.RadianceCascades.CascadeCount != FMath::Clamp(CascadeCount, 1, 8) ||
 				CurrentConfig.RadianceCascades.BaseRayCount != FMath::Clamp(BaseRayCount, 1, 64) ||
-				CurrentConfig.RadianceCascades.RaySplitFactor != FMath::Clamp(RaySplitFactor, 1, 4) ||
 				!FMath::IsNearlyEqual(CurrentConfig.RadianceCascades.BaseSegmentLength, FMath::Max(1.0f, BaseSegmentLength), 1.0e-4f) ||
 				!FMath::IsNearlyEqual(CurrentConfig.RadianceCascades.CascadeScale, FMath::Max(1.01f, CascadeScale), 1.0e-4f) ||
 				CurrentConfig.MaxActiveProbes != FMath::Clamp(MaxActiveProbes, 1, 32768) ||
