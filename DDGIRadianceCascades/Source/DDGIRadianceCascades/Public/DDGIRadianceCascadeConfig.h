@@ -42,7 +42,7 @@ struct FDDGIRadianceCascadeConfig
 	int32 CascadeCount = 3;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radiance Cascades", meta = (ClampMin = "1", ClampMax = "64"))
-	int32 BaseRayCount = 6;
+	int32 BaseRayCount = 16;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radiance Cascades", meta = (ClampMin = "1.0"))
 	float BaseSegmentLength = 250.0f;
