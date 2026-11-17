@@ -63,7 +63,7 @@ public:
 		DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
 		ProbeCount.Bind(Initializer.ParameterMap, TEXT("ProbeCount"));
 		DirectionsUAV.Bind(Initializer.ParameterMap, TEXT("DirectionsUAV"));
-		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
+		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
 		RadianceScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
 		RadianceIntegrationScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceIntegrationScratchUAV"));
@@ -373,7 +373,7 @@ public:
         BVHTriangles.Bind(I.ParameterMap, TEXT("BVHTriangles"));
         HitDistanceTexture.Bind(I.ParameterMap, TEXT("HitDistanceTexture"));
         HitTriangleIndexTexture.Bind(I.ParameterMap, TEXT("HitTriangleIndexTexture"));
-        RadianceUAV.Bind(I.ParameterMap, TEXT("RadianceUAV"));
+        RadianceUAV.Bind(I.ParameterMap, TEXT("RadianceScratchUAV"));
     }
     static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P)
     {
@@ -385,7 +385,7 @@ public:
         FShaderResourceViewRHIRef Directions, FShaderResourceViewRHIRef Positions,
         FShaderResourceViewRHIRef LogicalToPhysical, FShaderResourceViewRHIRef Nodes,
         FShaderResourceViewRHIRef Triangles, FShaderResourceViewRHIRef HitDistances,
-        FShaderResourceViewRHIRef HitIndices, FUnorderedAccessViewRHIRef Radiance,
+        FShaderResourceViewRHIRef HitIndices, FShaderResourceViewRHIRef SurfaceRadiance, FUnorderedAccessViewRHIRef Radiance,
         uint32 InTotalTexels, uint32 InGroupsX, uint32 InProbeCount,
         uint32 InTraceStartIndex, uint32 InTotalRaysPerProbe,
         uint32 InNodeCount, uint32 InTriangleCount, float InGIIntensity,
@@ -426,6 +426,7 @@ public:
         if (BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHTriangles.GetBaseIndex(), Triangles);
         if (HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitDistanceTexture.GetBaseIndex(), HitDistances);
         if (HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitTriangleIndexTexture.GetBaseIndex(), HitIndices);
+        if (SurfaceRadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, SurfaceRadianceTexture.GetBaseIndex(), SurfaceRadiance);
         if (RadianceUAV.IsBound()) C.SetUAVParameter(Sh, RadianceUAV.GetBaseIndex(), Radiance);
     }
     template<typename TShaderRHIParamRef>
@@ -438,6 +439,7 @@ public:
         if (BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHTriangles.GetBaseIndex(), FShaderResourceViewRHIRef());
         if (HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitDistanceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
         if (HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitTriangleIndexTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+        if (SurfaceRadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, SurfaceRadianceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
         if (RadianceUAV.IsBound()) C.SetUAVParameter(Sh, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
     }
 private:
@@ -467,6 +469,7 @@ private:
     LAYOUT_FIELD(FShaderResourceParameter, BVHTriangles);
     LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
     LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexTexture);
+    LAYOUT_FIELD(FShaderResourceParameter, SurfaceRadianceTexture);
     LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 };
 IMPLEMENT_SHADER_TYPE(
@@ -515,6 +518,7 @@ public:
         BVHTriangles.Bind(I.ParameterMap, TEXT("BVHTriangles"));
         HitDistanceTexture.Bind(I.ParameterMap, TEXT("HitDistanceTexture"));
         HitTriangleIndexTexture.Bind(I.ParameterMap, TEXT("HitTriangleIndexTexture"));
+        SurfaceRadianceTexture.Bind(I.ParameterMap, TEXT("SurfaceRadianceTexture"));
         RadianceUAV.Bind(I.ParameterMap, TEXT("RadianceUAV"));
     }
     static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P)
@@ -1445,7 +1449,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const uint32 BaseRayCount = static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64));
 	// Each cascade traces independent probe-origin rays; no ancestor mask or
 	// scratch-texture ping-pong is required during tracing.
-	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, RadianceScratchTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 
@@ -1461,7 +1465,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
 		TraceShader->SetParameters(
 			RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
-			RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
+			GatherOutputUAV, HitDistanceUAV, HitTriangleIndexUAV,
 			CascadeIndex,
 			TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
 			NodeCount, TriangleCount, ActiveCascadeCount, BaseRayCount,
@@ -1496,7 +1500,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	ShadeShader->SetParameters(
 		RHICmdList, ShadeShader.GetComputeShader(),
 		DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
-		IntegrationHitDistanceSRV, IntegrationHitTriangleIndexSRV, RadianceUAV,
+		IntegrationHitDistanceSRV, IntegrationHitTriangleIndexSRV, GatherOutputUAV,
 		TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
 		NodeCount, TriangleCount, Config->GIIntensity,
 		FVector4(Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z, 0.0f),
@@ -1512,9 +1516,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	DispatchComputeShader(RHICmdList, ShadeShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
 	ShadeShader->UnbindResources(RHICmdList, ShadeShader.GetComputeShader());
 
-	// The bounce resolve reads and updates the radiance written by surface shading.
-	// Round-trip through SRV access to enforce the inter-dispatch UAV dependency.
-	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+	// Surface shading writes the scratch radiance. Resolve reads it as an SRV
+	// and writes the final texture, avoiding typed UAV reads on PF_FloatRGBA.
+	DDGITransitionTexture(RHICmdList, RadianceScratchTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 
 	TShaderMapRef<FDDGIRadianceCascadeResolveRHI> ResolveShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
@@ -1522,7 +1526,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	ResolveShader->SetParameters(
 		RHICmdList, ResolveShader.GetComputeShader(),
 		DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
-		IntegrationHitDistanceSRV, IntegrationHitTriangleIndexSRV, RadianceUAV,
+		IntegrationHitDistanceSRV, IntegrationHitTriangleIndexSRV, GatherOutputSRV, RadianceUAV,
 		TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
 		NodeCount, TriangleCount, Config->RadianceCascades.MaxTraceDistance,
 		FVector4(Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G, Config->StaticBackgroundColor.B, Config->StaticBackgroundColor.A),
