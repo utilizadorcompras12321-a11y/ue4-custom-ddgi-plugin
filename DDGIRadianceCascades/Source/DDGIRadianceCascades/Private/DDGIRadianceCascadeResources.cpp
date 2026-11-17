@@ -205,7 +205,6 @@ namespace
 		int32 TotalRaysPerProbe = 0;
 		int32 RayLayoutCascadeCount = 0;
 		int32 RayLayoutBaseRayCount = 0;
-		int32 RayLayoutSplitFactor = 0;
 		int32 RayMaxActiveProbes = 0;
 		float RayLayoutBaseSegmentLength = 0.0f;
 		float RayLayoutCascadeScale = 0.0f;
@@ -276,7 +275,6 @@ namespace
 			TotalRaysPerProbe = 0;
 			RayLayoutCascadeCount = 0;
 			RayLayoutBaseRayCount = 0;
-			RayLayoutSplitFactor = 0;
 			RayMaxActiveProbes = 0;
 			RayLayoutBaseSegmentLength = 0.0f;
 			RayLayoutCascadeScale = 0.0f;
@@ -388,7 +386,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
     // scene BVH or spatial lookup resources.
     const int32 RequestedRayLayoutCascadeCount = Config.RadianceCascades.GetSafeCascadeCount();
     const int32 RequestedRayLayoutBaseRayCount = FMath::Clamp(Config.RadianceCascades.BaseRayCount, 1, 64);
-    const int32 RequestedRayLayoutSplitFactor = FMath::Clamp(Config.RadianceCascades.RaySplitFactor, 1, 4);
     const float RequestedBaseSegmentLength = FMath::Max(1.0f, Config.RadianceCascades.BaseSegmentLength);
     const float RequestedCascadeScale = FMath::Max(1.01f, Config.RadianceCascades.CascadeScale);
     const float RequestedMaxTraceDistance = FMath::Max(1.0f, Config.RadianceCascades.MaxTraceDistance);
@@ -414,7 +411,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         (Storage.TotalRaysPerProbe != Config.TotalRaysPerProbe ||
             Storage.RayLayoutCascadeCount != RequestedRayLayoutCascadeCount ||
             Storage.RayLayoutBaseRayCount != RequestedRayLayoutBaseRayCount ||
-            Storage.RayLayoutSplitFactor != RequestedRayLayoutSplitFactor ||
             Storage.RayMaxActiveProbes != Config.MaxActiveProbes);
     const int64 ExistingProbeCapacity =
         (!bRayLayoutChanged && Storage.RayProbeCapacity > 0)
@@ -463,7 +459,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.TotalRaysPerProbe == Config.TotalRaysPerProbe &&
         Storage.RayLayoutCascadeCount == RequestedRayLayoutCascadeCount &&
         Storage.RayLayoutBaseRayCount == RequestedRayLayoutBaseRayCount &&
-        Storage.RayLayoutSplitFactor == RequestedRayLayoutSplitFactor &&
         Storage.RayMaxActiveProbes == Config.MaxActiveProbes &&
         Storage.Directions.IsValid() &&
         Storage.Radiance.IsValid() &&
@@ -485,7 +480,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.TotalRaysPerProbe = 0;
         Storage.RayLayoutCascadeCount = 0;
         Storage.RayLayoutBaseRayCount = 0;
-        Storage.RayLayoutSplitFactor = 0;
         Storage.RayMaxActiveProbes = 0;
         Storage.RayLayoutBaseSegmentLength = 0.0f;
         Storage.RayLayoutCascadeScale = 0.0f;
@@ -551,7 +545,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.TotalRaysPerProbe = Config.TotalRaysPerProbe;
         Storage.RayLayoutCascadeCount = RequestedRayLayoutCascadeCount;
         Storage.RayLayoutBaseRayCount = RequestedRayLayoutBaseRayCount;
-        Storage.RayLayoutSplitFactor = RequestedRayLayoutSplitFactor;
         Storage.RayMaxActiveProbes = Config.MaxActiveProbes;
         Storage.RayLayoutBaseSegmentLength = RequestedBaseSegmentLength;
         Storage.RayLayoutCascadeScale = RequestedCascadeScale;
