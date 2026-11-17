@@ -191,6 +191,7 @@ public:
 		NodeCount.Bind(Initializer.ParameterMap, TEXT("NodeCount"));
 		TriangleCount.Bind(Initializer.ParameterMap, TEXT("TriangleCount"));
 		CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
+		BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
 		BaseSegmentLength.Bind(Initializer.ParameterMap, TEXT("BaseSegmentLength"));
 		CascadeScale.Bind(Initializer.ParameterMap, TEXT("CascadeScale"));
 		MaxTraceDistance.Bind(Initializer.ParameterMap, TEXT("MaxTraceDistance"));
@@ -247,6 +248,7 @@ public:
 		uint32 InNodeCount,
 		uint32 InTriangleCount,
 		uint32 InCascadeCount,
+		uint32 InBaseRayCount,
 		float InBaseSegmentLength,
 		float InCascadeScale,
 		float InMaxTraceDistance,
@@ -278,6 +280,7 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, NodeCount, InNodeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, TriangleCount, InTriangleCount);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
+		SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseSegmentLength, InBaseSegmentLength);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeScale, InCascadeScale);
 		SetShaderValue(RHICmdList, ShaderRHI, MaxTraceDistance, InMaxTraceDistance);
@@ -337,6 +340,7 @@ private:
 	LAYOUT_FIELD(FShaderParameter, NodeCount);
 	LAYOUT_FIELD(FShaderParameter, TriangleCount);
 	LAYOUT_FIELD(FShaderParameter, CascadeCount);
+	LAYOUT_FIELD(FShaderParameter, BaseRayCount);
 	LAYOUT_FIELD(FShaderParameter, BaseSegmentLength);
 	LAYOUT_FIELD(FShaderParameter, CascadeScale);
 	LAYOUT_FIELD(FShaderParameter, MaxTraceDistance);
@@ -388,7 +392,7 @@ public:
   TraceStartIndex.Bind(I.ParameterMap,TEXT("TraceStartIndex"));
   TotalRaysPerProbe.Bind(I.ParameterMap,TEXT("TotalRaysPerProbe")); BaseRayCount.Bind(I.ParameterMap,TEXT("BaseRayCount")); HashCapacity.Bind(I.ParameterMap,TEXT("HashCapacity"));
   TriangleCount.Bind(I.ParameterMap,TEXT("TriangleCount"));
-  ProbeSpacing.Bind(I.ParameterMap,TEXT("ProbeSpacing")); ProbeGridOrigin.Bind(I.ParameterMap,TEXT("ProbeGridOrigin"));
+  ProbeSpacing.Bind(I.ParameterMap,TEXT("ProbeSpacing")); BaseSegmentLength.Bind(I.ParameterMap,TEXT("BaseSegmentLength")); CascadeScale.Bind(I.ParameterMap,TEXT("CascadeScale")); ProbeGridOrigin.Bind(I.ParameterMap,TEXT("ProbeGridOrigin"));
   RadianceTexture.Bind(I.ParameterMap,TEXT("RadianceTexture")); HitDistanceTexture.Bind(I.ParameterMap,TEXT("HitDistanceTexture")); HitTriangleIndexTexture.Bind(I.ParameterMap,TEXT("HitTriangleIndexTexture"));
   DirectionsTexture.Bind(I.ParameterMap,TEXT("DirectionsTexture"));
   ProbePositionsTexture.Bind(I.ParameterMap,TEXT("ProbePositionsTexture")); BVHTriangles.Bind(I.ParameterMap,TEXT("BVHTriangles"));
@@ -403,14 +407,14 @@ public:
  void SetParameters(FRHICommandList& C,const TShaderRHIParamRef Sh,FShaderResourceViewRHIRef R,FShaderResourceViewRHIRef H,FShaderResourceViewRHIRef HitIndices,
   FShaderResourceViewRHIRef D,FShaderResourceViewRHIRef P,FShaderResourceViewRHIRef LogicalToPhysicalSRV,FShaderResourceViewRHIRef Triangles,FShaderResourceViewRHIRef S,
   FShaderResourceViewRHIRef NeighborList,FUnorderedAccessViewRHIRef O,
-  uint32 T,uint32 G,uint32 PC,uint32 StartIndex,uint32 RPP,uint32 BRC,uint32 HC,uint32 TC,float PS,const FVector4& Origin,uint32 bUseNeighborList)
+  uint32 T,uint32 G,uint32 PC,uint32 StartIndex,uint32 RPP,uint32 BRC,uint32 HC,uint32 TC,float PS,float BSL,float CS,const FVector4& Origin,uint32 bUseNeighborList)
  {
   uint32 W=4096u;
   SetShaderValue(C,Sh,TextureWidth,W); SetShaderValue(C,Sh,TotalTexels,T); SetShaderValue(C,Sh,DispatchGroupsX,G);
   SetShaderValue(C,Sh,ProbeCount,PC); SetShaderValue(C,Sh,TraceStartIndex,StartIndex);
   SetShaderValue(C,Sh,TotalRaysPerProbe,RPP); SetShaderValue(C,Sh,BaseRayCount,BRC); SetShaderValue(C,Sh,HashCapacity,HC);
   SetShaderValue(C,Sh,TriangleCount,TC);
-  SetShaderValue(C,Sh,ProbeSpacing,PS); SetShaderValue(C,Sh,ProbeGridOrigin,Origin);
+  SetShaderValue(C,Sh,ProbeSpacing,PS); SetShaderValue(C,Sh,BaseSegmentLength,BSL); SetShaderValue(C,Sh,CascadeScale,CS); SetShaderValue(C,Sh,ProbeGridOrigin,Origin);
   SetShaderValue(C,Sh,UsePrecomputedProbeNeighbors,bUseNeighborList);
   if(RadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,RadianceTexture.GetBaseIndex(),R);
   if(HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh,HitDistanceTexture.GetBaseIndex(),H);
@@ -450,6 +454,8 @@ private:
  LAYOUT_FIELD(FShaderParameter, HashCapacity);
  LAYOUT_FIELD(FShaderParameter, TriangleCount);
  LAYOUT_FIELD(FShaderParameter, ProbeSpacing);
+ LAYOUT_FIELD(FShaderParameter, BaseSegmentLength);
+ LAYOUT_FIELD(FShaderParameter, CascadeScale);
  LAYOUT_FIELD(FShaderParameter, ProbeGridOrigin);
  LAYOUT_FIELD(FShaderResourceParameter, RadianceTexture);
  LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
@@ -1173,6 +1179,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
 		NodeCount, TriangleCount,
 		static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
+		static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64)),
 		Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
 		Config->RadianceCascades.MaxTraceDistance,
 		FVector4(Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G, Config->StaticBackgroundColor.B, Config->StaticBackgroundColor.A),
@@ -1213,6 +1220,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex,
 		TotalRaysPerProbe, static_cast<uint32>(Config->RadianceCascades.BaseRayCount),
 		HashCapacity, TriangleCount, ProbeSpacing,
+		Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
 		FVector4(Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f),
 		bUseNeighborList);
 	DispatchComputeShader(RHICmdList, GatherShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
