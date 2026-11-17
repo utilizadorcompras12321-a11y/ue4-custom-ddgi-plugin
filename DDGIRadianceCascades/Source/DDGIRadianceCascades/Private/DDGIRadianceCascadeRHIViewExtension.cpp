@@ -1322,7 +1322,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		IntegrateShader->SetParameters(
 			RHICmdList, IntegrateShader.GetComputeShader(),
 			IntegrationScratchUAV, GatherOutputSRV, IntegrationHitDistanceSRV,
-			LogicalToPhysicalSRV,
+			IntegrationHitTriangleIndexSRV, LogicalToPhysicalSRV,
 			IntegrationTexels, IntegrationGroups, TotalRaysPerProbe,
 			ProbeCount, TraceStartIndex,
 			static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
