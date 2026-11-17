@@ -46,12 +46,27 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    const bool bParentHit = HitDistanceTexture.Load(int3(Pixel, 0)) >= 0.0f;
+    const float ParentHitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
+    const uint ParentTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel, 0));
+    if (ParentHitDistance >= 0.0f)
+    {
+        // A hit inside this cascade's interval owns this angular cell and
+        // terminates transport to farther intervals.
+        RadianceUAV[Pixel] = DDGIPackR11G11B10(
+            GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
+        return;
+    }
+    if (ParentTriangleTag > 0u)
+    {
+        // A tagged negative distance is a real blocker before this interval.
+        // Preserve its zero radiance rather than allowing farther children
+        // to leak through the occluder.
+        RadianceUAV[Pixel] = DDGIPackR11G11B10(0.0f);
+        return;
+    }
 
-    // Each parent angular cell is the union of two equal-solid-angle child
-    // cells. A child hit, pre-interval blocker, or farther radiance owns that
-    // sub-cell; use the parent hit only when both children are unobstructed
-    // misses with no farther contribution.
+    // An unobstructed miss continues transport by averaging the two
+    // equal-solid-angle child cells from the next, farther cascade.
     const uint FirstChildRay = LocalRayIndex * 2u;
     const uint FirstChildLinearIndex =
         PhysicalProbeIndex * TotalRaysPerProbe +
@@ -68,34 +83,6 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         DDGIUnpackR11G11B10(RadianceUAV[FirstChildPixel]);
     const float3 SecondChildRadiance =
         DDGIUnpackR11G11B10(RadianceUAV[SecondChildPixel]);
-    const float FirstChildHitDistance =
-        HitDistanceTexture.Load(int3(FirstChildPixel, 0));
-    const float SecondChildHitDistance =
-        HitDistanceTexture.Load(int3(SecondChildPixel, 0));
-    const uint FirstChildTriangleTag =
-        HitTriangleIndexTexture.Load(int3(FirstChildPixel, 0));
-    const uint SecondChildTriangleTag =
-        HitTriangleIndexTexture.Load(int3(SecondChildPixel, 0));
-    const bool bFirstChildHit = FirstChildHitDistance >= 0.0f;
-    const bool bSecondChildHit = SecondChildHitDistance >= 0.0f;
-    const bool bFirstChildBlocked =
-        FirstChildHitDistance < 0.0f && FirstChildTriangleTag > 0u;
-    const bool bSecondChildBlocked =
-        SecondChildHitDistance < 0.0f && SecondChildTriangleTag > 0u;
-    // A blocked child is a valid zero-radiance angular sample, not an empty
-    // slot that may be replaced by the coarser parent's farther hit.
-    const bool bChildrenContribute =
-        bFirstChildHit || bSecondChildHit ||
-        bFirstChildBlocked || bSecondChildBlocked ||
-        any(FirstChildRadiance > 1.0e-6f) ||
-        any(SecondChildRadiance > 1.0e-6f);
-    if (bParentHit && !bChildrenContribute)
-    {
-        RadianceUAV[Pixel] = DDGIPackR11G11B10(
-            GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
-        return;
-    }
-
     const float3 MergedChildRadiance =
         0.5f * (FirstChildRadiance + SecondChildRadiance);
     RadianceUAV[Pixel] = DDGIPackR11G11B10(MergedChildRadiance);
