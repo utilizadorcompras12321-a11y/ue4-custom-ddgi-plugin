@@ -805,19 +805,8 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     uint SafeCascadeCount = max(CascadeCount, 1u);
     uint CascadeIndex = min((uint)max(PackedDirection.w, 0.0f), SafeCascadeCount - 1u);
 
-    // With angular splitting removed, every cascade uses the exact same ray
-    // direction. Only the farthest active cascade needs to traverse the BVH:
-    // it sees the complete MaxTraceDistance. Nearer cascade slots remain
-    // empty and are filled from their child by the far-to-near integration
-    // passes. This avoids repeating the same expensive BVH traversal once
-    // per distance cascade.
-    if (CascadeIndex + 1u < SafeCascadeCount)
-    {
-        HitDistanceUAV[Pixel] = -1.0f;
-        HitTriangleIndexUAV[Pixel] = 0u;
-        RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-        return;
-    }
+    // Each cascade traces its own non-overlapping distance interval. Its
+    // child cascade covers the same angular region at twice the resolution.
 
     float SafeMaxTraceDistance = max(MaxTraceDistance, 1.0f);
     float2 CascadeInterval = DDGIRadianceCascadeDistanceInterval(
@@ -850,18 +839,29 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         CascadeEndDistance = SafeMaxTraceDistance;
     }
 
+    // Trace only this interval; earlier and farther intervals are handled by
+    // adjacent cascades instead of repeating the full BVH traversal.
+    float3 CascadeRayOrigin = Origin + Direction * CascadeStartDistance;
+    float CascadeRayLength = max(CascadeEndDistance - CascadeStartDistance, 0.0f);
+    if (CascadeRayLength <= 0.0f)
+    {
+        HitDistanceUAV[Pixel] = -1.0f;
+        HitTriangleIndexUAV[Pixel] = 0u;
+        RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return;
+    }
     // Reuse the shared closest-hit traversal for primary and secondary rays.
     // Keeping one BVH traversal implementation substantially reduces the
     // generated SM5 shader and avoids duplicating large local traversal stacks.
-    float ClosestHit = CascadeEndDistance;
+    float ClosestHit = CascadeRayLength;
     uint ClosestTriangleIndex = 0u;
     float3 ClosestTriangleA = 0.0f;
     float3 ClosestTriangleB = 0.0f;
     float3 ClosestTriangleC = 0.0f;
     bool bHit = TraceClosestHit(
-        Origin,
+        CascadeRayOrigin,
         Direction,
-        CascadeEndDistance,
+        CascadeRayLength,
         0xFFFFFFFFu,
         ClosestHit,
         ClosestTriangleIndex,
@@ -869,23 +869,20 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ClosestTriangleB,
         ClosestTriangleC);
 
-    // Cascades own disjoint ray-distance intervals, but every ray still
-    // represents a real direction from this probe. If its first surface is
-    // before this interval, that surface blocks all farther contributions;
-    // it must still carry its radiance instead of becoming a zero-radiance hit.
-    bool bBlockedByEarlierSurface = bHit && ClosestHit < CascadeStartDistance;
-    bool bHitInThisInterval = bHit &&
-        ClosestHit >= CascadeStartDistance &&
-        ClosestHit <= CascadeEndDistance;
-    bool bHasSurfaceHit = bHitInThisInterval || bBlockedByEarlierSurface;
+    // Store distance from the original probe; gather reconstructs world-space
+    // hit positions using the unshifted probe origin.
+    if (bHit)
+    {
+        ClosestHit += CascadeStartDistance;
+    }
+    bool bHasSurfaceHit = bHit;
     HitDistanceUAV[Pixel] = bHasSurfaceHit ? ClosestHit : -1.0f;
     HitTriangleIndexUAV[Pixel] = bHasSurfaceHit ? (ClosestTriangleIndex + 1u) : 0u;
 
     // The static environment is injected only by the farthest cascade.
     // Injecting it into every interval would count the same environment many times.
     float BackgroundFade = 0.0f;
-    if (bEnableStaticBackground != 0u && bIsLastActiveCascade &&
-        !bHitInThisInterval && !bBlockedByEarlierSurface)
+    if (bEnableStaticBackground != 0u && bIsLastActiveCascade && !bHasSurfaceHit)
     {
         float ProbeDistance = distance(Origin, ActiveWindowCenter.xyz);
         float TransitionWidth = max(BackgroundTransitionEnd - BackgroundTransitionStart, 1.0e-3f);
