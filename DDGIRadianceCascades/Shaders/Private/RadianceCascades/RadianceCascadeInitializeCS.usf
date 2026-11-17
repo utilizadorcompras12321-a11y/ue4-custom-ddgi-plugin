@@ -47,12 +47,23 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    // No angular splitting: all distance cascades reuse the same
-    // equal-solid-angle directions. Only the distance interval changes.
+    // Decode the packed cascade range; each level doubles angular resolution.
     uint SafeBaseRayCount = clamp(BaseRayCount, 1u, 64u);
-    uint CascadeIndex = min(PackedRayIndex / SafeBaseRayCount, CascadeCount - 1u);
-    uint RayIndex = PackedRayIndex - CascadeIndex * SafeBaseRayCount;
-    float4 AngularRegion = DDGIRadianceCascadeBaseRegion(RayIndex, SafeBaseRayCount);
+    uint SafeCascadeCount = max(CascadeCount, 1u);
+    uint CascadeIndex = 0u;
+    uint CascadeOffset = 0u;
+    uint CascadeRayCount = SafeBaseRayCount;
+    [loop]
+    while (CascadeIndex + 1u < SafeCascadeCount &&
+           PackedRayIndex >= CascadeOffset + CascadeRayCount)
+    {
+        CascadeOffset += CascadeRayCount;
+        CascadeRayCount <<= 1u;
+        ++CascadeIndex;
+    }
+    uint CascadeRayIndex = PackedRayIndex - CascadeOffset;
+    float4 AngularRegion = DDGIRadianceCascadeHierarchicalRegion(
+        CascadeRayIndex, CascadeIndex, SafeBaseRayCount);
     float3 Direction = DDGIRadianceCascadeRegionDirection(AngularRegion);
 
     uint2 DirectionPixel = uint2(PackedRayIndex % TextureWidth, PackedRayIndex / TextureWidth);
