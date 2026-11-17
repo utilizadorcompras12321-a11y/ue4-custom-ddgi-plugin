@@ -14,8 +14,8 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - Final integrated radiance uses packed R11G11B10 values in an R32_UINT texture, avoiding optional half-float typed UAV loads on DX11.0.
 - Logical-to-physical probe-slot mapping with retained history for stable world-lattice cells.
 - Trace, gather and integration process the same bounded probe batch; untouched probes retain their last valid integrated result.
-- A quantized fingerprint covers directional/local-light inputs and static-background settings; changing them invalidates cached probe radiance instead of preserving lighting from the previous state.
-- A persistent round-robin trace cursor advances only for dispatched batches and resets after global history invalidation, refreshing the nearest active probes first.
+- Lighting changes (moving/changing directional and local lights, or background settings) are refreshed incrementally by the persistent round-robin trace scheduler; they do not flush every retained probe slot.
+- Geometry, probe identity and cascade-layout changes still invalidate history when required. The trace cursor advances only for dispatched batches and resets after those explicit global invalidations.
 - Spatial gather with surface/normal/plane rejection.
 - Deferred lighting application with clipmap blending and probe-to-receiver visibility rejection.
 
@@ -74,6 +74,6 @@ Material-evaluation architecture constraints and the two viable implementation p
 
 ## Important limitations
 
-This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, SkyLight/RectLight or IES evaluation, arbitrary Material Graph evaluation, texture sampling, opacity-mask evaluation, translucency, or a temporal denoiser. Lighting changes invalidate the complete retained radiance cache; with a bounded trace budget this can temporarily reduce indirect lighting until probes are refreshed. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
+This implementation is still experimental. It does not currently provide dynamic-mesh BVH updates, probe relocation, SkyLight/RectLight or IES evaluation, arbitrary Material Graph evaluation, texture sampling, opacity-mask evaluation, translucency, or a temporal denoiser. Lighting changes are not applied to every probe in the same frame: each probe keeps its previous result until the round-robin scheduler traces it again. A complete refresh sweep takes approximately ceil(active probes / trace budget) frames, so a low budget can produce visible temporal lag with fast-moving lights; increasing the budget improves responsiveness at additional GPU cost. Deterministic ray directions avoid stochastic sampling noise, but they do not replace missing geometry/material support or scene-specific performance validation.
 
 Do not treat the presence of the plugin or a successful C++ build as proof of production-ready GI. Validate the output with moving cameras, thin walls, corners, enclosed rooms, emissive surfaces and changing directional and local lights. Profile GPU time at the target resolution and on the target hardware.
