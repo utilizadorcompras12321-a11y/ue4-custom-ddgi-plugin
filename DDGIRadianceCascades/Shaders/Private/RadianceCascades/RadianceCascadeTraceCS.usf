@@ -875,14 +875,15 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ClosestTriangleB,
         ClosestTriangleC);
 
-    // HitDistance is measured from the probe for every independent direction.
-    // Any hit is valid radiance for this angular sample, including hits nearer
-    // than this level's nominal distance band. A fine sample can therefore
-    // recover geometry missed by its coarser parent.
-    bool bHasSurfaceHit = bHit;
-    // Parent hits take precedence during far-to-near integration, preventing
-    // double counting while allowing fine rays to recover thin geometry.
-    HitDistanceUAV[Pixel] = bHit ? ClosestHit : -1.0f;
+    // Each independent ray owns only its cascade's distance interval.
+    // A nearer hit is retained as a tagged negative distance: Gather emits
+    // zero radiance for this blocked interval, Integrate prevents farther
+    // leakage, and Apply can still use the real probe-relative occluder.
+    bool bHitBeforeInterval = bHit && ClosestHit < CascadeStartDistance;
+    bool bHasSurfaceHit = bHit && !bHitBeforeInterval;
+    HitDistanceUAV[Pixel] = bHitBeforeInterval
+        ? -ClosestHit
+        : (bHasSurfaceHit ? ClosestHit : -1.0f);
     HitTriangleIndexUAV[Pixel] = bHit ? (ClosestTriangleIndex + 1u) : 0u;
 
     // The static environment is injected only by the farthest cascade.
