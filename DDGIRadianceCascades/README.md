@@ -6,7 +6,7 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 
 - One GI path: sparse clipmap probe lattice + Radiance Cascades ray hierarchy.
 - Up to four spatial clipmap levels with power-of-two spacing (1, 2, 4, 8), limited by the configured probe radius.
-- Deterministic equal-solid-angle ray directions and deterministic probe scheduling.
+- Deterministic equal-solid-angle ray directions reused across distance cascades (no angular splitting), reducing ray tracing and storage cost.
 - Software BVH traversal in SM5 compute shaders.
 - One secondary diffuse bounce.
 - Separate persistent raw-trace, gathered-radiance and final-integrated textures; tracing never overwrites integrated history.
@@ -54,8 +54,7 @@ The four supported material parameters are documented in [MATERIAL_PARAMETERS.md
 | `LocalLightGIIntensityScale` | Scale applied to point/spot-light contributions |
 | `MaxSoftwareTriangles` | Maximum number of triangles admitted to the static software BVH |
 | `CascadeCount` | Number of distance cascades |
-| `BaseRayCount` | Number of base angular regions |
-| `RaySplitFactor` | Angular subdivision factor between cascades |
+| `BaseRayCount` | Fixed angular direction count reused by every distance cascade |
 | `BaseSegmentLength` | Length of the first cascade interval, in cm |
 | `CascadeScale` | Geometric growth factor for cascade intervals |
 | `DynamicGIDistance` | Maximum software ray distance, in cm |
