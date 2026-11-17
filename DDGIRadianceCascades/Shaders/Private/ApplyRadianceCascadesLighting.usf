@@ -11,8 +11,6 @@ Texture2D<float4> NormalTexture;
 Texture2D<float> DepthTexture;
 Texture2D<float4> BaseColorTexture;
 Texture2D<float4> MetallicTexture;
-Texture2D<float> ScreenSpaceAOTexture;
-uint bHasScreenSpaceAO;
 Texture2D<float4> DirectionsTexture;
 Texture2D<uint> RadianceTexture;
 Texture2D<float> HitDistanceTexture;
@@ -25,7 +23,6 @@ uint UsePrecomputedProbeNeighbors;
 Texture2D<float4> SceneColorTexture;
 RWTexture2D<float4> SceneColorOutputUAV;
 SamplerState PointClampSampler;
-SamplerState BilinearClampSampler;
 
 float4 ScaledViewSizeAndInvSize;
 float2 ViewRectMin;
@@ -535,9 +532,8 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     // The UE4.27 experimental GI delegate runs before the engine's normal
     // diffuse-indirect/AO composite. Keep this multiplier at 1 here so the
     // engine applies its standard SSAO/DFAO once, without double-darkening.
-    float ScreenSpaceAO = bHasScreenSpaceAO != 0u
-        ? saturate(ScreenSpaceAOTexture.SampleLevel(BilinearClampSampler, BufferUV, 0).r)
-        : 1.0f;
+    // The engine's normal diffuse-indirect/AO composite runs after this
+    // delegate and applies SSAO/DFAO to this contribution once.
     SceneColorOutputUAV[BufferPixelIndex] =
-        SceneColor + float4(Irradiance * Albedo * ScreenSpaceAO * PreExposure, 0.0f);
+        SceneColor + float4(Irradiance * Albedo * PreExposure, 0.0f);
 }
