@@ -1,8 +1,10 @@
 #ifndef DDGI_RADIANCE_CASCADE_LAYOUT_USH
 #define DDGI_RADIANCE_CASCADE_LAYOUT_USH
 
-// Mirrors FDDGIRadianceCascadeConfig. Cascade intervals are disjoint;
-// cascade N covers only [start(N), end(N)] and never re-integrates earlier ranges.
+// Mirrors FDDGIRadianceCascadeConfig. Each level increases the maximum
+// probe-origin trace distance. Fine angular samples retain nearer hits as
+// fallback radiance; far-to-near integration prefers a parent's hit and only
+// averages its children when the parent direction misses.
 
 float DDGIRadianceCascadeSegmentLength(
 	int CascadeIndex,
