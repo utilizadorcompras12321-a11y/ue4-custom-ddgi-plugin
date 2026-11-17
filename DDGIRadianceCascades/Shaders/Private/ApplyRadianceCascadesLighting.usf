@@ -96,6 +96,8 @@ bool DDGIIsProbeInitialized(uint ProbeIndex)
 
 float3 DDGIProbeDiffuseIrradiance(
     uint ProbeIndex,
+    float3 ProbePosition,
+    float3 LocalPosition,
     float3 Normal)
 {
     float3 Irradiance = 0.0f;
@@ -107,6 +109,11 @@ float3 DDGIProbeDiffuseIrradiance(
     // Applying MaxTraceDistance to probe-to-receiver distance creates
     // spherical cutoffs around probes and visible circular GI artifacts.
     uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+    float3 ToReceiver = LocalPosition - ProbePosition;
+    float ReceiverDistance = length(ToReceiver);
+    float3 ReceiverDirection = ToReceiver / max(ReceiverDistance, 0.0001f);
+    float BestReceiverAlignment = -1.0f;
+    uint BestReceiverRay = 0u;
 
     // Integrate the base angular directions. The higher cascades refine the
     // radiance captured along those directions; they are not extra quadrature
@@ -119,6 +126,12 @@ float3 DDGIProbeDiffuseIrradiance(
             RayIndex / DDGI_RC_TEXTURE_WIDTH);
         float3 Direction = normalize(
             DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
+        float ReceiverAlignment = dot(Direction, ReceiverDirection);
+        if (ReceiverAlignment > BestReceiverAlignment)
+        {
+            BestReceiverAlignment = ReceiverAlignment;
+            BestReceiverRay = RayIndex;
+        }
         float Cosine = saturate(dot(Normal, -Direction));
         if (Cosine > 0.0f)
         {
@@ -130,12 +143,33 @@ float3 DDGIProbeDiffuseIrradiance(
         }
     }
 
+    // A close-range probe-to-receiver visibility test closes the main light-leak
+    // path: radiance captured on the far side of a wall must not illuminate a
+    // receiver in front of that wall. Reuse the best-aligned base ray selected
+    // above, so this costs only one additional hit-distance texture read.
+    if (ReceiverDistance > 0.001f &&
+        ReceiverDistance <= max(BaseSegmentLength, 1.0f) &&
+        BestReceiverAlignment > 0.94f)
+    {
+        uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + BestReceiverRay;
+        uint2 HitPixel = uint2(
+            LinearIndex % DDGI_RC_TEXTURE_WIDTH,
+            LinearIndex / DDGI_RC_TEXTURE_WIDTH);
+        float OccluderDistance = HitDistanceTexture.Load(int3(HitPixel, 0));
+        if (OccluderDistance > 0.0f && OccluderDistance < ReceiverDistance)
+        {
+            float Bias = max(2.0f, ProbeSpacing * 0.02f);
+            float Occlusion = 1.0f - smoothstep(
+                Bias, Bias * 2.0f, ReceiverDistance - OccluderDistance);
+            float AngularConfidence = saturate(
+                (BestReceiverAlignment - 0.94f) / 0.06f);
+            Irradiance *= lerp(1.0f, Occlusion, AngularConfidence);
+        }
+    }
+
     // Each base direction represents 4*PI/N steradians. The 1/PI
     // Lambertian BRDF normalization cancels PI, so this returns E/PI,
     // ready to multiply directly by diffuse albedo in the apply pass.
-    // Probe-to-receiver visibility is deliberately not applied here.
-    // The BVH trace and cascade integration already account for scene
-    // occlusion; a second coarse angular test caused false spherical cutoffs.
     return Irradiance * (4.0f / (float)SafeRayCount);
 }
 uint DDGIGetSpatialLevelStep(uint Level)
@@ -235,7 +269,7 @@ float3 DDGISampleProbeLevel(
         if (Weight <= 0.00001f) continue;
 
         Irradiance += DDGIProbeDiffuseIrradiance(
-            ProbeIndex, Normal) * Weight;
+            ProbeIndex, ProbePosition, LocalPosition, Normal) * Weight;
         OutVisibleWeightSum += Weight;
     }
 
