@@ -708,11 +708,17 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 	{
 		Config.DirectionalLightDirection = -Light->GetComponentTransform().GetUnitAxis(EAxis::X).GetSafeNormal();
 		Config.DirectionalLightColor = Light->LightColor.ReinterpretAsLinear();
-		// Keep the scene light untouched; apply a separate scale only to DDGI radiance.
-		Config.DirectionalLightIntensity = FMath::Min(
-			Light->Intensity * FMath::Max(0.0f, Light->IndirectLightingIntensity) *
-			1.0e-5f * FMath::Max(0.0f, InActor->DirectionalLightGIIntensityScale),
-			100.0f);
+		// UE4 directional-light intensity is illuminance in lux. Preserve that value
+		// for DDGI; the radiance shader applies the Lambertian 1/PI factor.
+		// The optional actor scale is artistic only and defaults to 1.0 (no calibration).
+		const float DirectionalIlluminanceLux =
+			Light->Intensity * FMath::Max(0.0f, Light->IndirectLightingIntensity);
+		const float ScaledDirectionalIlluminanceLux =
+			DirectionalIlluminanceLux * FMath::Max(0.0f, InActor->DirectionalLightGIIntensityScale);
+		Config.DirectionalLightIntensity =
+			FMath::IsFinite(ScaledDirectionalIlluminanceLux)
+				? ScaledDirectionalIlluminanceLux
+				: 0.0f;
 		Config.bHasDirectionalLight = true;
 		Config.bDirectionalLightCastsShadows = Light->CastShadows != 0;
 	}
