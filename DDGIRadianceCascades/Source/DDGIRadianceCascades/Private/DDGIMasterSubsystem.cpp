@@ -308,6 +308,7 @@ namespace
 		float Spacing,
 		float Radius,
 		const FIntVector& CenterCell,
+		const FVector& CameraLocation,
 		int32 MaxProbeCount,
 		TArray<FVector4>& OutPositions,
 		TArray<FIntVector>& OutCellCoordinates,
@@ -506,6 +507,51 @@ namespace
 				OutLevels.Add(Level);
 			}
 		}
+
+		// Logical probes are traced sequentially; order them by distance to the
+		// actual camera so each incremental trace batch updates the nearest first.
+		TArray<int32> SortedIndices;
+		SortedIndices.SetNumUninitialized(OutPositions.Num());
+		for (int32 Index = 0; Index < SortedIndices.Num(); ++Index)
+		{
+			SortedIndices[Index] = Index;
+		}
+		SortedIndices.Sort([&](int32 A, int32 B)
+		{
+			const FVector4& PA = OutPositions[A];
+			const FVector4& PB = OutPositions[B];
+			const double AX = static_cast<double>(PA.X) - CameraLocation.X;
+			const double AY = static_cast<double>(PA.Y) - CameraLocation.Y;
+			const double AZ = static_cast<double>(PA.Z) - CameraLocation.Z;
+			const double BX = static_cast<double>(PB.X) - CameraLocation.X;
+			const double BY = static_cast<double>(PB.Y) - CameraLocation.Y;
+			const double BZ = static_cast<double>(PB.Z) - CameraLocation.Z;
+			const double DA = AX * AX + AY * AY + AZ * AZ;
+			const double DB = BX * BX + BY * BY + BZ * BZ;
+			if (DA != DB) return DA < DB;
+			const FIntVector& CA = OutCellCoordinates[A];
+			const FIntVector& CB = OutCellCoordinates[B];
+			if (CA.Z != CB.Z) return CA.Z < CB.Z;
+			if (CA.Y != CB.Y) return CA.Y < CB.Y;
+			if (CA.X != CB.X) return CA.X < CB.X;
+			return OutLevels[A] < OutLevels[B];
+		});
+
+		TArray<FVector4> NearestPositions;
+		TArray<FIntVector> NearestCells;
+		TArray<int32> NearestLevels;
+		NearestPositions.Reserve(OutPositions.Num());
+		NearestCells.Reserve(OutCellCoordinates.Num());
+		NearestLevels.Reserve(OutLevels.Num());
+		for (int32 Index : SortedIndices)
+		{
+			NearestPositions.Add(OutPositions[Index]);
+			NearestCells.Add(OutCellCoordinates[Index]);
+			NearestLevels.Add(OutLevels[Index]);
+		}
+		OutPositions = MoveTemp(NearestPositions);
+		OutCellCoordinates = MoveTemp(NearestCells);
+		OutLevels = MoveTemp(NearestLevels);
 	}
 	void DDGICountSpatialProbeLevels(
 		const TArray<int32>& ProbeLevels,
@@ -1116,7 +1162,8 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	Config.ActiveProbeWindowCenter = InitialCameraLocation;
 	DDGIBuildActiveProbePositions(
 		Config.ProbeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
-		Config.MaxActiveProbes, Config.ProbePositions, Config.ProbeCellCoordinates, Config.ProbeLevels);
+		InitialCameraLocation, Config.MaxActiveProbes, Config.ProbePositions,
+		Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
 	int32 InitialLevel0 = 0, InitialLevel1 = 0, InitialLevel2 = 0, InitialLevel3 = 0;
 	DDGICountSpatialProbeLevels(Config.ProbeLevels,
@@ -1189,7 +1236,7 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 	bHasActiveWindowCenterCell = true;
 	DDGIBuildActiveProbePositions(
 		SafeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
-		Config.MaxActiveProbes, Config.ProbePositions,
+		CameraLocation, Config.MaxActiveProbes, Config.ProbePositions,
 		Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
 	int32 UpdatedLevel0 = 0, UpdatedLevel1 = 0, UpdatedLevel2 = 0, UpdatedLevel3 = 0;
