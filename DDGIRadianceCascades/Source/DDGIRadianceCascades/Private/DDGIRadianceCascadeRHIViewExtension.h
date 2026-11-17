@@ -4,6 +4,10 @@
 #include "SceneViewExtension.h"
 
 class FRHICommandListImmediate;
+class FScene;
+class FViewInfo;
+class FRDGBuilder;
+class FGlobalIlluminationExperimentalPluginResources;
 
 class FDDGIRadianceCascadeRHIViewExtension final : public FSceneViewExtensionBase
 {
@@ -15,7 +19,11 @@ public:
 	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
 	virtual void PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) override {}
 	virtual void PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) override;
-	virtual void SubscribeToPostProcessingPass(EPostProcessingPass Pass, FAfterPassCallbackDelegateArray& InOutPassCallbacks, bool bIsPassEnabled) override;
+	static void RenderDiffuseIndirect(
+		const FScene& Scene,
+		const FViewInfo& View,
+		FRDGBuilder& GraphBuilder,
+		FGlobalIlluminationExperimentalPluginResources& Resources);
 
 protected:
 	virtual bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const override;
