@@ -825,9 +825,15 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         uint ParentLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe +
             ParentCascadeStorageOffset + ParentCascadeRayIndex;
         uint2 ParentPixel = uint2(ParentLinearIndex % TextureWidth, ParentLinearIndex / TextureWidth);
-        bool bParentBlocked = bReadParentMaskFloat != 0u
-            ? (ParentOcclusionMaskFloatTexture.Load(int3(ParentPixel, 0)).x > 0.5f)
-            : (ParentOcclusionMaskUIntTexture.Load(int3(ParentPixel, 0)) != 0u);
+        bool bParentBlocked = false;
+        if (bReadParentMaskFloat != 0u)
+        {
+            bParentBlocked = ParentOcclusionMaskFloatTexture.Load(int3(ParentPixel, 0)).x > 0.5f;
+        }
+        else
+        {
+            bParentBlocked = ParentOcclusionMaskUIntTexture.Load(int3(ParentPixel, 0)) != 0u;
+        }
         if (bParentBlocked)
         {
             if (bWriteCurrentMaskFloat != 0u)
