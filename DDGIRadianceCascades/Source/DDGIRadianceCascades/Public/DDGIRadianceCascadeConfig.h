@@ -71,7 +71,7 @@ struct FDDGIRadianceCascadeConfig
 		int32 ActiveCount = 0;
 		int32 TotalRays = 0;
 		const int32 SafeBaseRayCount = FMath::Clamp(BaseRayCount, 1, 64);
-		const int32 MaxRaysPerProbe = 256;
+		const int32 MaxRaysPerProbe = 128;
 		for (int32 Index = 0; Index < ConfiguredCount; ++Index)
 		{
 			const float CascadePower = FMath::Pow(SafeScale, static_cast<float>(Index));
@@ -177,7 +177,7 @@ struct FDDGIRadianceCascadeConfig
 		}
 	}
 
-	// Hierarchical angular storage is capped at 256 rays per probe.
+	// Hierarchical angular storage is capped at 128 rays per probe.
 	// Current GPU layout: raw radiance (8) + gather scratch (8) + packed final radiance (4) +
 	// hit distance (4) + hit triangle index (4) = 28 bytes per ray per probe.
 	// Direction (8 bytes) is stored once per ray layout and shared by every probe.
