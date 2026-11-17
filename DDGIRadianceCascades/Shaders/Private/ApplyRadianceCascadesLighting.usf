@@ -231,14 +231,17 @@ float3 DDGISampleLevelValue(
     float3 LocalPosition,
     float3 Normal,
     uint Level,
-    out bool OutValid)
+    out bool OutValid,
+    out float OutConfidence)
 {
     float SpatialWeightSum = 0.0f;
     float VisibleWeightSum = 0.0f;
     float3 Value = DDGISampleProbeLevel(
         LocalPosition, Normal, Level, SpatialWeightSum, VisibleWeightSum);
+    OutConfidence = saturate(
+        VisibleWeightSum / max(SpatialWeightSum, 0.00001f));
     OutValid = SpatialWeightSum > 0.00001f && VisibleWeightSum > 0.00001f;
-    return Value * saturate(VisibleWeightSum / max(SpatialWeightSum, 0.00001f));
+    return Value;
 }
 
 float3 DDGIInterpolateLevelPair(
@@ -251,12 +254,23 @@ float3 DDGIInterpolateLevelPair(
 {
     bool bValidA = false;
     bool bValidB = false;
-    float3 ValueA = DDGISampleLevelValue(LocalPosition, Normal, LevelA, bValidA);
-    float3 ValueB = DDGISampleLevelValue(LocalPosition, Normal, LevelB, bValidB);
-    OutValid = bValidA || bValidB;
-    if (bValidA && bValidB) return lerp(ValueA, ValueB, saturate(T));
-    if (bValidA) return ValueA;
-    return ValueB;
+    float ConfidenceA = 0.0f;
+    float ConfidenceB = 0.0f;
+    float3 ValueA = DDGISampleLevelValue(
+        LocalPosition, Normal, LevelA, bValidA, ConfidenceA);
+    float3 ValueB = DDGISampleLevelValue(
+        LocalPosition, Normal, LevelB, bValidB, ConfidenceB);
+
+    // Treat missing/occluded support as a continuous confidence, not a binary
+    // switch. The previous boolean fallback selected one entire clipmap as soon
+    // as the other crossed a tiny validity threshold, creating visible seams.
+    float Blend = saturate(T);
+    float WeightA = (1.0f - Blend) * ConfidenceA;
+    float WeightB = Blend * ConfidenceB;
+    float TotalWeight = WeightA + WeightB;
+    OutValid = TotalWeight > 0.00001f;
+    return (ValueA * WeightA + ValueB * WeightB) /
+        max(TotalWeight, 0.00001f);
 }
 
 [numthreads(8, 8, 1)]
@@ -319,8 +333,10 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     {
         const uint DebugLevel = DebugMode - 4u;
         bool bDebugLevelValid = false;
+        float DebugLevelConfidence = 0.0f;
         float3 DebugLevelIrradiance = DDGISampleLevelValue(
-            LocalPosition, Normal, DebugLevel, bDebugLevelValid);
+            LocalPosition, Normal, DebugLevel, bDebugLevelValid, DebugLevelConfidence) *
+            DebugLevelConfidence;
         if (!bDebugLevelValid)
         {
             SceneColorOutputUAV[BufferPixelIndex] = float4(1.0f, 0.0f, 1.0f, 1.0f);
@@ -380,8 +396,10 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             if (ClipmapDistance <= ClipmapExtent)
             {
                 bool bCurrentLevelValid = false;
-                const float3 CurrentLevelIrradiance = DDGISampleLevelValue(
-                    LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid);
+                const float CurrentLevelConfidence = 0.0f;
+                float3 CurrentLevelIrradiance = DDGISampleLevelValue(
+                    LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid,
+                    CurrentLevelConfidence) * CurrentLevelConfidence;
                 if (bCurrentLevelValid)
                 {
                     Irradiance = CurrentLevelIrradiance;
@@ -402,8 +420,10 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         for (uint FallbackLevel = 0u; FallbackLevel < 4u; ++FallbackLevel)
         {
             bool bFallbackValid = false;
-            const float3 FallbackIrradiance = DDGISampleLevelValue(
-                LocalPosition, Normal, FallbackLevel, bFallbackValid);
+            const float FallbackConfidence = 0.0f;
+            float3 FallbackIrradiance = DDGISampleLevelValue(
+                LocalPosition, Normal, FallbackLevel, bFallbackValid,
+                FallbackConfidence) * FallbackConfidence;
             if (bFallbackValid)
             {
                 Irradiance = FallbackIrradiance;
