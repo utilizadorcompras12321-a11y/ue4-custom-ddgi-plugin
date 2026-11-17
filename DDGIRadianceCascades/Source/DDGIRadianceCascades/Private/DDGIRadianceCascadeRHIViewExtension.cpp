@@ -22,12 +22,6 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
     TEXT("Use precomputed probe neighbors in DDGI spatial gather (0=spatial hash, 1=precomputed list; default 1)."),
     ECVF_RenderThreadSafe);
 
-static TAutoConsoleVariable<int32> CVarDDGIRadianceProbeTraceBudget(
-    TEXT("r.DDGI.RadianceProbeTraceBudget"),
-    -1,
-    TEXT("Probe trace budget override per frame (-1 uses the DDGI Master Actor budget, 0 disables tracing, positive values override)."),
-    ECVF_RenderThreadSafe);
-
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
     TEXT("r.DDGI.DebugApply"),
     0,
@@ -1415,25 +1409,20 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
-	const int32 TraceBudgetOverride = CVarDDGIRadianceProbeTraceBudget.GetValueOnRenderThread();
-	const int32 RequestedTraceBudget = TraceBudgetOverride < 0
-		? Config->ProbeUpdateBudget
-		: TraceBudgetOverride;
-	const uint32 TraceBudget = static_cast<uint32>(
-		FMath::Clamp(RequestedTraceBudget, 0, 8192));
-	const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceBudget);
+	// Trace and integrate the complete active clipmap when its layout changes.
+	// The resource-side cursor marks the layout complete, so steady-state frames
+	// do not repeat millions of static-scene rays.
+	const uint32 TraceProbeCount = ProbeCount;
 	if (TraceProbeCount == 0u)
 	{
-		// Persistent final radiance remains valid. Do not run a full-grid Gather
-		// or Integrate pass when the trace budget is zero.
 		return;
 	}
-
-	// A persistent cursor advances only when a real trace batch is dispatched.
-	// This keeps coverage stable if the frame number or trace budget changes, and
-	// invalidation resets the cursor so the nearest probes refresh first.
 	const uint32 TraceStartIndex = DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
 		Scene, ProbeCount, TraceProbeCount);
+	if (TraceStartIndex == MAX_uint32)
+	{
+		return;
+	}
 	static bool bLoggedTraceLightingConfig = false;
 	if (!bLoggedTraceLightingConfig)
 	{
