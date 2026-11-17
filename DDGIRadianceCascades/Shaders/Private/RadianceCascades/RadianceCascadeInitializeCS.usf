@@ -4,7 +4,6 @@
 uint TotalRaysPerProbe;
 uint CascadeCount;
 uint BaseRayCount;
-uint RaySplitFactor;
 uint TextureWidth;
 uint TotalTexels;
 uint DispatchGroupsX;
@@ -48,66 +47,12 @@ void RadianceCascadeInitializeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    uint CascadeIndex = 0u;
-    uint CascadeOffset = 0u;
-    uint CascadeRayCount = BaseRayCount;
-
-    [loop]
-    for (uint Cascade = 0u; Cascade < CascadeCount; ++Cascade)
-    {
-        if (PackedRayIndex < CascadeOffset + CascadeRayCount)
-        {
-            CascadeIndex = Cascade;
-            break;
-        }
-        CascadeOffset += CascadeRayCount;
-        uint SafeSplit = clamp(RaySplitFactor, 1u, 4u);
-        if (CascadeRayCount <= 65536u / SafeSplit)
-        {
-            CascadeRayCount *= SafeSplit;
-        }
-    }
-
-    uint RayIndex = PackedRayIndex - CascadeOffset;
-    uint BaseRayIndex = RayIndex;
-    [loop]
-    for (uint ParentLevel = CascadeIndex; ParentLevel > 0u; --ParentLevel)
-    {
-        uint ParentRayCount = DDGIRadianceCascadeRayCount(
-            ParentLevel - 1u, BaseRayCount, RaySplitFactor);
-        uint ChildRayCount = DDGIRadianceCascadeRayCount(
-            ParentLevel, BaseRayCount, RaySplitFactor);
-        uint EffectiveSplit = max(1u, ChildRayCount / max(ParentRayCount, 1u));
-        BaseRayIndex /= EffectiveSplit;
-    }
-
-    float4 AngularRegion = DDGIRadianceCascadeBaseRegion(BaseRayIndex, BaseRayCount);
-
-    [loop]
-    for (uint Level = 1u; Level <= CascadeIndex; ++Level)
-    {
-        uint ChildIndexAtLevel = RayIndex;
-        [loop]
-        for (uint DescendantLevel = CascadeIndex; DescendantLevel > Level; --DescendantLevel)
-        {
-            uint ParentRayCount = DDGIRadianceCascadeRayCount(
-                DescendantLevel - 1u, BaseRayCount, RaySplitFactor);
-            uint ChildRayCount = DDGIRadianceCascadeRayCount(
-                DescendantLevel, BaseRayCount, RaySplitFactor);
-            uint DescendantSplit = max(1u, ChildRayCount / max(ParentRayCount, 1u));
-            ChildIndexAtLevel /= DescendantSplit;
-        }
-
-        uint ParentRayCount = DDGIRadianceCascadeRayCount(
-            Level - 1u, BaseRayCount, RaySplitFactor);
-        uint ChildRayCount = DDGIRadianceCascadeRayCount(
-            Level, BaseRayCount, RaySplitFactor);
-        uint EffectiveSplit = max(1u, ChildRayCount / max(ParentRayCount, 1u));
-        uint ChildInGroup = ChildIndexAtLevel % EffectiveSplit;
-        DDGIRadianceCascadeSplitRegion(
-            AngularRegion, ChildInGroup, EffectiveSplit);
-    }
-
+    // No angular splitting: all distance cascades reuse the same
+    // equal-solid-angle directions. Only the distance interval changes.
+    uint SafeBaseRayCount = clamp(BaseRayCount, 1u, 64u);
+    uint CascadeIndex = min(PackedRayIndex / SafeBaseRayCount, CascadeCount - 1u);
+    uint RayIndex = PackedRayIndex - CascadeIndex * SafeBaseRayCount;
+    float4 AngularRegion = DDGIRadianceCascadeBaseRegion(RayIndex, SafeBaseRayCount);
     float3 Direction = DDGIRadianceCascadeRegionDirection(AngularRegion);
 
     uint2 DirectionPixel = uint2(PackedRayIndex % TextureWidth, PackedRayIndex / TextureWidth);
