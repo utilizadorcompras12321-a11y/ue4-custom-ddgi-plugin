@@ -17,6 +17,8 @@
 #include "Misc/CoreDelegates.h"
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
+#include "DeferredShadingRenderer.h"
+#include "HAL/IConsoleManager.h"
 
 #define LOCTEXT_NAMESPACE "FDDGIRadianceCascadesPlugin"
 
