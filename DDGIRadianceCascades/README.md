@@ -7,6 +7,7 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - One GI path: sparse clipmap probe lattice + Radiance Cascades ray hierarchy.
 - Up to four spatial clipmap levels with power-of-two spacing (1, 2, 4, 8), limited by the configured probe radius.
 - Deterministic equal-solid-angle ray directions reused across distance cascades (no angular splitting), reducing ray tracing and storage cost.
+- With shared directions, only the farthest active cascade performs the full software-BVH trace; nearer cascade radiance is propagated through one-to-one integration, and their redundant spatial gathers are skipped.
 - Software BVH traversal in SM5 compute shaders.
 - One secondary diffuse bounce.
 - Separate persistent raw-trace, gathered-radiance and final-integrated textures; tracing never overwrites integrated history.
@@ -25,7 +26,7 @@ This repository contains a native Unreal Engine plugin implementing a software-t
 - The current tracing backend is software BVH; it does not use DXR or hardware ray tracing.
 - Material input uses four explicit parameters: vector `DDGI_BaseColor`, vector `DDGI_EmissiveRadiance`, scalar `DDGI_Metallic`, and scalar `DDGI_UseVertexColor`. They are read when the static BVH is rebuilt, not every frame. See [MATERIAL_PARAMETERS.md](MATERIAL_PARAMETERS.md) for defaults, setup and limitations. These are explicit overrides, not general Material Graph evaluation.
 - The current BVH is built from supported static geometry, including static ISM/HISM instances. Movable components and movable instances are skipped; they are not represented in indirect lighting.
-- Direct-light injection supports the strongest visible directional light plus up to 32 captured point/spot lights. The eight strongest local lights are shadow-tested at primary hits and the four strongest at secondary-bounce hits to bound BVH traversal cost. Local-light transforms, intensity, radius and spot cones are refreshed at runtime; attenuation is an approximation of UE4's light falloff.
+- Direct-light injection supports the strongest visible directional light plus up to 32 captured point/spot lights. The eight strongest local lights are shadow-tested at primary hits. Secondary-bounce direct lighting is deliberately unshadowed to avoid nested shadow-BVH traversals; this can increase indirect light leaks. Local-light transforms, intensity, radius and spot cones are refreshed at runtime; attenuation is an approximation of UE4's light falloff.
 - This is a custom experimental renderer feature. GPU cost and image quality depend on scene triangle count, active probe count, cascade settings and trace budget. A fixed 60 FPS guarantee is not possible without profiling on the target scene and GPU.
 
 ## Setup
