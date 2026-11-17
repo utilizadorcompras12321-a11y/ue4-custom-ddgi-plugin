@@ -385,7 +385,7 @@ public:
         FShaderResourceViewRHIRef Directions, FShaderResourceViewRHIRef Positions,
         FShaderResourceViewRHIRef LogicalToPhysical, FShaderResourceViewRHIRef Nodes,
         FShaderResourceViewRHIRef Triangles, FShaderResourceViewRHIRef HitDistances,
-        FShaderResourceViewRHIRef HitIndices, FShaderResourceViewRHIRef SurfaceRadiance, FUnorderedAccessViewRHIRef Radiance,
+        FShaderResourceViewRHIRef HitIndices, FUnorderedAccessViewRHIRef Radiance,
         uint32 InTotalTexels, uint32 InGroupsX, uint32 InProbeCount,
         uint32 InTraceStartIndex, uint32 InTotalRaysPerProbe,
         uint32 InNodeCount, uint32 InTriangleCount, float InGIIntensity,
@@ -426,7 +426,6 @@ public:
         if (BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHTriangles.GetBaseIndex(), Triangles);
         if (HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitDistanceTexture.GetBaseIndex(), HitDistances);
         if (HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitTriangleIndexTexture.GetBaseIndex(), HitIndices);
-        if (SurfaceRadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, SurfaceRadianceTexture.GetBaseIndex(), SurfaceRadiance);
         if (RadianceUAV.IsBound()) C.SetUAVParameter(Sh, RadianceUAV.GetBaseIndex(), Radiance);
     }
     template<typename TShaderRHIParamRef>
@@ -439,7 +438,6 @@ public:
         if (BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHTriangles.GetBaseIndex(), FShaderResourceViewRHIRef());
         if (HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitDistanceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
         if (HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitTriangleIndexTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
-        if (SurfaceRadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, SurfaceRadianceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
         if (RadianceUAV.IsBound()) C.SetUAVParameter(Sh, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
     }
 private:
@@ -469,7 +467,6 @@ private:
     LAYOUT_FIELD(FShaderResourceParameter, BVHTriangles);
     LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
     LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexTexture);
-    LAYOUT_FIELD(FShaderResourceParameter, SurfaceRadianceTexture);
     LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 };
 IMPLEMENT_SHADER_TYPE(
@@ -531,7 +528,7 @@ public:
         FShaderResourceViewRHIRef Directions, FShaderResourceViewRHIRef Positions,
         FShaderResourceViewRHIRef LogicalToPhysical, FShaderResourceViewRHIRef Nodes,
         FShaderResourceViewRHIRef Triangles, FShaderResourceViewRHIRef HitDistances,
-        FShaderResourceViewRHIRef HitIndices, FUnorderedAccessViewRHIRef Radiance,
+        FShaderResourceViewRHIRef HitIndices, FShaderResourceViewRHIRef SurfaceRadiance, FUnorderedAccessViewRHIRef Radiance,
         uint32 InTotalTexels, uint32 InGroupsX, uint32 InProbeCount,
         uint32 InTraceStartIndex, uint32 InTotalRaysPerProbe,
         uint32 InNodeCount, uint32 InTriangleCount, float InMaxTraceDistance,
@@ -578,6 +575,7 @@ public:
         if (BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHTriangles.GetBaseIndex(), Triangles);
         if (HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitDistanceTexture.GetBaseIndex(), HitDistances);
         if (HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitTriangleIndexTexture.GetBaseIndex(), HitIndices);
+        if (SurfaceRadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, SurfaceRadianceTexture.GetBaseIndex(), SurfaceRadiance);
         if (RadianceUAV.IsBound()) C.SetUAVParameter(Sh, RadianceUAV.GetBaseIndex(), Radiance);
     }
     template<typename TShaderRHIParamRef>
@@ -590,6 +588,7 @@ public:
         if (BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHTriangles.GetBaseIndex(), FShaderResourceViewRHIRef());
         if (HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitDistanceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
         if (HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitTriangleIndexTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+        if (SurfaceRadianceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, SurfaceRadianceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
         if (RadianceUAV.IsBound()) C.SetUAVParameter(Sh, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
     }
 private:
@@ -623,6 +622,7 @@ private:
     LAYOUT_FIELD(FShaderResourceParameter, BVHTriangles);
     LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
     LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexTexture);
+    LAYOUT_FIELD(FShaderResourceParameter, SurfaceRadianceTexture);
     LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 };
 IMPLEMENT_SHADER_TYPE(
