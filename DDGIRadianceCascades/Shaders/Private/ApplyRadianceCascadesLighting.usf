@@ -222,7 +222,7 @@ float3 DDGIProbeDiffuseIrradiance(
                 int3(CandidatePixel, 0));
             // Negative tagged distances represent hits before this
             // cascade interval; their absolute value remains probe-relative.
-            if (CandidateDistance != -1.0f)
+            if (isfinite(CandidateDistance))
             {
                 CandidateDistance = abs(CandidateDistance);
                 float3 SelectedDirection = normalize(
