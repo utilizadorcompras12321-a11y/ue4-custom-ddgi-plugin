@@ -28,7 +28,7 @@ Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> BVHNodes;
 StructuredBuffer<float4> BVHTriangles;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
-RWTexture2D<float4> RadianceUAV;
+RWTexture2D<float4> RadianceScratchUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<uint> HitTriangleIndexUAV;
 
@@ -413,7 +413,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     {
         HitDistanceUAV[Pixel] = -1.0f;
         HitTriangleIndexUAV[Pixel] = 0u;
-        RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        RadianceScratchUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
         return;
     }
 
@@ -439,7 +439,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     {
         HitDistanceUAV[Pixel] = -1.0f;
         HitTriangleIndexUAV[Pixel] = 0u;
-        RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        RadianceScratchUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
         return;
     }
     // This pass traces primary probe rays only; secondary rays are handled by resolve.
@@ -477,7 +477,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 BackgroundRadiance = StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity * BackgroundFade;
     // Surface lighting is evaluated by the dedicated shade pass. This pass
     // owns only BVH traversal, hit metadata and the far-cascade background.
-    RadianceUAV[Pixel] = float4(
+    RadianceScratchUAV[Pixel] = float4(
         bHasSurfaceHit ? 0.0f : (bHit ? 0.0f : BackgroundRadiance),
         1.0f);
 }
