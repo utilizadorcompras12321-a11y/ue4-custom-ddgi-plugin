@@ -25,6 +25,7 @@ uint UsePrecomputedProbeNeighbors;
 Texture2D<float4> SceneColorTexture;
 RWTexture2D<float4> SceneColorOutputUAV;
 SamplerState PointClampSampler;
+SamplerState BilinearClampSampler;
 
 float4 ScaledViewSizeAndInvSize;
 float2 ViewRectMin;
@@ -532,7 +533,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     // the SSAO contribution already present in SceneColor. Reapply the AO
     // visibility to the new indirect diffuse term only (never to existing color).
     float ScreenSpaceAO = bHasScreenSpaceAO != 0u
-        ? saturate(ScreenSpaceAOTexture.SampleLevel(PointClampSampler, BufferUV, 0).r)
+        ? saturate(ScreenSpaceAOTexture.SampleLevel(BilinearClampSampler, BufferUV, 0).r)
         : 1.0f;
     SceneColorOutputUAV[BufferPixelIndex] =
         SceneColor + float4(Irradiance * Albedo * ScreenSpaceAO * PreExposure, 0.0f);
