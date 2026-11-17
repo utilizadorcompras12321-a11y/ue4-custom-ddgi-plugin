@@ -1306,8 +1306,10 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 
-	// Spatial gather touches only probes traced this frame. It reads the
-	// immutable raw-trace texture and never consumes already integrated output.
+	// Spatial gather writes only probes traced in this batch, but may read
+	// persistent raw samples from neighboring probes updated in earlier batches.
+	// This preserves a full spatial neighborhood under incremental scheduling;
+	// the integrated output remains a separate persistent texture.
 	DDGITransitionTexture(RHICmdList, RadianceScratchTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	TShaderMapRef<FDDGIRadianceCascadeSpatialGatherRHI> GatherShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	RHICmdList.SetComputeShader(GatherShader.GetComputeShader());
