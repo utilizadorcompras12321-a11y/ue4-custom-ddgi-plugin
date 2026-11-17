@@ -486,7 +486,6 @@ public:
 		CascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("CascadeStorageOffset"));
 		CascadeRayCount.Bind(Initializer.ParameterMap, TEXT("CascadeRayCount"));
 		NextCascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("NextCascadeStorageOffset"));
-		EffectiveSplitFactor.Bind(Initializer.ParameterMap, TEXT("EffectiveSplitFactor"));
 		bCopyGatherToFinal.Bind(Initializer.ParameterMap, TEXT("bCopyGatherToFinal"));
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		GatheredRadianceTexture.Bind(Initializer.ParameterMap, TEXT("GatheredRadianceTexture"));
@@ -515,7 +514,6 @@ public:
 		uint32 InCascadeStorageOffset,
 		uint32 InCascadeRayCount,
 		uint32 InNextCascadeStorageOffset,
-		uint32 InEffectiveSplitFactor,
 		uint32 bInCopyGatherToFinal)
 	{
 		const uint32 InTextureWidth = 4096u;
@@ -528,7 +526,6 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeStorageOffset, InCascadeStorageOffset);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeRayCount, InCascadeRayCount);
 		SetShaderValue(RHICmdList, ShaderRHI, NextCascadeStorageOffset, InNextCascadeStorageOffset);
-		SetShaderValue(RHICmdList, ShaderRHI, EffectiveSplitFactor, InEffectiveSplitFactor);
 		SetShaderValue(RHICmdList, ShaderRHI, bCopyGatherToFinal, bInCopyGatherToFinal);
 		if (RadianceUAV.IsBound())
 		{
@@ -579,7 +576,6 @@ private:
 	LAYOUT_FIELD(FShaderParameter, CascadeStorageOffset);
 	LAYOUT_FIELD(FShaderParameter, CascadeRayCount);
 	LAYOUT_FIELD(FShaderParameter, NextCascadeStorageOffset);
-	LAYOUT_FIELD(FShaderParameter, EffectiveSplitFactor);
 	LAYOUT_FIELD(FShaderParameter, bCopyGatherToFinal);
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, GatheredRadianceTexture);
@@ -1272,9 +1268,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
 			CurrentCascadeRayCount,
 			static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex + 1)),
-			static_cast<uint32>(FMath::Max(1,
-				Config->RadianceCascades.GetRayCount(CascadeIndex + 1) /
-				FMath::Max(1, Config->RadianceCascades.GetRayCount(CascadeIndex)))),
 			0u);
 		DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), IntegrationGroups, IntegrationGroupsY, 1);
 		IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
