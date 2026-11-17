@@ -1084,7 +1084,6 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	Config.TotalRaysPerProbe = Config.RadianceCascades.GetTotalRayCount();
 	// Keep probe count within the texture/hash layout supported by the renderer.
 	Config.MaxActiveProbes = FMath::Clamp(InActor->MaxActiveProbes, 1, 32768);
-	Config.ProbeUpdateBudget = FMath::Max(0, InActor->ProbeUpdateBudget);
 	Config.MaxSoftwareTriangles = FMath::Clamp(InActor->MaxSoftwareTriangles, 1, 250000);
 
 	// Build the immutable static-scene BVH once. Moving the Master Actor only
