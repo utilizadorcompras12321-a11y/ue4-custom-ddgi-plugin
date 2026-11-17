@@ -287,6 +287,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 
 	enum class EPass : uint32
 	{
+		BeforeTemporalAA,
 		MotionBlur,
 		Tonemap,
 		FXAA,
@@ -313,6 +314,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 	{
 		switch (Pass)
 		{
+			case ISceneViewExtension::EPostProcessingPass::BeforeTemporalAA      : return EPass::BeforeTemporalAA;
 			case ISceneViewExtension::EPostProcessingPass::MotionBlur            : return EPass::MotionBlur;
 			case ISceneViewExtension::EPostProcessingPass::Tonemap               : return EPass::Tonemap;
 			case ISceneViewExtension::EPostProcessingPass::FXAA                  : return EPass::FXAA;
@@ -326,6 +328,7 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 
 	const TCHAR* PassNames[] =
 	{
+		TEXT("BeforeTemporalAA"),
 		TEXT("MotionBlur"),
 		TEXT("Tonemap"),
 		TEXT("FXAA"),
@@ -518,6 +521,9 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 
 		// Scene color view rectangle after temporal AA upscale to secondary screen percentage.
 		FIntRect SecondaryViewRect = PrimaryViewRect;
+
+		// View extensions can modify HDR SceneColor before temporal AA resolves it.
+		SceneColor = AddAfterPass(EPass::BeforeTemporalAA, SceneColor);
 
 		// Temporal Anti-aliasing. Also may perform a temporal upsample from primary to secondary view rect.
 		if (AntiAliasingMethod == AAM_TemporalAA)
