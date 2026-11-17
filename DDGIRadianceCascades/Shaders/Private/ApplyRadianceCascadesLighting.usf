@@ -196,20 +196,12 @@ float3 DDGIProbeDiffuseIrradiance(
             ChildPath = (ChildPath << 1u) | PathBit;
         }
 
-        // Cascade N starts after all preceding 1+2+4+... angular levels.
-        uint CascadeStorageOffset = SafeRayCount * (ChildCount - 1u);
-        uint CascadeRayIndex =
-            CascadeStorageOffset + BestBaseRay * ChildCount + ChildPath;
-        // The ray is the deterministic angular cell containing the receiver
-        // direction. Always test it; a cosine cutoff would disable visibility
-        // precisely in the coarse angular regions most prone to light leaks.
-        {
-            uint VisibilityLinearIndex =
-                PhysicalProbeIndex * TotalRaysPerProbe + CascadeRayIndex;
-            uint2 VisibilityPixel = uint2(
-                VisibilityLinearIndex % DDGI_RC_TEXTURE_WIDTH,
-                VisibilityLinearIndex / DDGI_RC_TEXTURE_WIDTH);
-            // A blocked descendant carries HitDistance=0 and no triangle
+        // The selected finest ray is the deterministic angular cell
+        // containing the receiver direction. Walk its ancestry because a
+        // blocked descendant stores a zero-distance sentinel, not a surface hit.
+        // A cosine cutoff would disable visibility in the coarse angular regions
+        // most prone to light leaks.
+        // A blocked descendant carries HitDistance=0 and no triangle
             // tag. Walk toward the root until the first real surface hit is
             // found; otherwise the sentinel would look like an occluder at the
             // descendant's cascade origin.
@@ -312,8 +304,6 @@ float3 DDGIProbeDiffuseIrradiance(
                         DistanceBeforeReceiver);
                 }
             }
-        }
-    }
 
     // Each base direction represents 4*PI/N steradians. The 1/PI
     // Lambertian BRDF normalization cancels PI, so this returns E/PI,
