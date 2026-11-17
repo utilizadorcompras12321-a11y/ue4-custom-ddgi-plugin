@@ -71,11 +71,11 @@ namespace
 {
 	static const int32 GDDGIRadianceCascadeTextureWidth = 4096;
 	static const int32 GDDGIRadianceCascadeMaxTextureDimension = 16384;
-	// Five per-probe ray textures consume 28 bytes per ray record.
-	// Directions are stored once per ray layout (8 bytes per direction), shared
-	// by all probes. Bound this subsystem independently of RHI texture limits.
+	// Seven per-probe ray textures consume 36 bytes per ray record, including
+	// the two ping-pong occlusion masks. Directions are stored once per ray
+	// layout (8 bytes per direction), shared by all probes. Bound this subsystem independently of RHI limits.
 	static const int64 GDDGIRadianceCascadeMaxRayStorageBytes = 512ll * 1024ll * 1024ll;
-	static const int64 GDDGIRadianceCascadeBytesPerProbeRay = 28ll;
+	static const int64 GDDGIRadianceCascadeBytesPerProbeRay = 36ll;
 	static const int64 GDDGIRadianceCascadeBytesPerSharedDirection = 8ll;
 
 	struct FDDGIRadianceCascadeGPUStorage
@@ -272,8 +272,9 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         GDDGIRadianceCascadeTextureWidth;
 
     // Account for complete allocated rows, not only logically active ray records.
-    // Per-probe history uses five textures (28 bytes/texel): raw radiance,
-    // gather scratch, packed final radiance, hit distance and hit-triangle index.
+    // Per-probe history uses seven textures (36 bytes/texel): raw radiance,
+    // gather scratch, packed final radiance, hit distance, hit-triangle index,
+    // and two ping-pong cascade occlusion masks.
     // The direction texture has its own row padding and is shared per ray layout.
     const int64 AllocatedRayTexels = Height64 * GDDGIRadianceCascadeTextureWidth;
     const int64 DirectionHeight64 =
