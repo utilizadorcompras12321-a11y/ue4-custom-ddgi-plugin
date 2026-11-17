@@ -452,6 +452,8 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 
 		const FPostProcessMaterialChain PostProcessMaterialAfterTonemappingChain = GetPostProcessMaterialChain(View, BL_AfterTonemapping);
 
+		// The pre-TAA extension pass must be assigned before its callbacks are queried.
+		PassSequence.SetEnabled(EPass::BeforeTemporalAA, true);
 		PassSequence.SetEnabled(EPass::MotionBlur, bVisualizeMotionBlur || bMotionBlurEnabled);
 		PassSequence.SetEnabled(EPass::Tonemap, bTonemapEnabled);
 		PassSequence.SetEnabled(EPass::FXAA, AntiAliasingMethod == AAM_FXAA);
