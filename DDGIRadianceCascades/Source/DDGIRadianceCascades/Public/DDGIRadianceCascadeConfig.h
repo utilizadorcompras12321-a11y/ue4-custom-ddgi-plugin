@@ -58,9 +58,9 @@ struct FDDGIRadianceCascadeConfig
 		return FMath::Clamp(CascadeCount, 1, 8);
 	}
 
-	// Trailing cascades that begin outside MaxTraceDistance have no valid
-	// ray interval. Exclude them from the packed layout, not just from tracing,
-	// so direction, radiance, hit and integration textures all shrink together.
+	// Exclude cascades outside MaxTraceDistance from the packed layout.
+	// Also stop before the 128-ray-per-probe budget is exceeded, so editor
+	// settings cannot cause unbounded ray textures and dispatch work.
 	FORCEINLINE int32 GetSafeCascadeCount() const
 	{
 		const int32 ConfiguredCount = GetConfiguredCascadeCount();
