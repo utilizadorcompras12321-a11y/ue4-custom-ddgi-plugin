@@ -63,7 +63,7 @@ public:
 		DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
 		ProbeCount.Bind(Initializer.ParameterMap, TEXT("ProbeCount"));
 		DirectionsUAV.Bind(Initializer.ParameterMap, TEXT("DirectionsUAV"));
-		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
+		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
 		RadianceScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
 		RadianceIntegrationScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceIntegrationScratchUAV"));
@@ -209,7 +209,7 @@ public:
 		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 		BVHNodes.Bind(Initializer.ParameterMap, TEXT("BVHNodes"));
 		BVHTriangles.Bind(Initializer.ParameterMap, TEXT("BVHTriangles"));
-		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
+		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
  		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
 	}
