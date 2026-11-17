@@ -817,8 +817,9 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float4 PackedDirection = DirectionsTexture.Load(int3(DirectionPixel, 0));
     float3 Direction = normalize(PackedDirection.xyz);
 
-    // Each cascade traces its own non-overlapping distance interval. Its
-    // child cascade covers the same angular region at twice the resolution.
+    // Each cascade doubles angular resolution and increases maximum range.
+    // All samples originate at the probe; child hits can fill angular regions
+    // missed by a coarser parent during far-to-near integration.
 
     float SafeMaxTraceDistance = max(MaxTraceDistance, 1.0f);
     float2 CascadeInterval = DDGIRadianceCascadeDistanceInterval(
