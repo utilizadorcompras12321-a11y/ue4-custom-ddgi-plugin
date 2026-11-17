@@ -14,6 +14,7 @@ Texture2D<float4> MetallicTexture;
 Texture2D<float4> DirectionsTexture;
 Texture2D<uint> RadianceTexture;
 Texture2D<float> HitDistanceTexture;
+Texture2D<uint> HitTriangleIndexTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<int4> ProbeSpatialHash;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
@@ -208,23 +209,60 @@ float3 DDGIProbeDiffuseIrradiance(
             uint2 VisibilityPixel = uint2(
                 VisibilityLinearIndex % DDGI_RC_TEXTURE_WIDTH,
                 VisibilityLinearIndex / DDGI_RC_TEXTURE_WIDTH);
-            float OccluderDistance = HitDistanceTexture.Load(
-                int3(VisibilityPixel, 0));
+            // A blocked descendant carries HitDistance=0 and no triangle
+            // tag. Walk toward the root until the first real surface hit is
+            // found; otherwise the sentinel would look like an occluder at the
+            // descendant's cascade origin.
+            float OccluderDistance = -1.0f;
+            uint OccluderCascade = 0u;
+            uint OccluderRayIndex = 0u;
+            uint LocalCascadeRayIndex = BestBaseRay * ChildCount + ChildPath;
+            [loop]
+            for (int SearchCascade = (int)SelectedCascade;
+                SearchCascade >= 0;
+                --SearchCascade)
+            {
+                uint CandidateCascade = (uint)SearchCascade;
+                uint CandidateShift = SelectedCascade - CandidateCascade;
+                uint CandidateLocalRayIndex =
+                    LocalCascadeRayIndex >> CandidateShift;
+                uint CandidateStorageOffset =
+                    SafeRayCount * ((1u << CandidateCascade) - 1u);
+                uint CandidateRayIndex =
+                    CandidateStorageOffset + CandidateLocalRayIndex;
+                uint CandidateLinearIndex =
+                    PhysicalProbeIndex * TotalRaysPerProbe + CandidateRayIndex;
+                uint2 CandidatePixel = uint2(
+                    CandidateLinearIndex % DDGI_RC_TEXTURE_WIDTH,
+                    CandidateLinearIndex / DDGI_RC_TEXTURE_WIDTH);
+                float CandidateDistance = HitDistanceTexture.Load(
+                    int3(CandidatePixel, 0));
+                uint CandidateTriangleTag = HitTriangleIndexTexture.Load(
+                    int3(CandidatePixel, 0));
+                if (CandidateDistance >= 0.0f && CandidateTriangleTag > 0u)
+                {
+                    OccluderDistance = CandidateDistance;
+                    OccluderCascade = CandidateCascade;
+                    OccluderRayIndex = CandidateRayIndex;
+                    break;
+                }
+            }
+
             if (OccluderDistance >= 0.0f)
             {
-                // HitDistance is local to the selected cascade's ray origin,
-                // not measured from the probe. Reconstruct the complete
-                // piecewise path before comparing the hit with the receiver.
+                // HitDistance is local to the cascade that found the surface.
+                // Reconstruct that cascade's complete piecewise ray origin.
                 float3 CascadeRayOrigin = ProbePosition;
-                uint LocalCascadeRayIndex = BestBaseRay * ChildCount + ChildPath;
+                uint OccluderLocalRayIndex =
+                    LocalCascadeRayIndex >> (SelectedCascade - OccluderCascade);
                 [loop]
                 for (uint AncestorCascade = 0u;
-                    AncestorCascade < SelectedCascade;
+                    AncestorCascade < OccluderCascade;
                     ++AncestorCascade)
                 {
-                    uint AncestorShift = SelectedCascade - AncestorCascade;
+                    uint AncestorShift = OccluderCascade - AncestorCascade;
                     uint AncestorLocalRayIndex =
-                        LocalCascadeRayIndex >> AncestorShift;
+                        OccluderLocalRayIndex >> AncestorShift;
                     uint AncestorStorageOffset =
                         SafeRayCount * ((1u << AncestorCascade) - 1u);
                     uint AncestorRayIndex =
@@ -242,19 +280,18 @@ float3 DDGIProbeDiffuseIrradiance(
                             CascadeScale);
                 }
 
-                uint2 SelectedDirectionPixel = uint2(
-                    CascadeRayIndex % DDGI_RC_TEXTURE_WIDTH,
-                    CascadeRayIndex / DDGI_RC_TEXTURE_WIDTH);
-                float3 SelectedDirection = normalize(
+                uint2 OccluderDirectionPixel = uint2(
+                    OccluderRayIndex % DDGI_RC_TEXTURE_WIDTH,
+                    OccluderRayIndex / DDGI_RC_TEXTURE_WIDTH);
+                float3 OccluderDirection = normalize(
                     DirectionsTexture.Load(
-                        int3(SelectedDirectionPixel, 0)).xyz);
+                        int3(OccluderDirectionPixel, 0)).xyz);
                 float3 OccluderPosition =
-                    CascadeRayOrigin + SelectedDirection * OccluderDistance;
+                    CascadeRayOrigin + OccluderDirection * OccluderDistance;
 
                 // Project the reconstructed world-space hit onto the
                 // probe-to-receiver direction. This handles the bent,
-                // piecewise cascade path and avoids comparing a local segment
-                // distance with a probe-relative receiver distance.
+                // piecewise cascade path and compares like world-space values.
                 float OccluderDistanceAlongReceiver = dot(
                     OccluderPosition - ProbePosition,
                     ReceiverDirection);
