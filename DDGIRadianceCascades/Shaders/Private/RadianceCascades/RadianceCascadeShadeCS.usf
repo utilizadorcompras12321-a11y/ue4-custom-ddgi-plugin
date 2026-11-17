@@ -41,7 +41,7 @@ Texture2D<uint> HitTriangleIndexTexture;
 StructuredBuffer<float4> BVHNodes;
 StructuredBuffer<float4> BVHTriangles;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
-RWTexture2D<float4> RadianceUAV;
+RWTexture2D<float4> RadianceScratchUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<uint> HitTriangleIndexUAV;
 
@@ -537,7 +537,7 @@ void RadianceCascadeShadeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     }
 
-    RadianceUAV[Pixel] = float4(
+    RadianceScratchUAV[Pixel] = float4(
         HitEmissiveRadiance + HitDirectRadiance,
         1.0f);
 }
