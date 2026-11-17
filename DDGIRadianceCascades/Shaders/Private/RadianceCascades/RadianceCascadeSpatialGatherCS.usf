@@ -105,14 +105,6 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     float3 CenterHitPosition = CenterRayOrigin + CenterDirection * max(CenterHitDistance, 0.0f);
     uint CenterTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel,0));
     bool CenterHasSurfaceTag = CenterTriangleTag > 0u;
-    // A negative distance with a valid triangle tag is an occluder before this
-    // interval. Keep its zero radiance untouched, but do not let it terminate
-    // far-to-near integration or participate in surface-plane gathering.
-    if (CenterHasSurfaceTag && CenterHitDistance < 0.0f)
-    {
-        OutputRadianceUAV[Pixel] = CenterRadianceSample;
-        return;
-    }
     // Guard against stale or malformed hit metadata before reading triangle data.
     if (CenterHitDistance >= 0.0f && !CenterHasSurfaceTag)
     {
