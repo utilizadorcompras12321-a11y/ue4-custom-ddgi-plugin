@@ -810,9 +810,8 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float4 PackedDirection = DirectionsTexture.Load(int3(DirectionPixel, 0));
     float3 Direction = normalize(PackedDirection.xyz);
 
-    // Each cascade doubles angular resolution and increases maximum range.
-    // All samples originate at the probe; child hits can fill angular regions
-    // missed by a coarser parent during far-to-near integration.
+    // Each cascade doubles angular resolution and owns a disjoint distance
+    // interval. Every direction is traced independently from the probe origin.
 
     float SafeMaxTraceDistance = max(MaxTraceDistance, 1.0f);
     float2 CascadeInterval = DDGIRadianceCascadeDistanceInterval(
@@ -845,9 +844,8 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         CascadeEndDistance = SafeMaxTraceDistance;
     }
 
-    // Every angular sample is an independent ray from the probe. Each finer
-    // level extends the maximum range while retaining near hits as fallback
-    // data if its coarser parent direction misses.
+    // Trace to this interval's end from the probe. A nearer first hit is
+    // encoded as a tagged negative distance so this interval stays occluded.
     float CascadeRayLength = max(CascadeEndDistance, 0.0f);
     if (CascadeRayLength <= 0.0f)
     {
