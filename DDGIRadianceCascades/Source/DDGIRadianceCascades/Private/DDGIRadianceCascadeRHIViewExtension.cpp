@@ -1045,6 +1045,25 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
+	FTexture2DRHIRef OcclusionMaskTextureA, OcclusionMaskTextureB;
+	if (!DDGIGetRadianceCascadeOcclusionMaskTextures_RenderThread(
+		Scene, OcclusionMaskTextureA, OcclusionMaskTextureB) ||
+		!OcclusionMaskTextureA.IsValid() || !OcclusionMaskTextureB.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to acquire cascade occlusion masks."));
+		return;
+	}
+	FShaderResourceViewRHIRef OcclusionMaskASRV = RHICreateShaderResourceView(OcclusionMaskTextureA, 0);
+	FShaderResourceViewRHIRef OcclusionMaskBSRV = RHICreateShaderResourceView(OcclusionMaskTextureB, 0);
+	FUnorderedAccessViewRHIRef OcclusionMaskAUAV = RHICreateUnorderedAccessView(OcclusionMaskTextureA);
+	FUnorderedAccessViewRHIRef OcclusionMaskBUAV = RHICreateUnorderedAccessView(OcclusionMaskTextureB);
+	if (!OcclusionMaskASRV.IsValid() || !OcclusionMaskBSRV.IsValid() ||
+		!OcclusionMaskAUAV.IsValid() || !OcclusionMaskBUAV.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create cascade occlusion mask views."));
+		return;
+	}
+
 	// Reserve the frame immediately before the first GPU dispatch. If initialization
 	// is pending, its UAVs must be valid first; otherwise tracing views are checked
 	// before the frame is claimed.
@@ -1163,15 +1182,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	// invalidation resets the cursor so the nearest probes refresh first.
 	const uint32 TraceStartIndex = DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
 		Scene, ProbeCount, TraceProbeCount);
-	const uint32 TraceTotalTexels = TraceProbeCount * TotalRaysPerProbe;
-	const uint32 TraceTotalGroups = FMath::DivideAndRoundUp(TraceTotalTexels, 64u);
-	const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
-	const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
-
-	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
-	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
-	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
-
 	static bool bLoggedTraceLightingConfig = false;
 	if (!bLoggedTraceLightingConfig)
 	{
@@ -1189,37 +1199,69 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		bLoggedTraceLightingConfig = true;
 	}
 
+	const uint32 ActiveCascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
+	const uint32 BaseRayCount = static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64));
+	const uint32 TextureWidth = 4096u;
+	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
+
 	TShaderMapRef<FDDGIRadianceCascadeTraceRHI> TraceShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-	RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
-	TraceShader->SetParameters(
-		RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
-		RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
-		TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
-		NodeCount, TriangleCount,
-		static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
-		static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64)),
-		Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
-		Config->RadianceCascades.MaxTraceDistance,
-		FVector4(Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G, Config->StaticBackgroundColor.B, Config->StaticBackgroundColor.A),
-		Config->StaticBackgroundIntensity, Config->GIIntensity,
-		FVector4(
-			InView.ViewMatrices.GetViewOrigin().X - Config->SoftwareBVH->WorldOrigin.X,
-			InView.ViewMatrices.GetViewOrigin().Y - Config->SoftwareBVH->WorldOrigin.Y,
-			InView.ViewMatrices.GetViewOrigin().Z - Config->SoftwareBVH->WorldOrigin.Z, 0.0f),
-		Config->BackgroundTransitionStart, Config->BackgroundTransitionEnd,
-		Config->bEnableStaticBackground ? 1u : 0u,
-		FVector4(Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z, 0.0f),
-		FVector4(Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B, 0.0f),
-		Config->DirectionalLightIntensity,
-		Config->bHasDirectionalLight ? 1u : 0u,
-		Config->bDirectionalLightCastsShadows ? 1u : 0u,
-		Config->LocalLightPositionAndRadius,
-		Config->LocalLightDirectionAndCosOuter,
-		Config->LocalLightColorAndIntensity,
-		Config->LocalLightParameters,
-		Config->LocalLightCount);
-	DispatchComputeShader(RHICmdList, TraceShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
-	TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
+	for (uint32 CascadeIndex = 0u; CascadeIndex < ActiveCascadeCount; ++CascadeIndex)
+	{
+		const uint32 CascadeRayCount = BaseRayCount << CascadeIndex;
+		const uint32 CascadeStorageOffset = BaseRayCount * ((1u << CascadeIndex) - 1u);
+		const uint32 TraceTotalTexels = TraceProbeCount * CascadeRayCount;
+		const uint32 TraceTotalGroups = FMath::DivideAndRoundUp(TraceTotalTexels, 64u);
+		const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
+		const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
+
+		const bool bWriteMaskA = (CascadeIndex & 1u) == 0u;
+		FTexture2DRHIRef& CurrentMaskTexture = bWriteMaskA ? OcclusionMaskTextureA : OcclusionMaskTextureB;
+		FUnorderedAccessViewRHIRef& CurrentMaskUAV = bWriteMaskA ? OcclusionMaskAUAV : OcclusionMaskBUAV;
+		FShaderResourceViewRHIRef ParentMaskSRV = CascadeIndex == 0u
+			? (bWriteMaskA ? OcclusionMaskBSRV : OcclusionMaskASRV)
+			: ((CascadeIndex & 1u) == 1u ? OcclusionMaskASRV : OcclusionMaskBSRV);
+
+		DDGITransitionTexture(RHICmdList, CurrentMaskTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+		if (CascadeIndex > 0u)
+		{
+			FTexture2DRHIRef& ParentMaskTexture = ((CascadeIndex & 1u) == 1u)
+				? OcclusionMaskTextureA : OcclusionMaskTextureB;
+			DDGITransitionTexture(RHICmdList, ParentMaskTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+		}
+
+		RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
+		TraceShader->SetParameters(
+			RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
+			RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
+			ParentMaskSRV, CurrentMaskUAV, CascadeIndex, CascadeIndex > 0u ? 1u : 0u,
+			TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
+			NodeCount, TriangleCount, ActiveCascadeCount, BaseRayCount,
+			Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
+			Config->RadianceCascades.MaxTraceDistance,
+			FVector4(Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G, Config->StaticBackgroundColor.B, Config->StaticBackgroundColor.A),
+			Config->StaticBackgroundIntensity, Config->GIIntensity,
+			FVector4(
+				InView.ViewMatrices.GetViewOrigin().X - Config->SoftwareBVH->WorldOrigin.X,
+				InView.ViewMatrices.GetViewOrigin().Y - Config->SoftwareBVH->WorldOrigin.Y,
+				InView.ViewMatrices.GetViewOrigin().Z - Config->SoftwareBVH->WorldOrigin.Z, 0.0f),
+			Config->BackgroundTransitionStart, Config->BackgroundTransitionEnd,
+			Config->bEnableStaticBackground ? 1u : 0u,
+			FVector4(Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z, 0.0f),
+			FVector4(Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B, 0.0f),
+			Config->DirectionalLightIntensity,
+			Config->bHasDirectionalLight ? 1u : 0u,
+			Config->bDirectionalLightCastsShadows ? 1u : 0u,
+			Config->LocalLightPositionAndRadius,
+			Config->LocalLightDirectionAndCosOuter,
+			Config->LocalLightColorAndIntensity,
+			Config->LocalLightParameters,
+			Config->LocalLightCount);
+		DispatchComputeShader(RHICmdList, TraceShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
+		TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
+		DDGITransitionTexture(RHICmdList, CurrentMaskTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+	}
 
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
