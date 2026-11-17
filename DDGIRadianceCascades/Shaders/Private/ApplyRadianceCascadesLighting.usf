@@ -217,8 +217,11 @@ float3 DDGIProbeDiffuseIrradiance(
         {
             float CandidateDistance = HitDistanceTexture.Load(
                 int3(CandidatePixel, 0));
-            if (isfinite(CandidateDistance) && CandidateDistance >= 0.0f)
+            // Negative tagged distances encode a real hit before this
+            // cascade's interval. Its absolute value remains probe-relative.
+            if (isfinite(CandidateDistance))
             {
+                CandidateDistance = abs(CandidateDistance);
                 float3 SelectedDirection = normalize(
                     DirectionsTexture.Load(int3(
                         SelectedRayIndex % DDGI_RC_TEXTURE_WIDTH,
