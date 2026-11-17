@@ -1030,11 +1030,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FUnorderedAccessViewRHIRef GatherOutputUAV = RHICreateUnorderedAccessView(RadianceScratchTexture);
 	FShaderResourceViewRHIRef GatherOutputSRV = RHICreateShaderResourceView(RadianceScratchTexture, 0);
 	FUnorderedAccessViewRHIRef IntegrationScratchUAV = RHICreateUnorderedAccessView(RadianceIntegrationScratchTexture);
+	FShaderResourceViewRHIRef IntegrationScratchSRV = RHICreateShaderResourceView(RadianceIntegrationScratchTexture, 0);
 	FShaderResourceViewRHIRef IntegrationHitDistanceSRV = RHICreateShaderResourceView(HitDistanceTexture, 0);
 	if (!GatherRadianceSRV.IsValid() || !GatherHitSRV.IsValid() || !GatherHitIndicesSRV.IsValid() ||
 		!GatherDirectionsSRV.IsValid() || !GatherPositionsSRV.IsValid() || !TrianglesSRV.IsValid() ||
 		!GatherOutputUAV.IsValid() || !GatherOutputSRV.IsValid() ||
-		!IntegrationScratchUAV.IsValid() ||
+		!IntegrationScratchUAV.IsValid() || !IntegrationScratchSRV.IsValid() ||
 		!IntegrationHitDistanceSRV.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to prepare Gather/Integrate SRV/UAV views."));
@@ -1058,25 +1059,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	if (!DirectionsSRV.IsValid() || !ProbePositionsSRV.IsValid() || !RadianceUAV.IsValid() || !HitDistanceUAV.IsValid() || !HitTriangleIndexUAV.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create tracing SRV/UAV views."));
-		return;
-	}
-
-	FTexture2DRHIRef OcclusionMaskTextureA, OcclusionMaskTextureB;
-	if (!DDGIGetRadianceCascadeOcclusionMaskTextures_RenderThread(
-		Scene, OcclusionMaskTextureA, OcclusionMaskTextureB) ||
-		!OcclusionMaskTextureA.IsValid() || !OcclusionMaskTextureB.IsValid())
-	{
-		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to acquire cascade occlusion masks."));
-		return;
-	}
-	FShaderResourceViewRHIRef OcclusionMaskASRV = RHICreateShaderResourceView(OcclusionMaskTextureA, 0);
-	FShaderResourceViewRHIRef OcclusionMaskBSRV = RHICreateShaderResourceView(OcclusionMaskTextureB, 0);
-	FUnorderedAccessViewRHIRef OcclusionMaskAUAV = RHICreateUnorderedAccessView(OcclusionMaskTextureA);
-	FUnorderedAccessViewRHIRef OcclusionMaskBUAV = RHICreateUnorderedAccessView(OcclusionMaskTextureB);
-	if (!OcclusionMaskASRV.IsValid() || !OcclusionMaskBSRV.IsValid() ||
-		!OcclusionMaskAUAV.IsValid() || !OcclusionMaskBUAV.IsValid())
-	{
-		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to create cascade occlusion mask views."));
 		return;
 	}
 
@@ -1232,12 +1214,28 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
 		const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
 
-		const bool bWriteMaskA = (CascadeIndex & 1u) == 0u;
-		FTexture2DRHIRef& CurrentMaskTexture = bWriteMaskA ? OcclusionMaskTextureA : OcclusionMaskTextureB;
-		FUnorderedAccessViewRHIRef& CurrentMaskUAV = bWriteMaskA ? OcclusionMaskAUAV : OcclusionMaskBUAV;
-		FShaderResourceViewRHIRef ParentMaskSRV = CascadeIndex == 0u
-			? (bWriteMaskA ? OcclusionMaskBSRV : OcclusionMaskASRV)
-			: ((CascadeIndex & 1u) == 1u ? OcclusionMaskASRV : OcclusionMaskBSRV);
+		const bool bWriteMaskFloat = (CascadeIndex & 1u) == 0u;
+		FTexture2DRHIRef& CurrentMaskTexture = bWriteMaskFloat
+			? RadianceScratchTexture : RadianceIntegrationScratchTexture;
+		FShaderResourceViewRHIRef ParentMaskFloatSRV;
+		FShaderResourceViewRHIRef ParentMaskUIntSRV;
+		FUnorderedAccessViewRHIRef CurrentMaskFloatUAV;
+		FUnorderedAccessViewRHIRef CurrentMaskUIntUAV;
+		const bool bReadParentMaskFloat = !bWriteMaskFloat;
+		if (bWriteMaskFloat)
+		{
+			// Even levels write float masks to Gather scratch; their parent (if any)
+			// is an integer mask in Integration scratch.
+			CurrentMaskFloatUAV = GatherOutputUAV;
+			ParentMaskUIntSRV = IntegrationScratchSRV;
+		}
+		else
+		{
+			// Odd levels write integer masks to Integration scratch and read the
+			// previous float mask from Gather scratch.
+			CurrentMaskUIntUAV = IntegrationScratchUAV;
+			ParentMaskFloatSRV = GatherOutputSRV;
+		}
 
 		DDGITransitionTexture(RHICmdList, CurrentMaskTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 
@@ -1245,7 +1243,10 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		TraceShader->SetParameters(
 			RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
 			RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
-			ParentMaskSRV, CurrentMaskUAV, CascadeIndex, CascadeIndex > 0u ? 1u : 0u,
+			ParentMaskFloatSRV, ParentMaskUIntSRV,
+			CurrentMaskFloatUAV, CurrentMaskUIntUAV,
+			CascadeIndex, CascadeIndex > 0u ? 1u : 0u,
+			bReadParentMaskFloat ? 1u : 0u, bWriteMaskFloat ? 1u : 0u,
 			TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
 			NodeCount, TriangleCount, ActiveCascadeCount, BaseRayCount,
 			Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
