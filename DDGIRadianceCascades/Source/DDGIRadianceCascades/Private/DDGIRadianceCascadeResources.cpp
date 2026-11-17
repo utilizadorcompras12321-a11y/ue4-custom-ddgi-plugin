@@ -385,7 +385,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.RadianceScratch.IsValid() &&
         Storage.RadianceIntegrationScratch.IsValid() &&
         Storage.HitDistance.IsValid() &&
-        Storage.HitTriangleIndex.IsValid() &&;
+        Storage.HitTriangleIndex.IsValid();
 
     if (!bRayStorageMatches)
     {
@@ -453,8 +453,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         GRenderTargetPool.FindFreeElement(RHICmdList, HitTriangleIndexDesc, Storage.HitTriangleIndex,
             TEXT("DDGIRadianceCascade_HitTriangleIndex"), ERenderTargetTransience::NonTransient);
         if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.RadianceScratch.IsValid() || !Storage.RadianceIntegrationScratch.IsValid() ||
-            !Storage.HitDistance.IsValid() || !Storage.HitTriangleIndex.IsValid() ||
-
+            !Storage.HitDistance.IsValid() || !Storage.HitTriangleIndex.IsValid())
         {
             Storage.Release();
             UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate persistent GPU textures."));
@@ -1453,30 +1452,6 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     return OutDirections.IsValid() && OutRadiance.IsValid() && OutHitDistance.IsValid() &&
         OutRadianceScratch.IsValid() && OutRadianceIntegrationScratch.IsValid() &&
         OutHitTriangleIndex.IsValid();
-}
-
-bool DDGIGetRadianceCascadeOcclusionMaskTextures_RenderThread(
-    const FSceneInterface* Scene,
-    FTexture2DRHIRef& OutMaskA,
-    FTexture2DRHIRef& OutMaskB)
-{
-    check(IsInRenderingThread() || IsInParallelRenderingThread());
-    OutMaskA.SafeRelease();
-    OutMaskB.SafeRelease();
-    const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
-    if (!Storage || !Storage->OcclusionMaskA.IsValid() || !Storage->OcclusionMaskB.IsValid())
-    {
-        return false;
-    }
-    const FSceneRenderTargetItem& ItemA = Storage->OcclusionMaskA->GetRenderTargetItem();
-    const FSceneRenderTargetItem& ItemB = Storage->OcclusionMaskB->GetRenderTargetItem();
-    if (!ItemA.ShaderResourceTexture.IsValid() || !ItemB.ShaderResourceTexture.IsValid())
-    {
-        return false;
-    }
-    OutMaskA = ItemA.ShaderResourceTexture->GetTexture2D();
-    OutMaskB = ItemB.ShaderResourceTexture->GetTexture2D();
-    return OutMaskA.IsValid() && OutMaskB.IsValid();
 }
 
 bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
