@@ -530,8 +530,13 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 		// Scene color view rectangle after temporal AA upscale to secondary screen percentage.
 		FIntRect SecondaryViewRect = PrimaryViewRect;
 
-		// View extensions can modify HDR SceneColor before temporal AA resolves it.
-		SceneColor = AddAfterPass(EPass::BeforeTemporalAA, SceneColor);
+		// This extension pass has no native renderer pass to advance the override sequence.
+		// Accept it explicitly before executing callbacks, otherwise Tonemap is reported out of order.
+		if (PassSequence.IsEnabled(EPass::BeforeTemporalAA))
+		{
+			PassSequence.AcceptPass(EPass::BeforeTemporalAA);
+			SceneColor = AddAfterPass(EPass::BeforeTemporalAA, SceneColor);
+		}
 
 		// Temporal Anti-aliasing. Also may perform a temporal upsample from primary to secondary view rect.
 		if (AntiAliasingMethod == AAM_TemporalAA)
@@ -850,8 +855,12 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 
 		SceneColorBeforeTonemap = SceneColor;
 
-		// Consume pre-TAA view extension callbacks in the minimal post-processing path too.
-		SceneColor = AddAfterPass(EPass::BeforeTemporalAA, SceneColor);
+		// Consume pre-TAA callbacks in the minimal path and advance the override sequence.
+		if (PassSequence.IsEnabled(EPass::BeforeTemporalAA))
+		{
+			PassSequence.AcceptPass(EPass::BeforeTemporalAA);
+			SceneColor = AddAfterPass(EPass::BeforeTemporalAA, SceneColor);
+		}
 
 		if (PassSequence.IsEnabled(EPass::Tonemap))
 		{
