@@ -62,7 +62,7 @@ public:
 
 	// Base spacing for spatial probe level 0. Higher clipmap levels use power-of-two steps {1, 2, 4, 8}.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Dynamic GI", meta = (ClampMin = "1.0", ClampMax = "100000.0", Units = "cm"))
-	float ProbeSpacing = 200.0f;
+	float ProbeSpacing = 100.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "1", ClampMax = "32768", UIMin = "1", UIMax = "32768"))
 	int32 MaxActiveProbes = 32768;
