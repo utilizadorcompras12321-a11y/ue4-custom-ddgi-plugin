@@ -193,6 +193,8 @@ public:
 		CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
 		TraceCascadeIndex.Bind(Initializer.ParameterMap, TEXT("TraceCascadeIndex"));
 		bHasParentMask.Bind(Initializer.ParameterMap, TEXT("bHasParentMask"));
+		bReadParentMaskFloat.Bind(Initializer.ParameterMap, TEXT("bReadParentMaskFloat"));
+		bWriteCurrentMaskFloat.Bind(Initializer.ParameterMap, TEXT("bWriteCurrentMaskFloat"));
 		BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
 		BaseSegmentLength.Bind(Initializer.ParameterMap, TEXT("BaseSegmentLength"));
 		CascadeScale.Bind(Initializer.ParameterMap, TEXT("CascadeScale"));
