@@ -52,7 +52,7 @@ public:
 	int32 CascadeCount = 5;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1", ClampMax = "64"))
-	int32 BaseRayCount = 6;
+	int32 BaseRayCount = 16;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1.0", Units = "cm"))
 	float BaseSegmentLength = 250.0f;
