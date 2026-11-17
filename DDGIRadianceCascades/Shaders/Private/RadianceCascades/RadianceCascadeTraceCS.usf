@@ -968,8 +968,11 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     {
         CurrentOcclusionMaskUIntUAV[Pixel] = bHasSurfaceHit ? 1u : 0u;
     }
-    HitDistanceUAV[Pixel] = bHasSurfaceHit ? ClosestHit : -1.0f;
-    HitTriangleIndexUAV[Pixel] = bHasSurfaceHit ? (ClosestTriangleIndex + 1u) : 0u;
+    // Preserve the first hit for visibility even when it lies before this
+    // cascade's radiance interval. The interval only owns radiance integration;
+    // hit metadata always remains probe-relative for the selected angular ray.
+    HitDistanceUAV[Pixel] = bHit ? ClosestHit : -1.0f;
+    HitTriangleIndexUAV[Pixel] = bHit ? (ClosestTriangleIndex + 1u) : 0u;
 
     // The static environment is injected only by the farthest cascade.
     // Injecting it into every interval would count the same environment many times.
