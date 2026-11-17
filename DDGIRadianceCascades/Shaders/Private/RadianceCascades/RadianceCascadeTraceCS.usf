@@ -226,8 +226,6 @@ bool TraceBVH(
     float MaxDistance,
     uint IgnoreTriangleIndex,
     out float ClosestDistance,
-    out uint ClosestTriangleIndex,
-    out float ClosestDistance,
     out uint ClosestTriangleIndex)
 {
     ClosestDistance = MaxDistance;
@@ -364,8 +362,6 @@ bool TraceClosestHit(
     float3 Direction,
     float MaxDistance,
     uint IgnoreTriangleIndex,
-    out float ClosestDistance,
-    out uint ClosestTriangleIndex,
     out float ClosestDistance,
     out uint ClosestTriangleIndex)
 {
