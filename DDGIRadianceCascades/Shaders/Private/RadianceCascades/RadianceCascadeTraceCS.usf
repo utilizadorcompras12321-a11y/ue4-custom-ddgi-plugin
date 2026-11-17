@@ -817,40 +817,6 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float4 PackedDirection = DirectionsTexture.Load(int3(DirectionPixel, 0));
     float3 Direction = normalize(PackedDirection.xyz);
 
-    if (bHasParentMask != 0u)
-    {
-        uint ParentCascadeRayIndex = LocalCascadeRayIndex >> 1u;
-        uint ParentCascadeStorageOffset =
-            SafeBaseRayCount * ((1u << (CascadeIndex - 1u)) - 1u);
-        uint ParentLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe +
-            ParentCascadeStorageOffset + ParentCascadeRayIndex;
-        uint2 ParentPixel = uint2(ParentLinearIndex % TextureWidth, ParentLinearIndex / TextureWidth);
-        bool bParentBlocked = false;
-        if (bReadParentMaskFloat != 0u)
-        {
-            bParentBlocked = ParentOcclusionMaskFloatTexture.Load(int3(ParentPixel, 0)).x > 0.5f;
-        }
-        else
-        {
-            bParentBlocked = ParentOcclusionMaskUIntTexture.Load(int3(ParentPixel, 0)) != 0u;
-        }
-        if (bParentBlocked)
-        {
-            if (bWriteCurrentMaskFloat != 0u)
-            {
-                CurrentOcclusionMaskFloatUAV[Pixel] = float4(1.0f, 0.0f, 0.0f, 0.0f);
-            }
-            else
-            {
-                CurrentOcclusionMaskUIntUAV[Pixel] = 1u;
-            }
-            HitDistanceUAV[Pixel] = 0.0f;
-            HitTriangleIndexUAV[Pixel] = 0u;
-            RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-            return;
-        }
-    }
-
     // Each cascade traces its own non-overlapping distance interval. Its
     // child cascade covers the same angular region at twice the resolution.
 
@@ -893,36 +859,10 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         CascadeEndDistance = SafeMaxTraceDistance;
     }
 
-    // Trace only this interval; earlier and farther intervals are handled by
-    // adjacent cascades instead of repeating the full BVH traversal.
-    // Reconstruct the complete ancestor path. A cascade-2 ray starts at the
-    // end of its cascade-1 parent segment, which itself starts at the end of
-    // cascade 0; a single offset along the immediate parent is insufficient.
-    float3 CascadeRayOrigin = Origin;
-    if (CascadeIndex > 0u)
-    {
-        uint SafeBaseRayCount = clamp(BaseRayCount, 1u, 64u);
-        uint CascadeOffset = SafeBaseRayCount * ((1u << CascadeIndex) - 1u);
-        uint LocalCascadeRayIndex = PackedRayIndex - CascadeOffset;
-        [loop]
-        for (uint AncestorCascade = 0u; AncestorCascade < CascadeIndex; ++AncestorCascade)
-        {
-            uint AncestorShift = CascadeIndex - AncestorCascade;
-            uint AncestorLocalRayIndex = LocalCascadeRayIndex >> AncestorShift;
-            uint AncestorStorageOffset =
-                SafeBaseRayCount * ((1u << AncestorCascade) - 1u);
-            uint AncestorRayIndex = AncestorStorageOffset + AncestorLocalRayIndex;
-            uint2 AncestorDirectionPixel = uint2(
-                AncestorRayIndex % TextureWidth,
-                AncestorRayIndex / TextureWidth);
-            float3 AncestorDirection = normalize(
-                DirectionsTexture.Load(int3(AncestorDirectionPixel, 0)).xyz);
-            float AncestorSegmentLength = DDGIRadianceCascadeSegmentLength(
-                (int)AncestorCascade, BaseSegmentLength, CascadeScale);
-            CascadeRayOrigin += AncestorDirection * AncestorSegmentLength;
-        }
-    }
-    float CascadeRayLength = max(CascadeEndDistance - CascadeStartDistance, 0.0f);
+    // Every angular sample is an independent ray from the probe.
+    // Trace to this interval's end. A hit before the interval means this
+    // direction is already occluded and contributes no radiance in this level.
+    float CascadeRayLength = max(CascadeEndDistance, 0.0f);
     if (CascadeRayLength <= 0.0f)
     {
         if (bWriteCurrentMaskFloat != 0u)
@@ -947,7 +887,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 ClosestTriangleB = 0.0f;
     float3 ClosestTriangleC = 0.0f;
     bool bHit = TraceClosestHit(
-        CascadeRayOrigin,
+        Origin,
         Direction,
         CascadeRayLength,
         0xFFFFFFFFu,
@@ -959,7 +899,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     // HitDistance is local to this cascade ray origin. Gather reconstructs
     // the origin from the parent direction and cascade start distance.
-    bool bHasSurfaceHit = bHit;
+    bool bHasSurfaceHit = bHit && ClosestHit >= CascadeStartDistance;
     if (bWriteCurrentMaskFloat != 0u)
     {
         CurrentOcclusionMaskFloatUAV[Pixel] = bHasSurfaceHit ? 1.0f : 0.0f;
@@ -977,7 +917,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // The static environment is injected only by the farthest cascade.
     // Injecting it into every interval would count the same environment many times.
     float BackgroundFade = 0.0f;
-    if (bEnableStaticBackground != 0u && bIsLastActiveCascade && !bHasSurfaceHit)
+    if (bEnableStaticBackground != 0u && bIsLastActiveCascade && !bHit)
     {
         float ProbeDistance = distance(Origin, ActiveWindowCenter.xyz);
         float TransitionWidth = max(BackgroundTransitionEnd - BackgroundTransitionStart, 1.0e-3f);
@@ -1001,7 +941,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             GeometricNormal = -GeometricNormal;
         }
 
-        float3 HitPosition = CascadeRayOrigin + Direction * ClosestHit;
+        float3 HitPosition = Origin + Direction * ClosestHit;
         float3 HitBaseColor = max(BVHTriangles[HitTriangleBase + 3u].xyz, 0.0f);
         HitEmissiveRadiance = float3(
             BVHTriangles[HitTriangleBase + 0u].w,
@@ -1056,6 +996,6 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     RadianceUAV[Pixel] = float4(
         bHasSurfaceHit
             ? (HitEmissiveRadiance + HitDirectRadiance + HitIndirectRadiance)
-            : BackgroundRadiance,
+            : (bHit ? 0.0f : BackgroundRadiance),
         1.0f);
 }
