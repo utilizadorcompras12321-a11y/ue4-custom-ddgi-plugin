@@ -71,11 +71,11 @@ namespace
 {
 	static const int32 GDDGIRadianceCascadeTextureWidth = 4096;
 	static const int32 GDDGIRadianceCascadeMaxTextureDimension = 16384;
-	// Seven per-probe ray textures consume 36 bytes per ray record, including
-	// the two ping-pong occlusion masks. Directions are stored once per ray
-	// layout (8 bytes per direction), shared by all probes. Bound this subsystem independently of RHI limits.
+	// Five per-probe ray textures consume 28 bytes per ray record. Directions are
+	// stored once per ray layout (8 bytes per direction), shared by all probes.
+	// Bound this subsystem independently of RHI limits.
 	static const int64 GDDGIRadianceCascadeMaxRayStorageBytes = 512ll * 1024ll * 1024ll;
-	static const int64 GDDGIRadianceCascadeBytesPerProbeRay = 36ll;
+	static const int64 GDDGIRadianceCascadeBytesPerProbeRay = 28ll;
 	static const int64 GDDGIRadianceCascadeBytesPerSharedDirection = 8ll;
 
 	struct FDDGIRadianceCascadeGPUStorage
@@ -86,8 +86,6 @@ namespace
 		TRefCountPtr<IPooledRenderTarget> RadianceIntegrationScratch; // Persistent final integrated radiance.
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> HitTriangleIndex;
-		TRefCountPtr<IPooledRenderTarget> OcclusionMaskA;
-		TRefCountPtr<IPooledRenderTarget> OcclusionMaskB;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
 		FStructuredBufferRHIRef LogicalToPhysicalSlots;
 		FShaderResourceViewRHIRef LogicalToPhysicalSlotsSRV;
@@ -161,8 +159,6 @@ namespace
 			RadianceIntegrationScratch.SafeRelease();
 			HitDistance.SafeRelease();
 			HitTriangleIndex.SafeRelease();
-			OcclusionMaskA.SafeRelease();
-			OcclusionMaskB.SafeRelease();
 			ProbePositions.SafeRelease();
 			LogicalToPhysicalSlots.SafeRelease();
 			LogicalToPhysicalSlotsSRV.SafeRelease();
@@ -272,9 +268,8 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         GDDGIRadianceCascadeTextureWidth;
 
     // Account for complete allocated rows, not only logically active ray records.
-    // Per-probe history uses seven textures (36 bytes/texel): raw radiance,
-    // gather scratch, packed final radiance, hit distance, hit-triangle index,
-    // and two ping-pong cascade occlusion masks.
+    // Per-probe history uses five textures (28 bytes/texel): raw radiance,
+    // gather scratch, packed final radiance, hit distance and hit-triangle index.
     // The direction texture has its own row padding and is shared per ray layout.
     const int64 AllocatedRayTexels = Height64 * GDDGIRadianceCascadeTextureWidth;
     const int64 DirectionHeight64 =
@@ -390,8 +385,7 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.RadianceScratch.IsValid() &&
         Storage.RadianceIntegrationScratch.IsValid() &&
         Storage.HitDistance.IsValid() &&
-        Storage.HitTriangleIndex.IsValid() &&
-        Storage.OcclusionMaskA.IsValid() && Storage.OcclusionMaskB.IsValid();
+        Storage.HitTriangleIndex.IsValid() &&;
 
     if (!bRayStorageMatches)
     {
@@ -401,8 +395,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         Storage.RadianceIntegrationScratch.SafeRelease();
         Storage.HitDistance.SafeRelease();
         Storage.HitTriangleIndex.SafeRelease();
-        Storage.OcclusionMaskA.SafeRelease();
-        Storage.OcclusionMaskB.SafeRelease();
         Storage.Dimensions = FIntPoint::ZeroValue;
         Storage.DirectionDimensions = FIntPoint::ZeroValue;
         Storage.TotalRaysPerProbe = 0;
@@ -447,9 +439,6 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
         const FPooledRenderTargetDesc HitTriangleIndexDesc = FPooledRenderTargetDesc::Create2DDesc(
             RequiredDimensions, PF_R32_UINT, FClearValueBinding::Black, TexCreate_None,
             TexCreate_ShaderResource | TexCreate_UAV, false);
-        const FPooledRenderTargetDesc OcclusionMaskDesc = FPooledRenderTargetDesc::Create2DDesc(
-            RequiredDimensions, PF_R32_UINT, FClearValueBinding::Black, TexCreate_None,
-            TexCreate_ShaderResource | TexCreate_UAV, false);
 
         GRenderTargetPool.FindFreeElement(RHICmdList, DirectionDesc, Storage.Directions,
             TEXT("DDGIRadianceCascade_Directions"), ERenderTargetTransience::NonTransient);
@@ -463,27 +452,14 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             TEXT("DDGIRadianceCascade_HitDistance"), ERenderTargetTransience::NonTransient);
         GRenderTargetPool.FindFreeElement(RHICmdList, HitTriangleIndexDesc, Storage.HitTriangleIndex,
             TEXT("DDGIRadianceCascade_HitTriangleIndex"), ERenderTargetTransience::NonTransient);
-        GRenderTargetPool.FindFreeElement(RHICmdList, OcclusionMaskDesc, Storage.OcclusionMaskA,
-            TEXT("DDGIRadianceCascade_OcclusionMaskA"), ERenderTargetTransience::NonTransient);
-        GRenderTargetPool.FindFreeElement(RHICmdList, OcclusionMaskDesc, Storage.OcclusionMaskB,
-            TEXT("DDGIRadianceCascade_OcclusionMaskB"), ERenderTargetTransience::NonTransient);
         if (!Storage.Directions.IsValid() || !Storage.Radiance.IsValid() || !Storage.RadianceScratch.IsValid() || !Storage.RadianceIntegrationScratch.IsValid() ||
             !Storage.HitDistance.IsValid() || !Storage.HitTriangleIndex.IsValid() ||
-            !Storage.OcclusionMaskA.IsValid() || !Storage.OcclusionMaskB.IsValid())
+
         {
             Storage.Release();
             UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to allocate persistent GPU textures."));
             return;
         }
-
-        // Establish a known SRV state for both persistent ping-pong masks.
-        // Every trace pass returns its written mask to SRV before the next level.
-        FRHITransitionInfo OcclusionMaskTransitions[2] =
-        {
-            FRHITransitionInfo(Storage.OcclusionMaskA->GetRenderTargetItem().ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute),
-            FRHITransitionInfo(Storage.OcclusionMaskB->GetRenderTargetItem().ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute)
-        };
-        RHICmdList.Transition(MakeArrayView(OcclusionMaskTransitions, 2));
 
         Storage.Dimensions = RequiredDimensions;
         Storage.DirectionDimensions = RequiredDirectionDimensions;
