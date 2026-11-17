@@ -47,7 +47,6 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 
     const float ParentHitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
-    const uint ParentTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel, 0));
     if (ParentHitDistance >= 0.0f)
     {
         // A hit inside this cascade's interval owns this angular cell and
@@ -56,6 +55,10 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
         return;
     }
+
+    // Only misses need the triangle tag to distinguish an unobstructed miss
+    // from a ray blocked by geometry before this cascade's interval.
+    const uint ParentTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel, 0));
     if (ParentTriangleTag > 0u)
     {
         // A tagged negative distance is a real blocker before this interval.
