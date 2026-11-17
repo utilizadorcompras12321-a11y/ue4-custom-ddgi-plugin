@@ -386,7 +386,7 @@ public:
   TextureWidth.Bind(I.ParameterMap,TEXT("TextureWidth")); TotalTexels.Bind(I.ParameterMap,TEXT("TotalTexels"));
   DispatchGroupsX.Bind(I.ParameterMap,TEXT("DispatchGroupsX")); ProbeCount.Bind(I.ParameterMap,TEXT("ProbeCount"));
   TraceStartIndex.Bind(I.ParameterMap,TEXT("TraceStartIndex"));
-  TotalRaysPerProbe.Bind(I.ParameterMap,TEXT("TotalRaysPerProbe")); HashCapacity.Bind(I.ParameterMap,TEXT("HashCapacity"));
+  TotalRaysPerProbe.Bind(I.ParameterMap,TEXT("TotalRaysPerProbe")); BaseRayCount.Bind(I.ParameterMap,TEXT("BaseRayCount")); HashCapacity.Bind(I.ParameterMap,TEXT("HashCapacity"));
   TriangleCount.Bind(I.ParameterMap,TEXT("TriangleCount"));
   ProbeSpacing.Bind(I.ParameterMap,TEXT("ProbeSpacing")); ProbeGridOrigin.Bind(I.ParameterMap,TEXT("ProbeGridOrigin"));
   RadianceTexture.Bind(I.ParameterMap,TEXT("RadianceTexture")); HitDistanceTexture.Bind(I.ParameterMap,TEXT("HitDistanceTexture")); HitTriangleIndexTexture.Bind(I.ParameterMap,TEXT("HitTriangleIndexTexture"));
@@ -403,12 +403,12 @@ public:
  void SetParameters(FRHICommandList& C,const TShaderRHIParamRef Sh,FShaderResourceViewRHIRef R,FShaderResourceViewRHIRef H,FShaderResourceViewRHIRef HitIndices,
   FShaderResourceViewRHIRef D,FShaderResourceViewRHIRef P,FShaderResourceViewRHIRef LogicalToPhysicalSRV,FShaderResourceViewRHIRef Triangles,FShaderResourceViewRHIRef S,
   FShaderResourceViewRHIRef NeighborList,FUnorderedAccessViewRHIRef O,
-  uint32 T,uint32 G,uint32 PC,uint32 StartIndex,uint32 RPP,uint32 HC,uint32 TC,float PS,const FVector4& Origin,uint32 bUseNeighborList)
+  uint32 T,uint32 G,uint32 PC,uint32 StartIndex,uint32 RPP,uint32 BRC,uint32 HC,uint32 TC,float PS,const FVector4& Origin,uint32 bUseNeighborList)
  {
   uint32 W=4096u;
   SetShaderValue(C,Sh,TextureWidth,W); SetShaderValue(C,Sh,TotalTexels,T); SetShaderValue(C,Sh,DispatchGroupsX,G);
   SetShaderValue(C,Sh,ProbeCount,PC); SetShaderValue(C,Sh,TraceStartIndex,StartIndex);
-  SetShaderValue(C,Sh,TotalRaysPerProbe,RPP); SetShaderValue(C,Sh,HashCapacity,HC);
+  SetShaderValue(C,Sh,TotalRaysPerProbe,RPP); SetShaderValue(C,Sh,BaseRayCount,BRC); SetShaderValue(C,Sh,HashCapacity,HC);
   SetShaderValue(C,Sh,TriangleCount,TC);
   SetShaderValue(C,Sh,ProbeSpacing,PS); SetShaderValue(C,Sh,ProbeGridOrigin,Origin);
   SetShaderValue(C,Sh,UsePrecomputedProbeNeighbors,bUseNeighborList);
@@ -446,6 +446,7 @@ private:
  LAYOUT_FIELD(FShaderParameter, ProbeCount);
  LAYOUT_FIELD(FShaderParameter, TraceStartIndex);
  LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
+ LAYOUT_FIELD(FShaderParameter, BaseRayCount);
  LAYOUT_FIELD(FShaderParameter, HashCapacity);
  LAYOUT_FIELD(FShaderParameter, TriangleCount);
  LAYOUT_FIELD(FShaderParameter, ProbeSpacing);
@@ -1214,7 +1215,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		GatherPositionsSRV, LogicalToPhysicalSRV, TrianglesSRV, SpatialHashSRV,
 		NeighborListSRV, GatherOutputUAV,
 		TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex,
-		TotalRaysPerProbe, HashCapacity, TriangleCount, ProbeSpacing,
+		TotalRaysPerProbe, static_cast<uint32>(Config->RadianceCascades.BaseRayCount),
+		HashCapacity, TriangleCount, ProbeSpacing,
 		FVector4(Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f),
 		bUseNeighborList);
 	DispatchComputeShader(RHICmdList, GatherShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
