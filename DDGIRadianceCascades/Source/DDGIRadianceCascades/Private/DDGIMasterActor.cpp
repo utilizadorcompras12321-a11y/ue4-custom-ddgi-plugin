@@ -58,7 +58,6 @@ void ADDGIMasterActor::Tick(float DeltaSeconds)
 				!FMath::IsNearlyEqual(CurrentConfig.RadianceCascades.CascadeScale, FMath::Max(1.01f, CascadeScale), 1.0e-4f) ||
 				CurrentConfig.MaxActiveProbes != FMath::Clamp(MaxActiveProbes, 1, 32768) ||
 				CurrentConfig.MaxSoftwareTriangles != FMath::Clamp(MaxSoftwareTriangles, 1, 250000) ||
-				CurrentConfig.ProbeUpdateBudget != FMath::Max(0, ProbeUpdateBudget) ||
 				!CurrentConfig.StaticBackgroundColor.Equals(StaticBackgroundColor, 1.0e-4f) ||
 				!FMath::IsNearlyEqual(CurrentConfig.StaticBackgroundIntensity, FMath::Max(0.0f, StaticBackgroundIntensity), 1.0e-4f) ||
 				!FMath::IsNearlyEqual(CurrentConfig.BackgroundTransitionStart, FMath::Max(0.0f, BackgroundTransitionStart), 1.0e-3f) ||
