@@ -27,7 +27,6 @@ float4 DirectionalLightDirection;
 float4 DirectionalLightColor;
 float DirectionalLightIntensity;
 uint bHasDirectionalLight;
-uint bDirectionalLightCastsShadows;
 uint LocalLightCount;
 float4 LocalLightPositionAndRadius[32];
 float4 LocalLightDirectionAndCosOuter[32];
@@ -418,96 +417,6 @@ bool TraceBVH(
     return bFoundHit;
 }
 
-// Any-hit is deliberately a separate, minimal traversal. It does not maintain
-// nearest distances, child ordering, or hit attributes: the first valid
-// triangle inside the light segment terminates the query.
-bool TraceAnyHit(
-    float3 Origin,
-    float3 Direction,
-    float MaxDistance,
-    uint IgnoreTriangleIndex)
-{
-    if (NodeCount == 0u || TriangleCount == 0u || MaxDistance <= 0.0f)
-    {
-        return false;
-    }
-
-    uint Stack[49];
-    uint StackSize = 1u;
-    uint IterationCount = 0u;
-    Stack[0] = 0u;
-
-    [loop]
-    while (StackSize > 0u && IterationCount < NodeCount)
-    {
-        ++IterationCount;
-        uint NodeIndex = Stack[--StackSize];
-        if (NodeIndex >= NodeCount)
-        {
-            continue;
-        }
-
-        uint NodeBase = NodeIndex * 3u;
-        if (!IntersectBounds(
-            Origin, Direction,
-            BVHNodes[NodeBase + 0u].xyz,
-            BVHNodes[NodeBase + 1u].xyz,
-            MaxDistance))
-        {
-            continue;
-        }
-
-        float4 Metadata = BVHNodes[NodeBase + 2u];
-        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
-        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
-        if (LeafTriangleCount > 0u)
-        {
-            [loop]
-            for (uint LocalTriangle = 0u;
-                 LocalTriangle < LeafTriangleCount;
-                 ++LocalTriangle)
-            {
-                uint TriangleIndex = FirstTriangle + LocalTriangle;
-                if (TriangleIndex >= TriangleCount ||
-                    TriangleIndex == IgnoreTriangleIndex)
-                {
-                    continue;
-                }
-
-                uint TriangleBase = TriangleIndex * 4u;
-                float CandidateDistance;
-                if (IntersectTriangle(
-                    Origin, Direction,
-                    BVHTriangles[TriangleBase + 0u].xyz,
-                    BVHTriangles[TriangleBase + 1u].xyz,
-                    BVHTriangles[TriangleBase + 2u].xyz,
-                    CandidateDistance) &&
-                    CandidateDistance < MaxDistance)
-                {
-                    return true;
-                }
-            }
-        }
-        else
-        {
-            uint LeftChild = (uint)max(Metadata.x, 0.0f);
-            uint RightChild = (uint)max(Metadata.y, 0.0f);
-            // Traversal order is irrelevant for any-hit. Bounds are tested
-            // when popped, keeping this path smaller than closest-hit.
-            if (LeftChild < NodeCount)
-            {
-                Stack[StackSize++] = LeftChild;
-            }
-            if (RightChild < NodeCount)
-            {
-                Stack[StackSize++] = RightChild;
-            }
-        }
-    }
-
-    return false;
-}
-
 bool TraceClosestHit(
     float3 Origin,
     float3 Direction,
@@ -529,8 +438,7 @@ float3 EvaluateLocalDirectLighting(
     float3 Normal,
     float3 BaseColor,
     uint IgnoreTriangleIndex,
-    uint MaxLightsToEvaluate,
-    uint bTraceShadows)
+    uint MaxLightsToEvaluate)
 {
     float3 Direct = 0.0f;
     const uint SafeLocalLightCount = min(LocalLightCount, min(MaxLightsToEvaluate, 32u));
@@ -592,23 +500,9 @@ float3 EvaluateLocalDirectLighting(
             continue;
         }
 
-        bool bLocalLightOccluded = false;
-        // Do not construct a shadow ray for lights that do not cast GI visibility
-        // rays. This also avoids evaluating the scale-aware origin bias twice.
-        if (bTraceShadows != 0u && LightParameters.w > 0.5f)
-        {
-            float RayBias = ComputeRayOriginBias(HitPosition);
-            float3 ShadowOrigin = HitPosition + Normal * RayBias;
-            float ShadowDistance = max(Distance - RayBias * 2.0f, 0.0f);
-            bLocalLightOccluded = TraceAnyHit(
-                ShadowOrigin, ToLight, ShadowDistance, IgnoreTriangleIndex);
-        }
-        if (!bLocalLightOccluded)
-        {
-            Direct += BaseColor * ColorAndIntensity.rgb *
-                ColorAndIntensity.w * Attenuation * NdotL *
-                (1.0f / 3.14159265f) * GIIntensity;
-        }
+        Direct += BaseColor * ColorAndIntensity.rgb *
+            ColorAndIntensity.w * Attenuation * NdotL *
+            (1.0f / 3.14159265f) * GIIntensity;
     }
     return Direct;
 }
@@ -620,8 +514,7 @@ float3 EvaluateHitSurfaceRadiance(
     float3 TriangleC,
     float3 HitPosition,
     float3 IncomingDirection,
-    float3 ToLight,
-    uint bTraceShadows)
+    float3 ToLight)
 {
     uint TriangleBase = TriangleIndex * 4u;
     // Reuse vertex positions fetched by TraceClosestHit for intersection.
@@ -657,25 +550,13 @@ float3 EvaluateHitSurfaceRadiance(
             float NdotL = saturate(dot(Normal, ToLight));
             if (NdotL > 0.0f)
             {
-                bool bDirectionalOccluded = false;
-                if (bTraceShadows != 0u && bDirectionalLightCastsShadows != 0u)
-                {
-                    float RayBias = ComputeRayOriginBias(HitPosition);
-                    float3 ShadowOrigin = HitPosition + Normal * RayBias;
-                    const float DirectionalShadowDistance = 1000000.0f;
-                    bDirectionalOccluded = TraceAnyHit(
-                        ShadowOrigin, ToLight, DirectionalShadowDistance, TriangleIndex);
-                }
-                if (!bDirectionalOccluded)
-                {
-                    Direct += BaseColor * DirectionalLightColor.rgb *
-                        DirectionalLightIntensity * NdotL *
-                        (1.0f / 3.14159265f) * GIIntensity;
-                }
+                Direct += BaseColor * DirectionalLightColor.rgb *
+                    DirectionalLightIntensity * NdotL *
+                    (1.0f / 3.14159265f) * GIIntensity;
             }
         }
         Direct += EvaluateLocalDirectLighting(
-            HitPosition, Normal, BaseColor, TriangleIndex, 4u, bTraceShadows);
+            HitPosition, Normal, BaseColor, TriangleIndex, 4u);
     }
 
     return Emissive + Direct;
@@ -770,8 +651,7 @@ float3 TraceDeterministicDiffuseBounce(
                 SecondaryTriangleC,
                 SecondaryHitPosition,
                 SecondaryDirection,
-                ToLight,
-                0u);
+                ToLight);
             // Evaluate one additional diffuse bounce only. Do not recursively
             // launch another hemisphere at this secondary surface.
             IncomingRadianceSum += SecondaryDirectAndEmissive;
