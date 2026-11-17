@@ -89,9 +89,7 @@ float4 DDGIRadianceCascadeBaseRegion(uint RayIndex, uint RayCount)
     return float4(PhiMin, PhiMax, ZMin, ZMax);
 }
 
-// Split each parent rectangle into equal-solid-angle children. Since
-// dOmega=dPhi*dZ, equal subdivisions of either coordinate preserve exact
-// area. Split 4 uses a 2x2 grid; splits 2 and 3 use the longer angular axis.
+// Convert the center of an equal-solid-angle angular region to a direction.
 float3 DDGIRadianceCascadeRegionDirection(float4 Region)
 {
     float Phi = 0.5f * (Region.x + Region.y);
