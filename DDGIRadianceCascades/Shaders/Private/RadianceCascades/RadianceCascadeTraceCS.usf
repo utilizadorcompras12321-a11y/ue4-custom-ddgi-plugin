@@ -859,9 +859,9 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         CascadeEndDistance = SafeMaxTraceDistance;
     }
 
-    // Every angular sample is an independent ray from the probe.
-    // Trace to this interval's end. A hit before the interval means this
-    // direction is already occluded and contributes no radiance in this level.
+    // Every angular sample is an independent ray from the probe. Each finer
+    // level extends the maximum range while retaining near hits as fallback
+    // data if its coarser parent direction misses.
     float CascadeRayLength = max(CascadeEndDistance, 0.0f);
     if (CascadeRayLength <= 0.0f)
     {
@@ -898,7 +898,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ClosestTriangleC);
 
     // HitDistance is measured from the probe for every independent direction.
-    bool bHasSurfaceHit = bHit && ClosestHit >= CascadeStartDistance;
+    bool bHasSurfaceHit = bHit;
     if (bWriteCurrentMaskFloat != 0u)
     {
         CurrentOcclusionMaskFloatUAV[Pixel] = bHasSurfaceHit ? 1.0f : 0.0f;
@@ -910,12 +910,11 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // Preserve the first hit for visibility even when it lies before this
     // cascade's radiance interval. The interval only owns radiance integration;
     // hit metadata always remains probe-relative for the selected angular ray.
-    // Positive distances identify hits owned by this interval and terminate
-    // far-to-near integration. Negative distances with a triangle tag preserve
-    // earlier occluders for Apply without terminating this interval's merge.
-    HitDistanceUAV[Pixel] = !bHit
-        ? -1.0f
-        : (bHasSurfaceHit ? ClosestHit : -ClosestHit);
+    // Every ray starts at the probe. A hit before this level's nominal
+    // interval is still a valid finer angular fallback when its parent misses.
+    // Parent hits take precedence during far-to-near integration, preventing
+    // double counting while allowing fine rays to recover thin geometry.
+    HitDistanceUAV[Pixel] = bHit ? ClosestHit : -1.0f;
     HitTriangleIndexUAV[Pixel] = bHit ? (ClosestTriangleIndex + 1u) : 0u;
 
     // The static environment is injected only by the farthest cascade.
