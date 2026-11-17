@@ -52,16 +52,24 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    // Angular splitting is disabled, so each parent ray has exactly one
-    // child with the same direction and local ray index.
-    const uint ChildLinearIndex =
+    // Each parent angular cell is the union of two equal-solid-angle child
+    // cells. A hit terminates transport; otherwise merge both child samples.
+    const uint FirstChildRay = LocalRayIndex * 2u;
+    const uint FirstChildLinearIndex =
         PhysicalProbeIndex * TotalRaysPerProbe +
         NextCascadeStorageOffset +
-        LocalRayIndex;
-    const uint2 ChildPixel = uint2(
-        ChildLinearIndex % TextureWidth,
-        ChildLinearIndex / TextureWidth);
-    const float3 ChildRadiance =
-        DDGIUnpackR11G11B10(RadianceUAV[ChildPixel]);
-    RadianceUAV[Pixel] = DDGIPackR11G11B10(ChildRadiance);
+        FirstChildRay;
+    const uint SecondChildLinearIndex = FirstChildLinearIndex + 1u;
+    const uint2 FirstChildPixel = uint2(
+        FirstChildLinearIndex % TextureWidth,
+        FirstChildLinearIndex / TextureWidth);
+    const uint2 SecondChildPixel = uint2(
+        SecondChildLinearIndex % TextureWidth,
+        SecondChildLinearIndex / TextureWidth);
+    const float3 FirstChildRadiance =
+        DDGIUnpackR11G11B10(RadianceUAV[FirstChildPixel]);
+    const float3 SecondChildRadiance =
+        DDGIUnpackR11G11B10(RadianceUAV[SecondChildPixel]);
+    const float3 MergedChildRadiance = 0.5f * (FirstChildRadiance + SecondChildRadiance);
+    RadianceUAV[Pixel] = DDGIPackR11G11B10(MergedChildRadiance);
 }
