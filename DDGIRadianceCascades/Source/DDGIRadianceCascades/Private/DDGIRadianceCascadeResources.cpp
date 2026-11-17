@@ -1469,6 +1469,30 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
         OutHitTriangleIndex.IsValid();
 }
 
+bool DDGIGetRadianceCascadeOcclusionMaskTextures_RenderThread(
+    const FSceneInterface* Scene,
+    FTexture2DRHIRef& OutMaskA,
+    FTexture2DRHIRef& OutMaskB)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutMaskA.SafeRelease();
+    OutMaskB.SafeRelease();
+    const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || !Storage->OcclusionMaskA.IsValid() || !Storage->OcclusionMaskB.IsValid())
+    {
+        return false;
+    }
+    const FSceneRenderTargetItem& ItemA = Storage->OcclusionMaskA->GetRenderTargetItem();
+    const FSceneRenderTargetItem& ItemB = Storage->OcclusionMaskB->GetRenderTargetItem();
+    if (!ItemA.ShaderResourceTexture.IsValid() || !ItemB.ShaderResourceTexture.IsValid())
+    {
+        return false;
+    }
+    OutMaskA = ItemA.ShaderResourceTexture->GetTexture2D();
+    OutMaskB = ItemB.ShaderResourceTexture->GetTexture2D();
+    return OutMaskA.IsValid() && OutMaskB.IsValid();
+}
+
 bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
     const FSceneInterface* Scene,
     FTexture2DRHIRef& OutDirections,
