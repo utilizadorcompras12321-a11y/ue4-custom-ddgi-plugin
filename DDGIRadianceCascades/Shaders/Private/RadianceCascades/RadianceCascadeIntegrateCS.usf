@@ -49,10 +49,9 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     const bool bParentHit = HitDistanceTexture.Load(int3(Pixel, 0)) >= 0.0f;
 
     // Each parent angular cell is the union of two equal-solid-angle child
-    // cells. Because all rays originate at the probe, children are independent
-    // angular refinements rather than continuations of the parent ray. Prefer
-    // their finer samples whenever they contain a hit or background energy;
-    // retain the parent hit only when both children provide no contribution.
+    // cells. A child hit, pre-interval blocker, or farther radiance owns that
+    // sub-cell; use the parent hit only when both children are unobstructed
+    // misses with no farther contribution.
     const uint FirstChildRay = LocalRayIndex * 2u;
     const uint FirstChildLinearIndex =
         PhysicalProbeIndex * TotalRaysPerProbe +
