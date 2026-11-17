@@ -100,20 +100,25 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     uint SafeBaseRayCount = clamp(BaseRayCount, 1u, 64u);
     uint CascadeStorageOffset = SafeBaseRayCount * ((1u << CascadeIndex) - 1u);
     uint LocalCascadeRayIndex = RayIndex - CascadeStorageOffset;
-    float CascadeStartDistance = DDGIRadianceCascadeStartDistance(
-        (int)CascadeIndex, BaseSegmentLength, CascadeScale);
-    float3 ParentDirection = CenterDirection;
-    if (CascadeIndex > 0u)
+    float3 CascadeOriginOffset = 0.0f;
+    [loop]
+    for (uint AncestorCascade = 0u; AncestorCascade < CascadeIndex; ++AncestorCascade)
     {
-        uint ParentStorageOffset =
-            SafeBaseRayCount * ((1u << (CascadeIndex - 1u)) - 1u);
-        uint ParentRayIndex = ParentStorageOffset + (LocalCascadeRayIndex >> 1u);
-        uint2 ParentDirectionPixel = uint2(
-            ParentRayIndex % TextureWidth,
-            ParentRayIndex / TextureWidth);
-        ParentDirection = normalize(DirectionsTexture.Load(int3(ParentDirectionPixel, 0)).xyz);
+        uint AncestorShift = CascadeIndex - AncestorCascade;
+        uint AncestorLocalRayIndex = LocalCascadeRayIndex >> AncestorShift;
+        uint AncestorStorageOffset =
+            SafeBaseRayCount * ((1u << AncestorCascade) - 1u);
+        uint AncestorRayIndex = AncestorStorageOffset + AncestorLocalRayIndex;
+        uint2 AncestorDirectionPixel = uint2(
+            AncestorRayIndex % TextureWidth,
+            AncestorRayIndex / TextureWidth);
+        float3 AncestorDirection = normalize(
+            DirectionsTexture.Load(int3(AncestorDirectionPixel, 0)).xyz);
+        float AncestorSegmentLength = DDGIRadianceCascadeSegmentLength(
+            (int)AncestorCascade, BaseSegmentLength, CascadeScale);
+        CascadeOriginOffset += AncestorDirection * AncestorSegmentLength;
     }
-    float3 CenterRayOrigin = CenterPosition + ParentDirection * CascadeStartDistance;
+    float3 CenterRayOrigin = CenterPosition + CascadeOriginOffset;
     float4 CenterRadianceSample = RadianceTexture.Load(int3(Pixel, 0));
     float CenterHitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
     bool CenterHit = CenterHitDistance >= 0.0f;
@@ -216,7 +221,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         if (CenterHit)
         {
             // Every ray belonging to this probe shares its probe position as origin.
-            float3 NeighborRayOrigin = NeighborPosition + ParentDirection * CascadeStartDistance;
+            float3 NeighborRayOrigin = NeighborPosition + CascadeOriginOffset;
             float3 NeighborHitPosition = NeighborRayOrigin + CenterDirection * NeighborHitDistance;
             float3 HitPositionDelta = CenterHitPosition - NeighborHitPosition;
             // Compare squared distances: the square root from distance() is
