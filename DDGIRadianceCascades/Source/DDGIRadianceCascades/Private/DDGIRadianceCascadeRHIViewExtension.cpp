@@ -8,9 +8,10 @@
 #include "RHICommandList.h"
 #include "RHIResources.h"
 #include "SceneInterface.h"
+#include "ScenePrivate.h"
+#include "DeferredShadingRenderer.h"
 #include "SceneView.h"
 #include "HAL/IConsoleManager.h"
-#include "PostProcess/PostProcessMaterial.h"
 #include "ScreenPass.h"
 
 #include "RenderGraphUtils.h"
@@ -909,40 +910,55 @@ IMPLEMENT_GLOBAL_SHADER(
 	SF_Compute);
 
 
-static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
+void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
+	const FScene& InScene,
+	const FViewInfo& View,
 	FRDGBuilder& GraphBuilder,
-	const FSceneView& View,
-	const FPostProcessMaterialInputs& Inputs)
+	FGlobalIlluminationExperimentalPluginResources& Resources)
 {
 	static bool bLoggedApplyCallback = false;
 	if (!bLoggedApplyCallback)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: pre-TAA post-process apply callback executed."));
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: experimental diffuse-indirect GI callback executed before fog/translucency."));
 		bLoggedApplyCallback = true;
 	}
-	const FScreenPassTexture SceneColor = Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
-	if (!SceneColor.IsValid() || !View.Family || !View.Family->Scene)
+
+	const FSceneInterface* Scene = static_cast<const FSceneInterface*>(&InScene);
+	if (!Scene ||
+		!Resources.SceneColor.IsValid() ||
+		!Resources.GBufferA.IsValid() ||
+		!Resources.GBufferB.IsValid() ||
+		!Resources.GBufferC.IsValid() ||
+		!Resources.SceneDepthZ.IsValid())
 	{
-		static bool bLoggedInvalidView = false;
-		if (!bLoggedInvalidView)
+		static bool bLoggedMissingRendererResources = false;
+		if (!bLoggedMissingRendererResources)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback has invalid SceneColor, ViewFamily, or Scene."));
-			bLoggedInvalidView = true;
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: experimental GI callback received incomplete scene resources."));
+			bLoggedMissingRendererResources = true;
 		}
-		return SceneColor;
+		return;
 	}
 
-	const FSceneInterface* Scene = View.Family->Scene;
 	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
 	if (!Config || !Config->bEnableDynamicGI || !Config->SoftwareBVH.IsValid())
 	{
-		static bool bLoggedMissingConfig = false;
-		if (!bLoggedMissingConfig)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback has no enabled master config or valid software BVH."));
-			bLoggedMissingConfig = true;
-		}
-		return SceneColor;
+		return;
+	}
+
+	FRDGTextureRef SceneColorTexture = GraphBuilder.RegisterExternalTexture(
+		Resources.SceneColor, ERenderTargetTexture::ShaderResource);
+	FRDGTextureRef SceneColorTarget = GraphBuilder.RegisterExternalTexture(
+		Resources.SceneColor, ERenderTargetTexture::Targetable);
+	FRDGTextureRef NormalTexture = GraphBuilder.RegisterExternalTexture(Resources.GBufferA);
+	FRDGTextureRef MetallicTexture = GraphBuilder.RegisterExternalTexture(Resources.GBufferB);
+	FRDGTextureRef BaseColorTexture = GraphBuilder.RegisterExternalTexture(Resources.GBufferC);
+	FRDGTextureRef DepthTexture = GraphBuilder.RegisterExternalTexture(Resources.SceneDepthZ);
+
+	if (!SceneColorTexture || !SceneColorTarget || !NormalTexture ||
+		!MetallicTexture || !BaseColorTexture || !DepthTexture)
+	{
+		return;
 	}
 
 	FRDGTextureRef DirectionsTexture = nullptr;
@@ -962,7 +978,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback cannot acquire completed radiance/probe textures."));
 			bLoggedMissingLightingTextures = true;
 		}
-		return SceneColor;
+		return;
 	}
 
 	FShaderResourceViewRHIRef ProbeSpatialHashSRV;
@@ -974,7 +990,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 		Scene, LogicalToPhysicalSRV, NewPhysicalSlotsSRV, NewPhysicalSlotCount, PhysicalSlotCapacity) ||
 		!LogicalToPhysicalSRV.IsValid() || PhysicalSlotCapacity == 0u)
 	{
-		return SceneColor;
+		return;
 	}
 
 	if (!DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
@@ -987,7 +1003,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback cannot acquire a valid probe spatial hash."));
 			bLoggedMissingHash = true;
 		}
-		return SceneColor;
+		return;
 	}
 
 	FShaderResourceViewRHIRef ProbeNeighborIndicesSRV;
@@ -998,24 +1014,13 @@ static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 		ProbeNeighborIndicesSRV.IsValid() &&
 		NeighborListProbeCount == ProbeCount;
 
-	if (!Inputs.SceneTextures.SceneTextures)
-	{
-		static bool bLoggedMissingSceneTextures = false;
-		if (!bLoggedMissingSceneTextures)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: post-process inputs do not contain SceneTextures."));
-			bLoggedMissingSceneTextures = true;
-		}
-		return SceneColor;
-	}
-
-	const FIntPoint ViewSize = SceneColor.ViewRect.Size();
+	const FIntPoint ViewSize = View.ViewRect.Size();
 	if (ViewSize.X <= 0 || ViewSize.Y <= 0)
 	{
-		return SceneColor;
+		return;
 	}
 
-	FRDGTextureDesc OutputDesc = SceneColor.Texture->Desc;
+	FRDGTextureDesc OutputDesc = SceneColorTexture->Desc;
 	OutputDesc.Flags |= TexCreate_UAV | TexCreate_ShaderResource;
 	FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(
 		OutputDesc, TEXT("DDGI.RadianceCascades.SceneColor"));
@@ -1023,28 +1028,23 @@ static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 	FDDGIApplyRadianceCascadesLightingCS::FParameters* PassParameters =
 		GraphBuilder.AllocParameters<FDDGIApplyRadianceCascadesLightingCS::FParameters>();
 	PassParameters->View = View.ViewUniformBuffer;
-	PassParameters->SceneColorTexture = SceneColor.Texture;
-	PassParameters->NormalTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferATexture;
-	PassParameters->DepthTexture = (*Inputs.SceneTextures.SceneTextures)->SceneDepthTexture;
-	PassParameters->BaseColorTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferCTexture;
-	PassParameters->MetallicTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferBTexture;
-	// The DDGI pass runs after deferred lighting, so its new indirect contribution
-	// must explicitly respect the same screen-space AO that already affected the
-	// scene's diffuse lighting. Bind depth as a harmless fallback when AO is absent.
-	FRDGTextureRef ScreenSpaceAOTexture = (*Inputs.SceneTextures.SceneTextures)->ScreenSpaceAOTexture;
-	PassParameters->bHasScreenSpaceAO = ScreenSpaceAOTexture != nullptr ? 1u : 0u;
-	PassParameters->ScreenSpaceAOTexture = ScreenSpaceAOTexture != nullptr
-		? ScreenSpaceAOTexture
-		: (*Inputs.SceneTextures.SceneTextures)->SceneDepthTexture;
+	PassParameters->SceneColorTexture = SceneColorTexture;
+	PassParameters->NormalTexture = NormalTexture;
+	PassParameters->DepthTexture = DepthTexture;
+	PassParameters->BaseColorTexture = BaseColorTexture;
+	PassParameters->MetallicTexture = MetallicTexture;
+
+	// The engine's normal diffuse-indirect/AO composite runs after this delegate.
+	// Do not apply a second, custom AO term here: UE4 will apply its own SSAO/DFAO.
+	PassParameters->bHasScreenSpaceAO = 0u;
+	PassParameters->ScreenSpaceAOTexture = DepthTexture;
+
 	PassParameters->DirectionsTexture = DirectionsTexture;
 	PassParameters->RadianceTexture = RadianceTexture;
 	PassParameters->HitDistanceTexture = HitDistanceTexture;
 	PassParameters->HitTriangleIndexTexture = HitTriangleIndexTexture;
 	PassParameters->ProbePositionsTexture = ProbePositionsTexture;
 	PassParameters->ProbeSpatialHash = ProbeSpatialHashSRV;
-	// RDG shader parameters must never receive a null SRV. When the optional
-	// neighbor table is unavailable, bind the always-valid uint logical-slot
-	// buffer; UsePrecomputedProbeNeighbors keeps the shader from reading it.
 	PassParameters->ProbeNeighborIndices = bHasPrecomputedNeighbors
 		? ProbeNeighborIndicesSRV
 		: LogicalToPhysicalSRV;
@@ -1052,14 +1052,13 @@ static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 	PassParameters->UsePrecomputedProbeNeighbors = bHasPrecomputedNeighbors ? 1u : 0u;
 	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
 	PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-	// Match UE4's GetScreenSpaceData() AO lookup: bilinear sampling in buffer UV space.
 	PassParameters->BilinearClampSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->ScaledViewSizeAndInvSize = FVector4(
 		static_cast<float>(ViewSize.X), static_cast<float>(ViewSize.Y),
 		1.0f / static_cast<float>(ViewSize.X), 1.0f / static_cast<float>(ViewSize.Y));
 	PassParameters->ViewRectMin = FVector2D(
-		static_cast<float>(SceneColor.ViewRect.Min.X),
-		static_cast<float>(SceneColor.ViewRect.Min.Y));
+		static_cast<float>(View.ViewRect.Min.X),
+		static_cast<float>(View.ViewRect.Min.Y));
 	PassParameters->ProbeCount = ProbeCount;
 	PassParameters->TotalRaysPerProbe = TotalRaysPerProbe;
 	PassParameters->BaseRayCount = static_cast<uint32>(FMath::Clamp(
@@ -1073,7 +1072,6 @@ static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 	PassParameters->ProbeGridDistance = Config->ProbeGridDistance;
 	PassParameters->ProbeGridOrigin = FVector4(
 		Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f);
-	// Use the snapped active-window center, not the live camera origin. This keeps cascade blend weights stable while the camera moves inside the current probe window.
 	const FVector ActiveWindowCenterLocal = Config->ActiveProbeWindowCenter - Config->SoftwareBVH->WorldOrigin;
 	PassParameters->ActiveWindowCenter = FVector4(
 		ActiveWindowCenterLocal.X, ActiveWindowCenterLocal.Y, ActiveWindowCenterLocal.Z, 0.0f);
@@ -1096,35 +1094,25 @@ static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 			FMath::DivideAndRoundUp(ViewSize.Y, 8),
 			1));
 
+	// Write the UAV result back into the renderer-owned scene-color target. This
+	// keeps subsequent fog, atmosphere, water and translucency passes on the
+	// standard renderer path instead of applying GI in post processing.
+	AddDrawTexturePass(
+		GraphBuilder,
+		View,
+		OutputTexture,
+		SceneColorTarget,
+		View.ViewRect.Min,
+		View.ViewRect.Min,
+		View.ViewRect.Size());
+
 	static bool bLoggedApplyScheduled = false;
 	if (!bLoggedApplyScheduled)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply compute pass scheduled. Probes=%u RaysPerProbe=%u HashCapacity=%u View=%dx%d OverrideOutput=%d."),
-			ProbeCount, TotalRaysPerProbe, HashCapacity, ViewSize.X, ViewSize.Y,
-			Inputs.OverrideOutput.IsValid() ? 1 : 0);
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: pre-fog GI pass scheduled. Probes=%u RaysPerProbe=%u HashCapacity=%u View=%dx%d."),
+			ProbeCount, TotalRaysPerProbe, HashCapacity, ViewSize.X, ViewSize.Y);
 		bLoggedApplyScheduled = true;
 	}
-
-	// SceneViewExtension callbacks must write to OverrideOutput when the
-	// post-process graph supplies one (typically when this is the final pass).
-	// The compute shader writes to a UAV-capable intermediate texture; copy its
-	// viewport region into the engine-owned output target before returning it.
-	if (Inputs.OverrideOutput.IsValid())
-	{
-		AddDrawTexturePass(
-			GraphBuilder,
-			static_cast<const FViewInfo&>(View),
-			OutputTexture,
-			Inputs.OverrideOutput.Texture,
-			SceneColor.ViewRect.Min,
-			Inputs.OverrideOutput.ViewRect.Min,
-			SceneColor.ViewRect.Size());
-		return FScreenPassTexture(
-			Inputs.OverrideOutput.Texture,
-			Inputs.OverrideOutput.ViewRect);
-	}
-
-	return FScreenPassTexture(OutputTexture, SceneColor.ViewRect);
 }
 
 FDDGIRadianceCascadeRHIViewExtension::FDDGIRadianceCascadeRHIViewExtension(const FAutoRegister& AutoRegister)
@@ -1135,24 +1123,6 @@ FDDGIRadianceCascadeRHIViewExtension::FDDGIRadianceCascadeRHIViewExtension(const
 bool FDDGIRadianceCascadeRHIViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
 {
 	return true;
-}
-
-void FDDGIRadianceCascadeRHIViewExtension::SubscribeToPostProcessingPass(
-	EPostProcessingPass Pass,
-	FAfterPassCallbackDelegateArray& InOutPassCallbacks,
-	bool bIsPassEnabled)
-{
-	if (Pass == EPostProcessingPass::BeforeTemporalAA)
-	{
-		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateStatic(
-			&DDGIApplyRadianceCascadesBeforeTemporalAA));
-		static bool bLoggedSubscription = false;
-		if (!bLoggedSubscription)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: subscribed to BeforeTemporalAA post-process pass (enabled=%d)."), bIsPassEnabled ? 1 : 0);
-			bLoggedSubscription = true;
-		}
-	}
 }
 
 void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
