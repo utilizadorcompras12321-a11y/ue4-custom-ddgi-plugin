@@ -271,152 +271,6 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
 }
 
 
-bool TraceBVH(
-    float3 Origin,
-    float3 Direction,
-    float MaxDistance,
-    uint IgnoreTriangleIndex,
-    out float ClosestDistance,
-    out uint ClosestTriangleIndex,
-    out float3 ClosestA,
-    out float3 ClosestB,
-    out float3 ClosestC)
-{
-    ClosestDistance = MaxDistance;
-    ClosestTriangleIndex = 0u;
-    ClosestA = 0.0f;
-    ClosestB = 0.0f;
-    ClosestC = 0.0f;
-    if (NodeCount == 0u || TriangleCount == 0u || MaxDistance <= 0.0f)
-    {
-        return false;
-    }
-
-    // Closest-hit traversal visits nearer child bounds first and tightens the
-    // ray limit whenever a triangle is found.
-    uint Stack[49];
-    float NearStack[49];
-    uint StackSize = 1u;
-    uint IterationCount = 0u;
-    Stack[0] = 0u;
-    NearStack[0] = -1.0f;
-
-    bool bFoundHit = false;
-    [loop]
-    while (StackSize > 0u && IterationCount < NodeCount)
-    {
-        ++IterationCount;
-        --StackSize;
-        uint NodeIndex = Stack[StackSize];
-        float NodeNear = NearStack[StackSize];
-        if (NodeIndex >= NodeCount ||
-            (NodeNear >= 0.0f && NodeNear > ClosestDistance))
-        {
-            continue;
-        }
-
-        uint NodeBase = NodeIndex * 3u;
-        if (NodeNear < 0.0f && !IntersectBounds(
-            Origin, Direction,
-            BVHNodes[NodeBase + 0u].xyz,
-            BVHNodes[NodeBase + 1u].xyz,
-            ClosestDistance))
-        {
-            continue;
-        }
-
-        float4 Metadata = BVHNodes[NodeBase + 2u];
-        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
-        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
-        if (LeafTriangleCount > 0u)
-        {
-            [loop]
-            for (uint LocalTriangle = 0u;
-                 LocalTriangle < LeafTriangleCount;
-                 ++LocalTriangle)
-            {
-                uint TriangleIndex = FirstTriangle + LocalTriangle;
-                if (TriangleIndex >= TriangleCount ||
-                    TriangleIndex == IgnoreTriangleIndex)
-                {
-                    continue;
-                }
-
-                uint TriangleBase = TriangleIndex * 4u;
-                float3 CandidateA = BVHTriangles[TriangleBase + 0u].xyz;
-                float3 CandidateB = BVHTriangles[TriangleBase + 1u].xyz;
-                float3 CandidateC = BVHTriangles[TriangleBase + 2u].xyz;
-                float CandidateDistance;
-                if (IntersectTriangle(
-                    Origin, Direction,
-                    CandidateA, CandidateB, CandidateC,
-                    CandidateDistance) &&
-                    CandidateDistance < ClosestDistance)
-                {
-                    ClosestDistance = CandidateDistance;
-                    ClosestTriangleIndex = TriangleIndex;
-                    ClosestA = CandidateA;
-                    ClosestB = CandidateB;
-                    ClosestC = CandidateC;
-                    bFoundHit = true;
-                }
-            }
-        }
-        else
-        {
-            uint LeftChild = (uint)max(Metadata.x, 0.0f);
-            uint RightChild = (uint)max(Metadata.y, 0.0f);
-            float LeftNear = 0.0f;
-            float RightNear = 0.0f;
-            bool bHitLeft = false;
-            bool bHitRight = false;
-            if (LeftChild < NodeCount)
-            {
-                uint LeftBase = LeftChild * 3u;
-                bHitLeft = IntersectBoundsWithNear(
-                    Origin, Direction,
-                    BVHNodes[LeftBase + 0u].xyz,
-                    BVHNodes[LeftBase + 1u].xyz,
-                    ClosestDistance, LeftNear);
-            }
-            if (RightChild < NodeCount)
-            {
-                uint RightBase = RightChild * 3u;
-                bHitRight = IntersectBoundsWithNear(
-                    Origin, Direction,
-                    BVHNodes[RightBase + 0u].xyz,
-                    BVHNodes[RightBase + 1u].xyz,
-                    ClosestDistance, RightNear);
-            }
-
-            if (bHitLeft && bHitRight)
-            {
-                bool bLeftIsNearer = asuint(LeftNear) <= asuint(RightNear);
-                uint FarChild = bLeftIsNearer ? RightChild : LeftChild;
-                float FarNear = bLeftIsNearer ? RightNear : LeftNear;
-                uint NearChild = bLeftIsNearer ? LeftChild : RightChild;
-                float NearValue = bLeftIsNearer ? LeftNear : RightNear;
-                Stack[StackSize] = FarChild;
-                NearStack[StackSize++] = FarNear;
-                Stack[StackSize] = NearChild;
-                NearStack[StackSize++] = NearValue;
-            }
-            else if (bHitLeft)
-            {
-                Stack[StackSize] = LeftChild;
-                NearStack[StackSize++] = LeftNear;
-            }
-            else if (bHitRight)
-            {
-                Stack[StackSize] = RightChild;
-                NearStack[StackSize++] = RightNear;
-            }
-        }
-    }
-
-    return bFoundHit;
-}
-
 // Any-hit is deliberately a separate, minimal traversal. It does not maintain
 // nearest distances, child ordering, or hit attributes: the first valid
 // triangle inside the light segment terminates the query.
@@ -505,22 +359,6 @@ bool TraceAnyHit(
     }
 
     return false;
-}
-
-bool TraceClosestHit(
-    float3 Origin,
-    float3 Direction,
-    float MaxDistance,
-    uint IgnoreTriangleIndex,
-    out float ClosestDistance,
-    out uint ClosestTriangleIndex,
-    out float3 ClosestA,
-    out float3 ClosestB,
-    out float3 ClosestC)
-{
-    return TraceBVH(
-        Origin, Direction, MaxDistance, IgnoreTriangleIndex,
-        ClosestDistance, ClosestTriangleIndex, ClosestA, ClosestB, ClosestC);
 }
 
 float3 EvaluateLocalDirectLighting(
@@ -612,179 +450,6 @@ float3 EvaluateLocalDirectLighting(
     return Direct;
 }
 
-float3 EvaluateHitSurfaceRadiance(
-    uint TriangleIndex,
-    float3 TriangleA,
-    float3 TriangleB,
-    float3 TriangleC,
-    float3 HitPosition,
-    float3 IncomingDirection,
-    float3 ToLight,
-    uint bTraceShadows)
-{
-    uint TriangleBase = TriangleIndex * 4u;
-    // Reuse vertex positions fetched by TraceClosestHit for intersection.
-    // Only material and emissive channels need separate buffer reads.
-    float3 Emissive = float3(
-        BVHTriangles[TriangleBase + 0u].w,
-        BVHTriangles[TriangleBase + 1u].w,
-        BVHTriangles[TriangleBase + 2u].w) * GIIntensity;
-    float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
-
-    // The geometric normal is only needed for direct diffuse lighting.
-    // Emissive-only surfaces and scenes without any direct-light source can
-    // return immediately without cross products or normal normalization.
-    if (!any(BaseColor > 1.0e-6f) ||
-        (bHasDirectionalLight == 0u && LocalLightCount == 0u))
-    {
-        return Emissive;
-    }
-
-    float3 Normal = ComputeTriangleGeometricNormal(TriangleA, TriangleB, TriangleC);
-    if (dot(Normal, IncomingDirection) > 0.0f)
-    {
-        Normal = -Normal;
-    }
-
-    float3 Direct = 0.0f;
-    if (dot(Normal, Normal) > 0.0f)
-    {
-        if (bHasDirectionalLight != 0u &&
-            DirectionalLightIntensity > 0.0f &&
-            any(DirectionalLightColor.rgb != 0.0f))
-        {
-            float NdotL = saturate(dot(Normal, ToLight));
-            if (NdotL > 0.0f)
-            {
-                bool bDirectionalOccluded = false;
-                if (bTraceShadows != 0u && bDirectionalLightCastsShadows != 0u)
-                {
-                    float RayBias = ComputeRayOriginBias(HitPosition);
-                    float3 ShadowOrigin = HitPosition + Normal * RayBias;
-                    const float DirectionalShadowDistance = 1000000.0f;
-                    bDirectionalOccluded = TraceAnyHit(
-                        ShadowOrigin, ToLight, DirectionalShadowDistance, TriangleIndex);
-                }
-                if (!bDirectionalOccluded)
-                {
-                    Direct += BaseColor * DirectionalLightColor.rgb *
-                        DirectionalLightIntensity * NdotL *
-                        (1.0f / 3.14159265f) * GIIntensity;
-                }
-            }
-        }
-        Direct += EvaluateLocalDirectLighting(
-            HitPosition, Normal, BaseColor, TriangleIndex, 4u, bTraceShadows);
-    }
-
-    return Emissive + Direct;
-}
-
-// Deterministic cosine-weighted hemisphere quadrature for the cascade bounce.
-float3 TraceDeterministicDiffuseBounce(
-    float3 HitPosition,
-    float3 SurfaceNormal,
-    uint IgnoreTriangleIndex,
-    uint SampleCount)
-{
-    // ComputeTriangleGeometricNormal already returns a finite unit vector.
-    // The caller only flips its sign, so normalizing it again is redundant.
-    float3 Normal = SurfaceNormal;
-
-    // Stable orthonormal basis (Frisvad/Duff construction). Unlike a
-    // cross-product against a selected world-up vector, this avoids a basis
-    // switch seam when the surface normal approaches the pole threshold.
-    float BasisSign = Normal.z >= 0.0f ? 1.0f : -1.0f;
-    float BasisA = -1.0f / (BasisSign + Normal.z);
-    float BasisB = Normal.x * Normal.y * BasisA;
-    float3 Tangent = float3(
-        1.0f + BasisSign * Normal.x * Normal.x * BasisA,
-        BasisSign * BasisB,
-        -BasisSign * Normal.x);
-    float3 Bitangent = float3(
-        BasisB,
-        BasisSign + Normal.y * Normal.y * BasisA,
-        -Normal.y);
-
-    // The origin offset is identical for all deterministic samples.
-    // Compute it once per primary hit instead of repeating the bias calculation.
-    float3 SecondaryOrigin = HitPosition + Normal * ComputeRayOriginBias(HitPosition);
-
-    float3 IncomingRadianceSum = 0.0f;
-    // Directional light direction is invariant across the secondary hits.
-    // The CPU stores it normalized, so no per-hit normalization is needed.
-    float3 ToLight = bHasDirectionalLight != 0u
-        ? DirectionalLightDirection.xyz
-        : 0.0f;
-    SampleCount = clamp(SampleCount, 1u, 4u);
-    // For a two-sample budget, select opposite azimuths (indices 0 and 2)
-    // rather than adjacent quadrants. This avoids clustering both rays on
-    // the same side of the tangent basis.
-    const uint SampleStride = SampleCount == 2u ? 2u : 1u;
-    const float CosTheta = 0.6666666666666667f;
-    const float SinTheta = 0.7453559924999299f;
-    const float AzimuthComponent = 0.7071067811865475f;
-
-    // Fourfold-symmetric cosine-weighted quadrature. The four azimuths are
-    // exact sign permutations of (1/sqrt(2), 1/sqrt(2)); encode those signs
-    // directly instead of evaluating sin/cos for compile-time angles.
-    // A two-sample pass uses opposite quadrants from the same pattern.
-    [loop]
-    for (uint SampleIndex = 0u; SampleIndex < SampleCount; ++SampleIndex)
-    {
-        uint PatternIndex = SampleIndex * SampleStride;
-        float TangentSign = ((PatternIndex + 1u) & 2u) != 0u ? -1.0f : 1.0f;
-        float BitangentSign = (PatternIndex & 2u) != 0u ? -1.0f : 1.0f;
-        // Tangent and bitangent form an orthonormal basis around the
-        // unit surface normal. The cosine-weighted sample is therefore
-        // unit length analytically; avoid a per-ray normalize/rsqrt here.
-        float AzimuthScale = SinTheta * AzimuthComponent;
-        float3 SecondaryDirection =
-            Tangent * (TangentSign * AzimuthScale) +
-            Bitangent * (BitangentSign * AzimuthScale) +
-            Normal * CosTheta;
-
-        float SecondaryDistance;
-        uint SecondaryTriangleIndex;
-        float3 SecondaryTriangleA;
-        float3 SecondaryTriangleB;
-        float3 SecondaryTriangleC;
-        if (TraceClosestHit(
-            SecondaryOrigin,
-            SecondaryDirection,
-            MaxTraceDistance,
-            IgnoreTriangleIndex,
-            SecondaryDistance,
-            SecondaryTriangleIndex,
-            SecondaryTriangleA,
-            SecondaryTriangleB,
-            SecondaryTriangleC))
-        {
-            float3 SecondaryHitPosition =
-                SecondaryOrigin + SecondaryDirection * SecondaryDistance;
-            float3 SecondaryDirectAndEmissive = EvaluateHitSurfaceRadiance(
-                SecondaryTriangleIndex,
-                SecondaryTriangleA,
-                SecondaryTriangleB,
-                SecondaryTriangleC,
-                SecondaryHitPosition,
-                SecondaryDirection,
-                ToLight,
-                0u);
-            // Evaluate one additional diffuse bounce only. Do not recursively
-            // launch another hemisphere at this secondary surface.
-            IncomingRadianceSum += SecondaryDirectAndEmissive;
-        }
-        else if (bEnableStaticBackground != 0u)
-        {
-            IncomingRadianceSum +=
-                StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity;
-        }
-    }
-
-    return IncomingRadianceSum / (float)SampleCount;
-}
-
 [numthreads(64, 1, 1)]
 void RadianceCascadeShadeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -838,7 +503,6 @@ void RadianceCascadeShadeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         BVHTriangles[TriangleBase + 1u].w,
         BVHTriangles[TriangleBase + 2u].w) * GIIntensity;
     float3 HitDirectRadiance = 0.0f;
-    float3 HitIndirectRadiance = 0.0f;
 
     // Preserve the primary-hit lighting budget and visibility behavior.
     if (dot(GeometricNormal, GeometricNormal) > 0.0f &&
@@ -871,12 +535,9 @@ void RadianceCascadeShadeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         HitDirectRadiance += EvaluateLocalDirectLighting(
             HitPosition, GeometricNormal, HitBaseColor, TriangleIndex, 8u, 1u);
 
-        float3 IncomingBounceRadiance = TraceDeterministicDiffuseBounce(
-            HitPosition, GeometricNormal, TriangleIndex, 4u);
-        HitIndirectRadiance = HitBaseColor * IncomingBounceRadiance;
     }
 
     RadianceUAV[Pixel] = float4(
-        HitEmissiveRadiance + HitDirectRadiance + HitIndirectRadiance,
+        HitEmissiveRadiance + HitDirectRadiance,
         1.0f);
 }
