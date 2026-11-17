@@ -1202,6 +1202,10 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const uint32 ActiveCascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
 	const uint32 BaseRayCount = static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64));
 	const uint32 TextureWidth = 4096u;
+	// Both masks begin writable. Each completed cascade transitions its output
+	// to SRV; later reuse of that ping-pong target transitions SRV back to UAV.
+	DDGITransitionTexture(RHICmdList, OcclusionMaskTextureA, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
+	DDGITransitionTexture(RHICmdList, OcclusionMaskTextureB, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
@@ -1223,12 +1227,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			? (bWriteMaskA ? OcclusionMaskBSRV : OcclusionMaskASRV)
 			: ((CascadeIndex & 1u) == 1u ? OcclusionMaskASRV : OcclusionMaskBSRV);
 
-		DDGITransitionTexture(RHICmdList, CurrentMaskTexture, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
-		if (CascadeIndex > 0u)
+		if (CascadeIndex >= 2u)
 		{
-			FTexture2DRHIRef& ParentMaskTexture = ((CascadeIndex & 1u) == 1u)
-				? OcclusionMaskTextureA : OcclusionMaskTextureB;
-			DDGITransitionTexture(RHICmdList, ParentMaskTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+			DDGITransitionTexture(RHICmdList, CurrentMaskTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 		}
 
 		RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
