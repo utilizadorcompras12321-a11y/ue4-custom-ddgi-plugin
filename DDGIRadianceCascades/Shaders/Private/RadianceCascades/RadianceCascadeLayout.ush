@@ -41,63 +41,6 @@ float2 DDGIRadianceCascadeDistanceInterval(
 		min(EndDistance, MaxTraceDistance));
 }
 
-uint DDGIRadianceCascadeRayCount(
-	uint CascadeIndex,
-	uint BaseRayCount,
-	uint RaySplitFactor)
-{
-	uint Count = clamp(BaseRayCount, 1u, 64u);
-	uint Split = clamp(RaySplitFactor, 1u, 4u);
-	[loop]
-	for (uint Index = 0u; Index < CascadeIndex; ++Index)
-	{
-		// Preserve complete parent groups when the ray storage cap is reached.
-		if (Count <= 65536u / Split)
-		{
-			Count *= Split;
-		}
-	}
-	return Count;
-}
-
-// Rays are packed cascade-by-cascade for each probe.
-uint DDGIRadianceCascadeRayStorageOffset(
-	uint CascadeIndex,
-	uint BaseRayCount,
-	uint RaySplitFactor)
-{
-	uint Offset = 0u;
-	[loop]
-	for (uint Index = 0u; Index < CascadeIndex; ++Index)
-	{
-		Offset += DDGIRadianceCascadeRayCount(
-			Index, BaseRayCount, RaySplitFactor);
-	}
-	return Offset;
-}
-
-uint DDGIRadianceCascadeRayStorageIndex(
-	uint CascadeIndex,
-	uint RayIndex,
-	uint BaseRayCount,
-	uint RaySplitFactor)
-{
-	uint Count = DDGIRadianceCascadeRayCount(
-		CascadeIndex, BaseRayCount, RaySplitFactor);
-	return DDGIRadianceCascadeRayStorageOffset(
-		CascadeIndex, BaseRayCount, RaySplitFactor) +
-		min(RayIndex, Count - 1u);
-}
-
-// Child rays are stored contiguously per parent. This returns the parent
-// direction group for a child-ray index.
-uint DDGIRadianceCascadeParentRayIndex(
-	uint ChildRayIndex,
-	uint RaySplitFactor)
-{
-	return ChildRayIndex / max(RaySplitFactor, 1u);
-}
-
 // Base directions are centers of equal-solid-angle spherical rectangles.
 // Each latitude band has a number of longitude sectors close to sqrt(N).
 // Band height in z=cos(theta) is proportional to its sector count, giving
@@ -149,49 +92,6 @@ float4 DDGIRadianceCascadeBaseRegion(uint RayIndex, uint RayCount)
 // Split each parent rectangle into equal-solid-angle children. Since
 // dOmega=dPhi*dZ, equal subdivisions of either coordinate preserve exact
 // area. Split 4 uses a 2x2 grid; splits 2 and 3 use the longer angular axis.
-void DDGIRadianceCascadeSplitRegion(
-    inout float4 Region,
-    uint ChildInGroup,
-    uint SplitFactor)
-{
-    uint SafeSplit = clamp(SplitFactor, 1u, 4u);
-    if (SafeSplit <= 1u)
-    {
-        return;
-    }
-
-    float PhiSpan = Region.y - Region.x;
-    float ZSpan = Region.w - Region.z;
-    float ZCenter = 0.5f * (Region.z + Region.w);
-    float SinTheta = sqrt(saturate(1.0f - ZCenter * ZCenter));
-    float HorizontalExtent = SinTheta * PhiSpan;
-    float VerticalExtent = ZSpan / max(SinTheta, 0.05f);
-
-    if (SafeSplit == 4u)
-    {
-        uint PhiChild = ChildInGroup & 1u;
-        uint ZChild = (ChildInGroup >> 1u) & 1u;
-        float PhiMid = 0.5f * (Region.x + Region.y);
-        float ZMid = 0.5f * (Region.z + Region.w);
-        Region.x = (PhiChild == 0u) ? Region.x : PhiMid;
-        Region.y = (PhiChild == 0u) ? PhiMid : Region.y;
-        Region.z = (ZChild == 0u) ? Region.z : ZMid;
-        Region.w = (ZChild == 0u) ? ZMid : Region.w;
-    }
-    else if (HorizontalExtent >= VerticalExtent)
-    {
-        float PhiStep = PhiSpan / (float)SafeSplit;
-        Region.x += PhiStep * (float)ChildInGroup;
-        Region.y = Region.x + PhiStep;
-    }
-    else
-    {
-        float ZStep = ZSpan / (float)SafeSplit;
-        Region.z += ZStep * (float)ChildInGroup;
-        Region.w = Region.z + ZStep;
-    }
-}
-
 float3 DDGIRadianceCascadeRegionDirection(float4 Region)
 {
     float Phi = 0.5f * (Region.x + Region.y);
