@@ -283,17 +283,26 @@ float3 DDGIInterpolateLevelPair(
     float3 ValueB = DDGISampleLevelValue(
         LocalPosition, Normal, LevelB, bValidB, ConfidenceB);
 
-    // Confidence affects which cascade contributes, not the total energy.
-    // Normalize the confidence-weighted blend so a partially populated
-    // clipmap cannot darken the result as the transition advances.
-    float Blend = saturate(T);
-    float WeightA = (1.0f - Blend) * (bValidA ? ConfidenceA : 0.0f);
-    float WeightB = Blend * (bValidB ? ConfidenceB : 0.0f);
-    float TotalWeight = WeightA + WeightB;
-    OutValid = TotalWeight > 0.00001f;
+    // If one sparse level has no valid support, keep the other level alive
+    // for the entire transition. Multiplying its weight by (1-T) alone made
+    // it vanish at the far edge and produced hard seams / black bands.
+    OutValid = bValidA || bValidB;
     if (!OutValid)
     {
         return 0.0f;
+    }
+    if (!bValidA) return ValueB;
+    if (!bValidB) return ValueA;
+
+    // When both levels are valid, confidence changes their relative influence
+    // but is normalized so sparse support cannot change total irradiance.
+    const float Blend = saturate(T);
+    const float WeightA = (1.0f - Blend) * max(ConfidenceA, 0.001f);
+    const float WeightB = Blend * max(ConfidenceB, 0.001f);
+    const float TotalWeight = WeightA + WeightB;
+    if (TotalWeight <= 0.00001f)
+    {
+        return lerp(ValueA, ValueB, Blend);
     }
     return (ValueA * WeightA + ValueB * WeightB) / TotalWeight;
 }
@@ -395,9 +404,12 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         // Blend across most of the fine/coarse overlap. A narrow transition
         // exposed confidence changes as a visible clipmap boundary.
+        // The sparse clipmap builder provides roughly one coarse-cell of
+        // geometric overlap. A much wider blend samples levels far outside
+        // that shared support and makes the transition drift / smear.
         const float TransitionWidth = min(
-            max(ProbeSpacing * 4.0f * LevelScale, ClipmapExtent * 0.18f),
-            max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.85f));
+            max(ProbeSpacing * 2.0f * LevelScale, ClipmapExtent * 0.08f),
+            max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.30f));
 
         if (ClipmapDistance <= ClipmapExtent + TransitionWidth)
         {
