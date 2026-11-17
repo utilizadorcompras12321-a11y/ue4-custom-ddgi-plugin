@@ -3,8 +3,8 @@
 
 // Mirrors FDDGIRadianceCascadeConfig. Cascades own disjoint distance
 // intervals and independently trace from the probe. A hit before an interval
-// blocks that direction; far-to-near integration merges child angular cells
-// and uses a parent hit only when its children are unobstructed misses.
+// blocks that direction; far-to-near integration terminates on a parent hit
+// or blocker and merges child angular cells only for an unobstructed miss.
 
 float DDGIRadianceCascadeSegmentLength(
 	int CascadeIndex,
