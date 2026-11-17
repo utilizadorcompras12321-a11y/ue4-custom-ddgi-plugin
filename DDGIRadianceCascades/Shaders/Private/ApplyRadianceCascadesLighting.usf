@@ -448,7 +448,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             if (ClipmapDistance <= ClipmapExtent)
             {
                 bool bCurrentLevelValid = false;
-                const float CurrentLevelConfidence = 0.0f;
+                float CurrentLevelConfidence = 0.0f;
                 float3 CurrentLevelIrradiance = DDGISampleLevelValue(
                     LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid,
                     CurrentLevelConfidence) * CurrentLevelConfidence;
@@ -472,7 +472,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         for (uint FallbackLevel = 0u; FallbackLevel < 4u; ++FallbackLevel)
         {
             bool bFallbackValid = false;
-            const float FallbackConfidence = 0.0f;
+            float FallbackConfidence = 0.0f;
             float3 FallbackIrradiance = DDGISampleLevelValue(
                 LocalPosition, Normal, FallbackLevel, bFallbackValid,
                 FallbackConfidence) * FallbackConfidence;
