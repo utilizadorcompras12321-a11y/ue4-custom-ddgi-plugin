@@ -76,6 +76,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
 {
     uint LinearIndex = DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
     if (LinearIndex >= TotalTexels || ProbeCount == 0u || TotalRaysPerProbe == 0u || BaseRayCount == 0u) return;
+    uint ScheduledProbeCount = min(TotalTexels / TotalRaysPerProbe, ProbeCount);
     uint ScheduledProbeIndex = LinearIndex / TotalRaysPerProbe;
     uint ProbeIndex = (TraceStartIndex + ScheduledProbeIndex) % ProbeCount;
     uint RayIndex = LinearIndex - ScheduledProbeIndex * TotalRaysPerProbe;
@@ -198,6 +199,13 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
             }
             ++NeighborSlot;
         }
+        // Gather only from probes traced in this same batch. Persistent raw
+        // radiance for other probes belongs to older frames and may describe
+        // geometry or lighting that has already changed. The scheduled range is
+        // circular, matching the trace cursor used by this dispatch.
+        uint NeighborScheduleOffset = (NeighborIndex + ProbeCount - TraceStartIndex) % ProbeCount;
+        if (NeighborScheduleOffset >= ScheduledProbeCount) continue;
+
         // Read the actual neighbor offset instead of reconstructing its position
         // from a global spacing. This is equivalent for the current uniform
         // lattice and remains correct when probes later use per-level spacing.
