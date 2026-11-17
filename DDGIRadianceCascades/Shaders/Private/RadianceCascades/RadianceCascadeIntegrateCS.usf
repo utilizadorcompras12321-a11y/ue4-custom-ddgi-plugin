@@ -10,7 +10,6 @@ uint ProbeStartIndex;
 uint CascadeStorageOffset;
 uint CascadeRayCount;
 uint NextCascadeStorageOffset;
-uint EffectiveSplitFactor;
 uint bCopyGatherToFinal;
 
 Texture2D<float4> GatheredRadianceTexture;
@@ -53,31 +52,16 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    const uint SafeSplitFactor = max(EffectiveSplitFactor, 1u);
-    const uint ChildLinearIndexBase =
+    // Angular splitting is disabled, so each parent ray has exactly one
+    // child with the same direction and local ray index.
+    const uint ChildLinearIndex =
         PhysicalProbeIndex * TotalRaysPerProbe +
         NextCascadeStorageOffset +
-        LocalRayIndex * SafeSplitFactor;
-
-    uint2 ChildPixel = uint2(
-        ChildLinearIndexBase % TextureWidth,
-        ChildLinearIndexBase / TextureWidth);
-    float3 IntegratedRadiance = 0.0f;
-
-    // Child rays occupy a disjoint range from the parent rays being written.
-    // The previous cascade pass has already integrated those child values in
-    // this same persistent output texture.
-    [loop]
-    for (uint ChildIndex = 0u; ChildIndex < SafeSplitFactor; ++ChildIndex)
-    {
-        IntegratedRadiance += DDGIUnpackR11G11B10(RadianceUAV[ChildPixel]);
-        ++ChildPixel.x;
-        if (ChildPixel.x >= TextureWidth)
-        {
-            ChildPixel.x = 0u;
-            ++ChildPixel.y;
-        }
-    }
-
-    RadianceUAV[Pixel] = DDGIPackR11G11B10(IntegratedRadiance / (float)SafeSplitFactor);
+        LocalRayIndex;
+    const uint2 ChildPixel = uint2(
+        ChildLinearIndex % TextureWidth,
+        ChildLinearIndex / TextureWidth);
+    const float3 ChildRadiance =
+        DDGIUnpackR11G11B10(RadianceUAV[ChildPixel]);
+    RadianceUAV[Pixel] = DDGIPackR11G11B10(ChildRadiance);
 }
