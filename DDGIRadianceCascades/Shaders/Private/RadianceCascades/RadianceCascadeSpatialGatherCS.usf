@@ -96,7 +96,6 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     uint2 DirectionPixel = uint2(RayIndex % TextureWidth, RayIndex / TextureWidth);
     float4 CenterDirectionData = DirectionsTexture.Load(int3(DirectionPixel, 0));
     float3 CenterDirection = normalize(CenterDirectionData.xyz);
-    uint CascadeIndex = (uint)clamp(round(CenterDirectionData.w), 0.0f, 7.0f);
     // Independent angular rays store hit distances from the probe origin.
     float3 CenterRayOrigin = CenterPosition;
     float4 CenterRadianceSample = RadianceTexture.Load(int3(Pixel, 0));
@@ -114,7 +113,7 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         OutputRadianceUAV[Pixel] = CenterRadianceSample;
         return;
     }
-    // Positive distance without a triangle tag is reserved for blocked sentinels.
+    // Guard against stale or malformed hit metadata before reading triangle data.
     if (CenterHitDistance >= 0.0f && !CenterHasSurfaceTag)
     {
         OutputRadianceUAV[Pixel] = CenterRadianceSample;
