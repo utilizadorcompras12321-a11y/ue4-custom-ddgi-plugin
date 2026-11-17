@@ -14,7 +14,7 @@ Copy each file over the matching file in your local Unreal Engine 4.27.2 source 
 For this checkout, the full destination paths are:
 
 - `C:\Users\Utilizador~\Desktop\UnrealEngine\Engine\Source\Runtime\Engine\Public\SceneViewExtension.h`
-- `C:\Users\Utilizador~\Desktop\UnrealEngine\Engine\Source\Runtime\Renderer\Private\PostProcessing.cpp`
+- `C:\Users\Utilizador~\Desktop\UnrealEngine\Engine\Source\Runtime\Renderer\Private\PostProcess\PostProcessing.cpp`
 
 ## What these changes do
 
