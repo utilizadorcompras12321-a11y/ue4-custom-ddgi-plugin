@@ -533,8 +533,11 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 		// This pass has no native renderer pass to accept it. After-pass callbacks only
 		// call AcceptOverrideIfLastPass with a callback index, which does not call AcceptPass.
 		// Accept it explicitly so the override pass sequence can advance before TAA/Tonemap.
-		PassSequence.AcceptPass(EPass::BeforeTemporalAA);
-		SceneColor = AddAfterPass(EPass::BeforeTemporalAA, SceneColor);
+		if (PassSequence.IsEnabled(EPass::BeforeTemporalAA))
+		{
+			PassSequence.AcceptPass(EPass::BeforeTemporalAA);
+			SceneColor = AddAfterPass(EPass::BeforeTemporalAA, SceneColor);
+		}
 
 		// Temporal Anti-aliasing. Also may perform a temporal upsample from primary to secondary view rect.
 		if (AntiAliasingMethod == AAM_TemporalAA)
