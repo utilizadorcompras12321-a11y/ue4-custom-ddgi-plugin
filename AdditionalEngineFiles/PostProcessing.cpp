@@ -850,6 +850,9 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 
 		SceneColorBeforeTonemap = SceneColor;
 
+		// Consume pre-TAA view extension callbacks in the minimal post-processing path too.
+		SceneColor = AddAfterPass(EPass::BeforeTemporalAA, SceneColor);
+
 		if (PassSequence.IsEnabled(EPass::Tonemap))
 		{
 			FTonemapInputs PassInputs;
