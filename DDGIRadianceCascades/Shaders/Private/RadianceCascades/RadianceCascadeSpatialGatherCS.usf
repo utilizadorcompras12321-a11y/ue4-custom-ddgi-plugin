@@ -2,8 +2,6 @@
 #include "/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeLayout.ush"
 uint TextureWidth, TotalTexels, DispatchGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe, BaseRayCount, HashCapacity, TriangleCount;
 float ProbeSpacing;
-float BaseSegmentLength;
-float CascadeScale;
 float4 ProbeGridOrigin;
 Texture2D<float4> RadianceTexture;
 Texture2D<float> HitDistanceTexture;
