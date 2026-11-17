@@ -912,7 +912,7 @@ IMPLEMENT_GLOBAL_SHADER(
 	SF_Compute);
 
 
-static FScreenPassTexture DDGIApplyRadianceCascadesBeforeDOF(
+static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	FRDGBuilder& GraphBuilder,
 	const FSceneView& View,
 	const FPostProcessMaterialInputs& Inputs)
@@ -1135,14 +1135,14 @@ void FDDGIRadianceCascadeRHIViewExtension::SubscribeToPostProcessingPass(
 	FAfterPassCallbackDelegateArray& InOutPassCallbacks,
 	bool bIsPassEnabled)
 {
-	if (Pass == EPostProcessingPass::BeforeDOF)
+	if (Pass == EPostProcessingPass::AfterMotionBlur)
 	{
 		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateStatic(
-			&DDGIApplyRadianceCascadesBeforeDOF));
+			&DDGIApplyRadianceCascadesAfterMotionBlur));
 		static bool bLoggedSubscription = false;
 		if (!bLoggedSubscription)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: subscribed to BeforeDOF post-process pass (enabled=%d)."), bIsPassEnabled ? 1 : 0);
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: subscribed to AfterMotionBlur post-process pass (enabled=%d)."), bIsPassEnabled ? 1 : 0);
 			bLoggedSubscription = true;
 		}
 	}
