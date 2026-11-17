@@ -12,6 +12,8 @@ uint TriangleCount;
 uint CascadeCount;
 uint TraceCascadeIndex;
 uint bHasParentMask;
+uint bReadParentMaskFloat;
+uint bWriteCurrentMaskFloat;
 uint BaseRayCount;
 float BaseSegmentLength;
 float CascadeScale;
@@ -40,8 +42,10 @@ Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> BVHNodes;
 StructuredBuffer<float4> BVHTriangles;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
-Texture2D<uint> ParentOcclusionMaskTexture;
-RWTexture2D<uint> CurrentOcclusionMaskUAV;
+Texture2D<float4> ParentOcclusionMaskFloatTexture;
+Texture2D<uint> ParentOcclusionMaskUIntTexture;
+RWTexture2D<float4> CurrentOcclusionMaskFloatUAV;
+RWTexture2D<uint> CurrentOcclusionMaskUIntUAV;
 RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<uint> HitTriangleIndexUAV;
@@ -821,9 +825,19 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         uint ParentLinearIndex = PhysicalProbeIndex * TotalRaysPerProbe +
             ParentCascadeStorageOffset + ParentCascadeRayIndex;
         uint2 ParentPixel = uint2(ParentLinearIndex % TextureWidth, ParentLinearIndex / TextureWidth);
-        if (ParentOcclusionMaskTexture.Load(int3(ParentPixel, 0)) != 0u)
+        bool bParentBlocked = bReadParentMaskFloat != 0u
+            ? (ParentOcclusionMaskFloatTexture.Load(int3(ParentPixel, 0)).x > 0.5f)
+            : (ParentOcclusionMaskUIntTexture.Load(int3(ParentPixel, 0)) != 0u);
+        if (bParentBlocked)
         {
-            CurrentOcclusionMaskUAV[Pixel] = 1u;
+            if (bWriteCurrentMaskFloat != 0u)
+            {
+                CurrentOcclusionMaskFloatUAV[Pixel] = float4(1.0f, 0.0f, 0.0f, 0.0f);
+            }
+            else
+            {
+                CurrentOcclusionMaskUIntUAV[Pixel] = 1u;
+            }
             HitDistanceUAV[Pixel] = 0.0f;
             HitTriangleIndexUAV[Pixel] = 0u;
             RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -844,7 +858,14 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // contribute any scene hit. Clear their outputs without traversing the BVH.
     if (CascadeStartDistance >= SafeMaxTraceDistance)
     {
-        CurrentOcclusionMaskUAV[Pixel] = 0u;
+        if (bWriteCurrentMaskFloat != 0u)
+        {
+            CurrentOcclusionMaskFloatUAV[Pixel] = 0.0f;
+        }
+        else
+        {
+            CurrentOcclusionMaskUIntUAV[Pixel] = 0u;
+        }
         HitDistanceUAV[Pixel] = -1.0f;
         HitTriangleIndexUAV[Pixel] = 0u;
         RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -898,7 +919,14 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float CascadeRayLength = max(CascadeEndDistance - CascadeStartDistance, 0.0f);
     if (CascadeRayLength <= 0.0f)
     {
-        CurrentOcclusionMaskUAV[Pixel] = 0u;
+        if (bWriteCurrentMaskFloat != 0u)
+        {
+            CurrentOcclusionMaskFloatUAV[Pixel] = 0.0f;
+        }
+        else
+        {
+            CurrentOcclusionMaskUIntUAV[Pixel] = 0u;
+        }
         HitDistanceUAV[Pixel] = -1.0f;
         HitTriangleIndexUAV[Pixel] = 0u;
         RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -926,7 +954,14 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // HitDistance is local to this cascade ray origin. Gather reconstructs
     // the origin from the parent direction and cascade start distance.
     bool bHasSurfaceHit = bHit;
-    CurrentOcclusionMaskUAV[Pixel] = bHasSurfaceHit ? 1u : 0u;
+    if (bWriteCurrentMaskFloat != 0u)
+    {
+        CurrentOcclusionMaskFloatUAV[Pixel] = bHasSurfaceHit ? 1.0f : 0.0f;
+    }
+    else
+    {
+        CurrentOcclusionMaskUIntUAV[Pixel] = bHasSurfaceHit ? 1u : 0u;
+    }
     HitDistanceUAV[Pixel] = bHasSurfaceHit ? ClosestHit : -1.0f;
     HitTriangleIndexUAV[Pixel] = bHasSurfaceHit ? (ClosestTriangleIndex + 1u) : 0u;
 
