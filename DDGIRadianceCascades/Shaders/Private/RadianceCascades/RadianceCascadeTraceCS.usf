@@ -640,8 +640,7 @@ float3 TraceDeterministicDiffuseBounce(
 
     float3 IncomingRadianceSum = 0.0f;
     // Directional light direction is invariant across the secondary hits.
-    // Normalize it once per primary hit, not once per secondary surface.
-    // The CPU stores the directional-light vector normalized.
+    // The CPU stores it normalized, so no per-hit normalization is needed.
     float3 ToLight = bHasDirectionalLight != 0u
         ? DirectionalLightDirection.xyz
         : 0.0f;
