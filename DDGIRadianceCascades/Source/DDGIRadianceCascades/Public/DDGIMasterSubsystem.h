@@ -43,6 +43,7 @@ struct FDDGIMasterConfig
 	UPROPERTY() bool bDirectionalLightCastsShadows = true;
 	UPROPERTY() FVector DirectionalLightDirection = FVector(0.0f, 0.0f, -1.0f);
 	UPROPERTY() FLinearColor DirectionalLightColor = FLinearColor::White;
+	// Directional-light illuminance in lux; consumed as irradiance by the radiance injection shader.
 	UPROPERTY() float DirectionalLightIntensity = 0.0f;
 	UPROPERTY() float LocalLightGIIntensityScale = 0.01f;
 	// Fixed-size shader arrays are copied with the scene config. The arrays are
