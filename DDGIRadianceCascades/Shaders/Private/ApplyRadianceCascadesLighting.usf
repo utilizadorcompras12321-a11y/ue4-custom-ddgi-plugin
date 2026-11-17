@@ -418,8 +418,11 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             break;
         }
 
+        // Blend across half of the fine/coarse overlap. A fixed two-cell
+        // width was too narrow relative to the coarse lattice and made
+        // confidence changes read as a visible clipmap boundary.
         const float TransitionWidth = min(
-            max(ProbeSpacing * 2.0f, ClipmapExtent * 0.05f),
+            max(ProbeSpacing * 3.0f * LevelScale, ClipmapExtent * 0.10f),
             max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.5f));
 
         if (ClipmapDistance <= ClipmapExtent + TransitionWidth)
