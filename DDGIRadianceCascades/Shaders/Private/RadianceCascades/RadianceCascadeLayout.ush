@@ -89,6 +89,22 @@ float4 DDGIRadianceCascadeBaseRegion(uint RayIndex, uint RayCount)
     return float4(PhiMin, PhiMax, ZMin, ZMax);
 }
 
+// Split each base spherical cell into 2^CascadeIndex equal-solid-angle
+// azimuth sectors. Each parent therefore has exactly two children at the
+// next level, with matching latitude bounds and half the azimuth span.
+float4 DDGIRadianceCascadeHierarchicalRegion(uint CascadeRayIndex, uint CascadeIndex, uint BaseRayCount)
+{
+    uint SafeBaseCount = clamp(BaseRayCount, 1u, 64u);
+    uint SafeLevel = min(CascadeIndex, 7u);
+    uint ChildCount = 1u << SafeLevel;
+    uint BaseRayIndex = CascadeRayIndex / ChildCount;
+    uint ChildIndex = CascadeRayIndex - BaseRayIndex * ChildCount;
+    float4 BaseRegion = DDGIRadianceCascadeBaseRegion(BaseRayIndex, SafeBaseCount);
+    float PhiSpan = (BaseRegion.y - BaseRegion.x) / (float)ChildCount;
+    float PhiMin = BaseRegion.x + (float)ChildIndex * PhiSpan;
+    return float4(PhiMin, PhiMin + PhiSpan, BaseRegion.z, BaseRegion.w);
+}
+
 // Convert the center of an equal-solid-angle angular region to a direction.
 float3 DDGIRadianceCascadeRegionDirection(float4 Region)
 {
