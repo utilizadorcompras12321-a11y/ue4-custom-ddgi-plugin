@@ -503,7 +503,8 @@ float3 EvaluateLocalDirectLighting(
         // lights carry a negative cosine sentinel and skip this term.
         if (DirectionAndCosOuter.w > -1.0f)
         {
-            float CosTheta = dot(-ToLight, normalize(DirectionAndCosOuter.xyz));
+            // Spot directions are normalized on the CPU before upload.
+            float CosTheta = dot(-ToLight, DirectionAndCosOuter.xyz);
             float CosInner = max(
                 DirectionAndCosOuter.w,
                 LightParameters.z);
@@ -640,8 +641,9 @@ float3 TraceDeterministicDiffuseBounce(
     float3 IncomingRadianceSum = 0.0f;
     // Directional light direction is invariant across the secondary hits.
     // Normalize it once per primary hit, not once per secondary surface.
+    // The CPU stores the directional-light vector normalized.
     float3 ToLight = bHasDirectionalLight != 0u
-        ? normalize(DirectionalLightDirection.xyz)
+        ? DirectionalLightDirection.xyz
         : 0.0f;
     SampleCount = clamp(SampleCount, 1u, 4u);
     // For a two-sample budget, select opposite azimuths (indices 0 and 2)
@@ -855,7 +857,8 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         {
             if (bHasDirectionalLight != 0u && DirectionalLightIntensity > 0.0f)
             {
-                float3 ToLight = normalize(DirectionalLightDirection.xyz);
+                // DirectionalLightDirection is normalized when the scene light is captured.
+                float3 ToLight = DirectionalLightDirection.xyz;
                 float NdotL = saturate(dot(GeometricNormal, ToLight));
                 if (NdotL > 0.0f)
                 {
