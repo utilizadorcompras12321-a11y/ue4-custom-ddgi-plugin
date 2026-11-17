@@ -908,7 +908,7 @@ IMPLEMENT_GLOBAL_SHADER(
 	SF_Compute);
 
 
-static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
+static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 	FRDGBuilder& GraphBuilder,
 	const FSceneView& View,
 	const FPostProcessMaterialInputs& Inputs)
@@ -916,7 +916,7 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	static bool bLoggedApplyCallback = false;
 	if (!bLoggedApplyCallback)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: post-process apply callback executed."));
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: pre-TAA post-process apply callback executed."));
 		bLoggedApplyCallback = true;
 	}
 	const FScreenPassTexture SceneColor = Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
@@ -1139,14 +1139,14 @@ void FDDGIRadianceCascadeRHIViewExtension::SubscribeToPostProcessingPass(
 	FAfterPassCallbackDelegateArray& InOutPassCallbacks,
 	bool bIsPassEnabled)
 {
-	if (Pass == EPostProcessingPass::MotionBlur)
+	if (Pass == EPostProcessingPass::BeforeTemporalAA)
 	{
 		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateStatic(
-			&DDGIApplyRadianceCascadesAfterMotionBlur));
+			&DDGIApplyRadianceCascadesBeforeTemporalAA));
 		static bool bLoggedSubscription = false;
 		if (!bLoggedSubscription)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: subscribed to AfterMotionBlur post-process pass (enabled=%d)."), bIsPassEnabled ? 1 : 0);
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: subscribed to BeforeTemporalAA post-process pass (enabled=%d)."), bIsPassEnabled ? 1 : 0);
 			bLoggedSubscription = true;
 		}
 	}
