@@ -57,6 +57,8 @@ public:
 	{
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
 		CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
+		TraceCascadeIndex.Bind(Initializer.ParameterMap, TEXT("TraceCascadeIndex"));
+		bHasParentMask.Bind(Initializer.ParameterMap, TEXT("bHasParentMask"));
 		BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
 		TextureWidth.Bind(Initializer.ParameterMap, TEXT("TextureWidth"));
 		TotalTexels.Bind(Initializer.ParameterMap, TEXT("TotalTexels"));
@@ -68,6 +70,8 @@ public:
 		RadianceScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceScratchUAV"));
 		RadianceIntegrationScratchUAV.Bind(Initializer.ParameterMap, TEXT("RadianceIntegrationScratchUAV"));
 		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
+		ParentOcclusionMaskTexture.Bind(Initializer.ParameterMap, TEXT("ParentOcclusionMaskTexture"));
+		CurrentOcclusionMaskUAV.Bind(Initializer.ParameterMap, TEXT("CurrentOcclusionMaskUAV"));
 		NewPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("NewPhysicalSlots"));
 		bInitializeDirections.Bind(Initializer.ParameterMap, TEXT("bInitializeDirections"));
 	}
@@ -100,6 +104,8 @@ public:
 
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
+		SetShaderValue(RHICmdList, ShaderRHI, TraceCascadeIndex, InTraceCascadeIndex);
+		SetShaderValue(RHICmdList, ShaderRHI, bHasParentMask, bInHasParentMask);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
 		SetShaderValue(RHICmdList, ShaderRHI, TextureWidth, InTextureWidth);
 		SetShaderValue(RHICmdList, ShaderRHI, TotalTexels, InTotalTexels);
@@ -122,6 +128,8 @@ public:
 		if (RadianceScratchUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceScratchUAV.GetBaseIndex(), RadianceScratchView);
 		if (RadianceIntegrationScratchUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceIntegrationScratchUAV.GetBaseIndex(), RadianceIntegrationScratchView);
 		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), HitTriangleIndexView);
+		if (ParentOcclusionMaskTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskTexture.GetBaseIndex(), ParentMaskSRV);
+		if (CurrentOcclusionMaskUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskUAV.GetBaseIndex(), CurrentMaskUAV);
 		if (NewPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, NewPhysicalSlots.GetBaseIndex(), InNewPhysicalSlotsSRV);
 	}
 
@@ -143,12 +151,16 @@ public:
 		if (RadianceScratchUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceScratchUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 		if (RadianceIntegrationScratchUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceIntegrationScratchUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+		if (ParentOcclusionMaskTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+		if (CurrentOcclusionMaskUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 		if (NewPhysicalSlots.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, NewPhysicalSlots.GetBaseIndex(), FShaderResourceViewRHIRef());
 	}
 
 private:
 	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
 	LAYOUT_FIELD(FShaderParameter, CascadeCount);
+	LAYOUT_FIELD(FShaderParameter, TraceCascadeIndex);
+	LAYOUT_FIELD(FShaderParameter, bHasParentMask);
 	LAYOUT_FIELD(FShaderParameter, BaseRayCount);
 	LAYOUT_FIELD(FShaderParameter, TextureWidth);
 	LAYOUT_FIELD(FShaderParameter, TotalTexels);
@@ -160,6 +172,8 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceScratchUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceIntegrationScratchUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexUAV);
+	LAYOUT_FIELD(FShaderResourceParameter, ParentOcclusionMaskTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, CurrentOcclusionMaskUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, NewPhysicalSlots);
 	LAYOUT_FIELD(FShaderParameter, bInitializeDirections);
 };
@@ -240,6 +254,10 @@ public:
 		FUnorderedAccessViewRHIRef RadianceView,
 		FUnorderedAccessViewRHIRef HitDistanceView,
 		FUnorderedAccessViewRHIRef HitTriangleIndexView,
+		FShaderResourceViewRHIRef ParentMaskSRV,
+		FUnorderedAccessViewRHIRef CurrentMaskUAV,
+		uint32 InTraceCascadeIndex,
+		uint32 bInHasParentMask,
 		uint32 InTotalTexels,
 		uint32 InDispatchGroupsX,
 		uint32 InProbeCount,
