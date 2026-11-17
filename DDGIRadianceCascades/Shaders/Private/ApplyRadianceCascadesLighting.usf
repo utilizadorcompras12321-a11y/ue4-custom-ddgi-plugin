@@ -81,6 +81,19 @@ bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
     return false;
 }
 
+bool DDGIIsProbeInitialized(uint ProbeIndex)
+{
+    uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+    uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe;
+    uint2 Pixel = uint2(
+        LinearIndex % DDGI_RC_TEXTURE_WIDTH,
+        LinearIndex / DDGI_RC_TEXTURE_WIDTH);
+    // Initialization writes this sentinel. The trace pass overwrites it for
+    // every ray, including misses, so a black-but-untraced probe is distinct
+    // from a legitimately dark, fully traced probe.
+    return HitTriangleIndexTexture.Load(int3(Pixel, 0)) != 0xFFFFFFFFu;
+}
+
 float3 DDGIProbeDiffuseIrradiance(
     uint ProbeIndex,
     float3 Normal)
@@ -196,6 +209,8 @@ float3 DDGISampleProbeLevel(
             bFoundProbe = DDGIFindProbeInCell(Cell, Level, ProbeIndex);
         }
         if (!bFoundProbe) continue;
+
+        if (!DDGIIsProbeInitialized(ProbeIndex)) continue;
 
         uint2 ProbePixel = uint2(
             ProbeIndex % DDGI_RC_TEXTURE_WIDTH,
