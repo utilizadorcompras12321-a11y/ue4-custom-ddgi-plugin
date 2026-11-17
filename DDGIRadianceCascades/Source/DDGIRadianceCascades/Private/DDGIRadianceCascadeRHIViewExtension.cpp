@@ -204,16 +204,6 @@ public:
 		BackgroundTransitionEnd.Bind(Initializer.ParameterMap, TEXT("BackgroundTransitionEnd"));
 		bEnableStaticBackground.Bind(Initializer.ParameterMap, TEXT("bEnableStaticBackground"));
 
-		DirectionalLightDirection.Bind(Initializer.ParameterMap, TEXT("DirectionalLightDirection"));
-		DirectionalLightColor.Bind(Initializer.ParameterMap, TEXT("DirectionalLightColor"));
-		DirectionalLightIntensity.Bind(Initializer.ParameterMap, TEXT("DirectionalLightIntensity"));
-		bHasDirectionalLight.Bind(Initializer.ParameterMap, TEXT("bHasDirectionalLight"));
-		bDirectionalLightCastsShadows.Bind(Initializer.ParameterMap, TEXT("bDirectionalLightCastsShadows"));
-		LocalLightCount.Bind(Initializer.ParameterMap, TEXT("LocalLightCount"));
-		LocalLightPositionAndRadius.Bind(Initializer.ParameterMap, TEXT("LocalLightPositionAndRadius"));
-		LocalLightDirectionAndCosOuter.Bind(Initializer.ParameterMap, TEXT("LocalLightDirectionAndCosOuter"));
-		LocalLightColorAndIntensity.Bind(Initializer.ParameterMap, TEXT("LocalLightColorAndIntensity"));
-		LocalLightParameters.Bind(Initializer.ParameterMap, TEXT("LocalLightParameters"));
 		DirectionsTexture.Bind(Initializer.ParameterMap, TEXT("DirectionsTexture"));
 		ProbePositionsTexture.Bind(Initializer.ParameterMap, TEXT("ProbePositionsTexture"));
 		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
@@ -260,17 +250,7 @@ public:
 		const FVector4& InActiveWindowCenter,
 		float InBackgroundTransitionStart,
 		float InBackgroundTransitionEnd,
-		uint32 bInEnableStaticBackground,
-		const FVector4& InDirectionalLightDirection,
-		const FVector4& InDirectionalLightColor,
-		float InDirectionalLightIntensity,
-		uint32 bInHasDirectionalLight,
-		uint32 bInDirectionalLightCastsShadows,
-		const TArray<FVector4>& InLocalLightPositionAndRadius,
-		const TArray<FVector4>& InLocalLightDirectionAndCosOuter,
-		const TArray<FVector4>& InLocalLightColorAndIntensity,
-		const TArray<FVector4>& InLocalLightParameters,
-		uint32 InLocalLightCount)
+		uint32 bInEnableStaticBackground)
 	{
 		const uint32 InTextureWidth = 4096;
 		SetShaderValue(RHICmdList, ShaderRHI, TextureWidth, InTextureWidth);
@@ -294,21 +274,6 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionStart, InBackgroundTransitionStart);
 		SetShaderValue(RHICmdList, ShaderRHI, BackgroundTransitionEnd, InBackgroundTransitionEnd);
 		SetShaderValue(RHICmdList, ShaderRHI, bEnableStaticBackground, bInEnableStaticBackground);
-
-		SetShaderValue(RHICmdList, ShaderRHI, DirectionalLightDirection, InDirectionalLightDirection);
-		SetShaderValue(RHICmdList, ShaderRHI, DirectionalLightColor, InDirectionalLightColor);
-		SetShaderValue(RHICmdList, ShaderRHI, DirectionalLightIntensity, InDirectionalLightIntensity);
-		SetShaderValue(RHICmdList, ShaderRHI, bHasDirectionalLight, bInHasDirectionalLight);
-		SetShaderValue(RHICmdList, ShaderRHI, bDirectionalLightCastsShadows, bInDirectionalLightCastsShadows);
-		SetShaderValue(RHICmdList, ShaderRHI, LocalLightCount, FMath::Min(InLocalLightCount, 32u));
-		check(InLocalLightPositionAndRadius.Num() >= 32);
-		check(InLocalLightDirectionAndCosOuter.Num() >= 32);
-		check(InLocalLightColorAndIntensity.Num() >= 32);
-		check(InLocalLightParameters.Num() >= 32);
-		SetShaderValueArray(RHICmdList, ShaderRHI, LocalLightPositionAndRadius, InLocalLightPositionAndRadius.GetData(), 32u);
-		SetShaderValueArray(RHICmdList, ShaderRHI, LocalLightDirectionAndCosOuter, InLocalLightDirectionAndCosOuter.GetData(), 32u);
-		SetShaderValueArray(RHICmdList, ShaderRHI, LocalLightColorAndIntensity, InLocalLightColorAndIntensity.GetData(), 32u);
-		SetShaderValueArray(RHICmdList, ShaderRHI, LocalLightParameters, InLocalLightParameters.GetData(), 32u);
 
 		if (DirectionsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, DirectionsTexture.GetBaseIndex(), DirectionsSRV);
 		if (ProbePositionsTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ProbePositionsTexture.GetBaseIndex(), ProbePositionsSRV);
@@ -356,16 +321,6 @@ private:
 	LAYOUT_FIELD(FShaderParameter, BackgroundTransitionEnd);
 	LAYOUT_FIELD(FShaderParameter, bEnableStaticBackground);
 
-	LAYOUT_FIELD(FShaderParameter, DirectionalLightDirection);
-	LAYOUT_FIELD(FShaderParameter, DirectionalLightColor);
-	LAYOUT_FIELD(FShaderParameter, DirectionalLightIntensity);
-	LAYOUT_FIELD(FShaderParameter, bHasDirectionalLight);
-	LAYOUT_FIELD(FShaderParameter, bDirectionalLightCastsShadows);
-	LAYOUT_FIELD(FShaderParameter, LocalLightCount);
-	LAYOUT_FIELD(FShaderParameter, LocalLightPositionAndRadius);
-	LAYOUT_FIELD(FShaderParameter, LocalLightDirectionAndCosOuter);
-	LAYOUT_FIELD(FShaderParameter, LocalLightColorAndIntensity);
-	LAYOUT_FIELD(FShaderParameter, LocalLightParameters);
 	LAYOUT_FIELD(FShaderResourceParameter, DirectionsTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, ProbePositionsTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
@@ -1519,17 +1474,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 				InView.ViewMatrices.GetViewOrigin().Y - Config->SoftwareBVH->WorldOrigin.Y,
 				InView.ViewMatrices.GetViewOrigin().Z - Config->SoftwareBVH->WorldOrigin.Z, 0.0f),
 			Config->BackgroundTransitionStart, Config->BackgroundTransitionEnd,
-			Config->bEnableStaticBackground ? 1u : 0u,
-			FVector4(Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z, 0.0f),
-			FVector4(Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B, 0.0f),
-			Config->DirectionalLightIntensity,
-			Config->bHasDirectionalLight ? 1u : 0u,
-			Config->bDirectionalLightCastsShadows ? 1u : 0u,
-			Config->LocalLightPositionAndRadius,
-			Config->LocalLightDirectionAndCosOuter,
-			Config->LocalLightColorAndIntensity,
-			Config->LocalLightParameters,
-			Config->LocalLightCount);
+			Config->bEnableStaticBackground ? 1u : 0u);
 		DispatchComputeShader(RHICmdList, TraceShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
 		TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
 	}
