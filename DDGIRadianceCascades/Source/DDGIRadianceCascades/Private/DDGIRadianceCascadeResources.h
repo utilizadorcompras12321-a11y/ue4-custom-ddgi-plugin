@@ -40,11 +40,6 @@ bool DDGIGetRadianceCascadeInitializationRHIResources_RenderThread(
     uint32& OutPendingSlotCount,
     bool& bOutInitializeDirections);
 
-bool DDGIGetRadianceCascadeOcclusionMaskTextures_RenderThread(
-    const FSceneInterface* Scene,
-    FTexture2DRHIRef& OutMaskA,
-    FTexture2DRHIRef& OutMaskB);
-
 bool DDGIGetRadianceCascadeTracingRHIResources_RenderThread(
     const FSceneInterface* Scene,
     FTexture2DRHIRef& OutDirections,
