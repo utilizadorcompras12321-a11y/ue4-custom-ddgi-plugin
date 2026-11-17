@@ -192,9 +192,6 @@ public:
 		TriangleCount.Bind(Initializer.ParameterMap, TEXT("TriangleCount"));
 		CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
 		TraceCascadeIndex.Bind(Initializer.ParameterMap, TEXT("TraceCascadeIndex"));
-		bHasParentMask.Bind(Initializer.ParameterMap, TEXT("bHasParentMask"));
-		bReadParentMaskFloat.Bind(Initializer.ParameterMap, TEXT("bReadParentMaskFloat"));
-		bWriteCurrentMaskFloat.Bind(Initializer.ParameterMap, TEXT("bWriteCurrentMaskFloat"));
 		BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
 		BaseSegmentLength.Bind(Initializer.ParameterMap, TEXT("BaseSegmentLength"));
 		CascadeScale.Bind(Initializer.ParameterMap, TEXT("CascadeScale"));
@@ -225,10 +222,6 @@ public:
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
  		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
-		ParentOcclusionMaskFloatTexture.Bind(Initializer.ParameterMap, TEXT("ParentOcclusionMaskFloatTexture"));
-		ParentOcclusionMaskUIntTexture.Bind(Initializer.ParameterMap, TEXT("ParentOcclusionMaskUIntTexture"));
-		CurrentOcclusionMaskFloatUAV.Bind(Initializer.ParameterMap, TEXT("CurrentOcclusionMaskFloatUAV"));
-		CurrentOcclusionMaskUIntUAV.Bind(Initializer.ParameterMap, TEXT("CurrentOcclusionMaskUIntUAV"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -248,14 +241,7 @@ public:
 		FUnorderedAccessViewRHIRef RadianceView,
 		FUnorderedAccessViewRHIRef HitDistanceView,
 		FUnorderedAccessViewRHIRef HitTriangleIndexView,
-		FShaderResourceViewRHIRef ParentMaskFloatSRV,
-		FShaderResourceViewRHIRef ParentMaskUIntSRV,
-		FUnorderedAccessViewRHIRef CurrentMaskFloatUAV,
-		FUnorderedAccessViewRHIRef CurrentMaskUIntUAV,
 		uint32 InTraceCascadeIndex,
-		uint32 bInHasParentMask,
-		uint32 bInReadParentMaskFloat,
-		uint32 bInWriteCurrentMaskFloat,
 		uint32 InTotalTexels,
 		uint32 InDispatchGroupsX,
 		uint32 InProbeCount,
@@ -297,9 +283,6 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, TriangleCount, InTriangleCount);
  		SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, TraceCascadeIndex, InTraceCascadeIndex);
-		SetShaderValue(RHICmdList, ShaderRHI, bHasParentMask, bInHasParentMask);
-		SetShaderValue(RHICmdList, ShaderRHI, bReadParentMaskFloat, bInReadParentMaskFloat);
-		SetShaderValue(RHICmdList, ShaderRHI, bWriteCurrentMaskFloat, bInWriteCurrentMaskFloat);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseSegmentLength, InBaseSegmentLength);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeScale, InCascadeScale);
@@ -335,10 +318,6 @@ public:
 		if (RadianceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), RadianceView);
 		if (HitDistanceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitDistanceUAV.GetBaseIndex(), HitDistanceView);
  		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), HitTriangleIndexView);
-		if (ParentOcclusionMaskFloatTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskFloatTexture.GetBaseIndex(), ParentMaskFloatSRV);
-		if (ParentOcclusionMaskUIntTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskUIntTexture.GetBaseIndex(), ParentMaskUIntSRV);
-		if (CurrentOcclusionMaskFloatUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskFloatUAV.GetBaseIndex(), CurrentMaskFloatUAV);
-		if (CurrentOcclusionMaskUIntUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskUIntUAV.GetBaseIndex(), CurrentMaskUIntUAV);
 	}
 
 	template<typename TShaderRHIParamRef>
@@ -352,10 +331,6 @@ public:
 		if (RadianceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 		if (HitDistanceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitDistanceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
  		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
-		if (ParentOcclusionMaskFloatTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskFloatTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
-		if (ParentOcclusionMaskUIntTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskUIntTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
-		if (CurrentOcclusionMaskFloatUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskFloatUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
-		if (CurrentOcclusionMaskUIntUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskUIntUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 	}
 
 private:
@@ -369,9 +344,6 @@ private:
 	LAYOUT_FIELD(FShaderParameter, TriangleCount);
  	LAYOUT_FIELD(FShaderParameter, CascadeCount);
 	LAYOUT_FIELD(FShaderParameter, TraceCascadeIndex);
-	LAYOUT_FIELD(FShaderParameter, bHasParentMask);
-	LAYOUT_FIELD(FShaderParameter, bReadParentMaskFloat);
-	LAYOUT_FIELD(FShaderParameter, bWriteCurrentMaskFloat);
 	LAYOUT_FIELD(FShaderParameter, BaseRayCount);
 	LAYOUT_FIELD(FShaderParameter, BaseSegmentLength);
 	LAYOUT_FIELD(FShaderParameter, CascadeScale);
@@ -402,10 +374,6 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceUAV);
  	LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexUAV);
-	LAYOUT_FIELD(FShaderResourceParameter, ParentOcclusionMaskFloatTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, ParentOcclusionMaskUIntTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, CurrentOcclusionMaskFloatUAV);
-	LAYOUT_FIELD(FShaderResourceParameter, CurrentOcclusionMaskUIntUAV);
 };
 
 IMPLEMENT_SHADER_TYPE(
@@ -1220,9 +1188,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	const uint32 ActiveCascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
 	const uint32 BaseRayCount = static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64));
-	// Reuse Gather and Integration scratch as alternating masks. Each level
-	// reads the previous scratch texture and writes the other; both are SRV again
-	// before Gather and Integrate overwrite them.
+	// Each cascade traces independent probe-origin rays; no ancestor mask or
+	// scratch-texture ping-pong is required during tracing.
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
@@ -1236,39 +1203,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
 		const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
 
-		const bool bWriteMaskFloat = (CascadeIndex & 1u) == 0u;
-		FTexture2DRHIRef& CurrentMaskTexture = bWriteMaskFloat
-			? RadianceScratchTexture : RadianceIntegrationScratchTexture;
-		FShaderResourceViewRHIRef ParentMaskFloatSRV;
-		FShaderResourceViewRHIRef ParentMaskUIntSRV;
-		FUnorderedAccessViewRHIRef CurrentMaskFloatUAV;
-		FUnorderedAccessViewRHIRef CurrentMaskUIntUAV;
-		const bool bReadParentMaskFloat = !bWriteMaskFloat;
-		if (bWriteMaskFloat)
-		{
-			// Even levels write float masks to Gather scratch; their parent (if any)
-			// is an integer mask in Integration scratch.
-			CurrentMaskFloatUAV = GatherOutputUAV;
-			ParentMaskUIntSRV = IntegrationScratchSRV;
-		}
-		else
-		{
-			// Odd levels write integer masks to Integration scratch and read the
-			// previous float mask from Gather scratch.
-			CurrentMaskUIntUAV = IntegrationScratchUAV;
-			ParentMaskFloatSRV = GatherOutputSRV;
-		}
-
-		DDGITransitionTexture(RHICmdList, CurrentMaskTexture, ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
-
 		RHICmdList.SetComputeShader(TraceShader.GetComputeShader());
 		TraceShader->SetParameters(
 			RHICmdList, TraceShader.GetComputeShader(), DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
 			RadianceUAV, HitDistanceUAV, HitTriangleIndexUAV,
-			ParentMaskFloatSRV, ParentMaskUIntSRV,
-			CurrentMaskFloatUAV, CurrentMaskUIntUAV,
-			CascadeIndex, CascadeIndex > 0u ? 1u : 0u,
-			bReadParentMaskFloat ? 1u : 0u, bWriteMaskFloat ? 1u : 0u,
+			CascadeIndex,
 			TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
 			NodeCount, TriangleCount, ActiveCascadeCount, BaseRayCount,
 			Config->RadianceCascades.BaseSegmentLength, Config->RadianceCascades.CascadeScale,
@@ -1293,7 +1232,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			Config->LocalLightCount);
 		DispatchComputeShader(RHICmdList, TraceShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
 		TraceShader->UnbindResources(RHICmdList, TraceShader.GetComputeShader());
-		DDGITransitionTexture(RHICmdList, CurrentMaskTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	}
 
 	// Gather and integration still process the complete packed ray range for this probe batch.
