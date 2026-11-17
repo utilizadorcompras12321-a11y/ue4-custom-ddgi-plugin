@@ -660,7 +660,7 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 
 	UDirectionalLightComponent* Light = ActiveDirectionalLight.Get();
 	const bool bCachedLightBecameUnavailable = ActiveDirectionalLight.IsValid() &&
-		(!Light->IsVisible() || !Light->bAffectDynamicIndirectLighting || Light->Intensity <= 0.0f);
+		(!Light->IsVisible() || Light->Intensity <= 0.0f);
 	const bool bCachedLightWasDestroyed = !ActiveDirectionalLight.IsValid() && Config.bHasDirectionalLight;
 	const bool bRefreshDirectionalDiscovery =
 		!bHasSearchedDirectionalLights ||
@@ -685,7 +685,10 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 				const float CandidateIndirectIntensity = IsValid(Candidate)
 					? Candidate->Intensity * FMath::Max(0.0f, Candidate->IndirectLightingIntensity)
 					: 0.0f;
-				if (IsValid(Candidate) && Candidate->IsVisible() && Candidate->bAffectDynamicIndirectLighting &&
+				// DDGI owns this indirect-lighting path. Do not gate it on
+				// bAffectDynamicIndirectLighting: in UE4.27 this flag is not
+				// consistently exposed in the Directional Light details panel.
+				if (IsValid(Candidate) && Candidate->IsVisible() &&
 					CandidateIndirectIntensity > StrongestIntensity)
 				{
 					StrongestIntensity = CandidateIndirectIntensity;
@@ -704,7 +707,7 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 	const FLinearColor OldColor = Config.DirectionalLightColor;
 	const float OldIntensity = Config.DirectionalLightIntensity;
 
-	if (IsValid(Light) && Light->IsVisible() && Light->bAffectDynamicIndirectLighting && Light->Intensity > 0.0f)
+	if (IsValid(Light) && Light->IsVisible() && Light->Intensity > 0.0f)
 	{
 		Config.DirectionalLightDirection = -Light->GetComponentTransform().GetUnitAxis(EAxis::X).GetSafeNormal();
 		Config.DirectionalLightColor = Light->LightColor.ReinterpretAsLinear();
