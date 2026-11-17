@@ -245,7 +245,6 @@ float3 DDGIProbeDiffuseIrradiance(
                 }
             }
         }
-        }
     }
 
     // Each base direction represents 4*PI/N steradians. The 1/PI
