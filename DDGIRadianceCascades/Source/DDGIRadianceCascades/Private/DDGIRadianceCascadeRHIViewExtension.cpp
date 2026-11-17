@@ -815,7 +815,12 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->HitTriangleIndexTexture = HitTriangleIndexTexture;
 	PassParameters->ProbePositionsTexture = ProbePositionsTexture;
 	PassParameters->ProbeSpatialHash = ProbeSpatialHashSRV;
-	PassParameters->ProbeNeighborIndices = ProbeNeighborIndicesSRV;
+	// RDG shader parameters must never receive a null SRV. When the optional
+	// neighbor table is unavailable, bind the always-valid uint logical-slot
+	// buffer; UsePrecomputedProbeNeighbors keeps the shader from reading it.
+	PassParameters->ProbeNeighborIndices = bHasPrecomputedNeighbors
+		? ProbeNeighborIndicesSRV
+		: LogicalToPhysicalSRV;
 	PassParameters->LogicalToPhysicalSlots = LogicalToPhysicalSRV;
 	PassParameters->UsePrecomputedProbeNeighbors = bHasPrecomputedNeighbors ? 1u : 0u;
 	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
