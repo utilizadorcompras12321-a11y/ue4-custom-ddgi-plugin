@@ -45,15 +45,13 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    // A hit terminates transport. Preserve the gathered surface radiance.
-    if (HitDistanceTexture.Load(int3(Pixel, 0)) >= 0.0f)
-    {
-        RadianceUAV[Pixel] = DDGIPackR11G11B10(GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
-        return;
-    }
+    const bool bParentHit = HitDistanceTexture.Load(int3(Pixel, 0)) >= 0.0f;
 
     // Each parent angular cell is the union of two equal-solid-angle child
-    // cells. A hit terminates transport; otherwise merge both child samples.
+    // cells. Because all rays originate at the probe, children are independent
+    // angular refinements rather than continuations of the parent ray. Prefer
+    // their finer samples whenever they contain a hit or background energy;
+    // retain the parent hit only when both children provide no contribution.
     const uint FirstChildRay = LocalRayIndex * 2u;
     const uint FirstChildLinearIndex =
         PhysicalProbeIndex * TotalRaysPerProbe +
@@ -70,6 +68,20 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         DDGIUnpackR11G11B10(RadianceUAV[FirstChildPixel]);
     const float3 SecondChildRadiance =
         DDGIUnpackR11G11B10(RadianceUAV[SecondChildPixel]);
-    const float3 MergedChildRadiance = 0.5f * (FirstChildRadiance + SecondChildRadiance);
+    const bool bFirstChildHit = HitDistanceTexture.Load(int3(FirstChildPixel, 0)) >= 0.0f;
+    const bool bSecondChildHit = HitDistanceTexture.Load(int3(SecondChildPixel, 0)) >= 0.0f;
+    const bool bChildrenContribute =
+        bFirstChildHit || bSecondChildHit ||
+        any(FirstChildRadiance > 1.0e-6f) ||
+        any(SecondChildRadiance > 1.0e-6f);
+    if (bParentHit && !bChildrenContribute)
+    {
+        RadianceUAV[Pixel] = DDGIPackR11G11B10(
+            GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
+        return;
+    }
+
+    const float3 MergedChildRadiance =
+        0.5f * (FirstChildRadiance + SecondChildRadiance);
     RadianceUAV[Pixel] = DDGIPackR11G11B10(MergedChildRadiance);
 }
