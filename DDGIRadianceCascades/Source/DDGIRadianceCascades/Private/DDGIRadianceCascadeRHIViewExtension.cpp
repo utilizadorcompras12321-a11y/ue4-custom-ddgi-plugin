@@ -874,6 +874,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_SRV(StructuredBuffer<uint>, LogicalToPhysicalSlots)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, SceneColorOutputUAV)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PointClampSampler)
+		SHADER_PARAMETER_SAMPLER(SamplerState, BilinearClampSampler)
 		SHADER_PARAMETER(FVector4, ScaledViewSizeAndInvSize)
 		SHADER_PARAMETER(FVector2D, ViewRectMin)
 		SHADER_PARAMETER(uint32, ProbeCount)
@@ -1051,6 +1052,8 @@ static FScreenPassTexture DDGIApplyRadianceCascadesBeforeTemporalAA(
 	PassParameters->UsePrecomputedProbeNeighbors = bHasPrecomputedNeighbors ? 1u : 0u;
 	PassParameters->SceneColorOutputUAV = GraphBuilder.CreateUAV(OutputTexture);
 	PassParameters->PointClampSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	// Match UE4's GetScreenSpaceData() AO lookup: bilinear sampling in buffer UV space.
+	PassParameters->BilinearClampSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->ScaledViewSizeAndInvSize = FVector4(
 		static_cast<float>(ViewSize.X), static_cast<float>(ViewSize.Y),
 		1.0f / static_cast<float>(ViewSize.X), 1.0f / static_cast<float>(ViewSize.Y));
