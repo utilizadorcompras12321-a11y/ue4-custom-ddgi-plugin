@@ -32,7 +32,6 @@ float BaseSegmentLength;
 float CascadeScale;
 float MaxTraceDistance;
 uint CascadeCount;
-uint RaySplitFactor;
 float ProbeGridDistance;
 float4 ProbeGridOrigin;
 float4 ActiveWindowCenter;
@@ -77,54 +76,6 @@ bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
         Slot = (Slot + 1u) & (HashCapacity - 1u);
     }
     return false;
-}
-
-uint DDGIGetCascadeChildForDirection(
-    inout float4 Region,
-    float3 Direction,
-    uint SplitFactor)
-{
-    const float TwoPi = 6.283185307179586f;
-    float Phi = atan2(Direction.z, Direction.x);
-    if (Phi < 0.0f) Phi += TwoPi;
-    while (Phi < Region.x) Phi += TwoPi;
-    while (Phi >= Region.y && Phi - TwoPi >= Region.x) Phi -= TwoPi;
-    float Z = clamp(Direction.y, -1.0f, 1.0f);
-
-    uint Child = 0u;
-    if (SplitFactor == 4u)
-    {
-        float PhiMid = 0.5f * (Region.x + Region.y);
-        float ZMid = 0.5f * (Region.z + Region.w);
-        Child = (Phi >= PhiMid ? 1u : 0u) |
-            (Z >= ZMid ? 2u : 0u);
-    }
-    else if (SplitFactor > 1u)
-    {
-        float PhiSpan = Region.y - Region.x;
-        float ZSpan = Region.w - Region.z;
-        float ZCenter = 0.5f * (Region.z + Region.w);
-        float SinTheta = sqrt(saturate(1.0f - ZCenter * ZCenter));
-        float HorizontalExtent = SinTheta * PhiSpan;
-        float VerticalExtent = ZSpan / max(SinTheta, 0.05f);
-        if (HorizontalExtent >= VerticalExtent)
-        {
-            Child = min(
-                (uint)max(floor((Phi - Region.x) /
-                    max(PhiSpan, 1.0e-6f) * (float)SplitFactor), 0.0f),
-                SplitFactor - 1u);
-        }
-        else
-        {
-            Child = min(
-                (uint)max(floor((Z - Region.z) /
-                    max(ZSpan, 1.0e-6f) * (float)SplitFactor), 0.0f),
-                SplitFactor - 1u);
-        }
-    }
-
-    DDGIRadianceCascadeSplitRegion(Region, Child, SplitFactor);
-    return Child;
 }
 
 float3 DDGIProbeDiffuseIrradiance(
@@ -203,33 +154,11 @@ float3 DDGIProbeDiffuseIrradiance(
         // only BaseRayCount coarse directions and is a major source of wall leaks.
         const uint SelectedCascade = CascadeCount - 1u;
 
-        uint SelectedRayCount = DDGIRadianceCascadeRayCount(
-            SelectedCascade, BaseRayCount, RaySplitFactor);
-        uint ChildrenPerParent = max(
-            SelectedRayCount / max(SafeRayCount, 1u), 1u);
-        float4 AngularRegion = DDGIRadianceCascadeBaseRegion(
-            BestBaseRay, SafeRayCount);
-        uint DescendantIndex = 0u;
-
-        [loop]
-        for (uint Level = 1u; Level <= SelectedCascade; ++Level)
-        {
-            uint ParentRayCount = DDGIRadianceCascadeRayCount(
-                Level - 1u, BaseRayCount, RaySplitFactor);
-            uint ChildRayCount = DDGIRadianceCascadeRayCount(
-                Level, BaseRayCount, RaySplitFactor);
-            uint EffectiveSplit = max(
-                ChildRayCount / max(ParentRayCount, 1u), 1u);
-            uint ChildInGroup = DDGIGetCascadeChildForDirection(
-                AngularRegion, ReceiverDirection, EffectiveSplit);
-            DescendantIndex = DescendantIndex * EffectiveSplit + ChildInGroup;
-        }
-
-        uint CascadeStorageOffset = DDGIRadianceCascadeRayStorageOffset(
-            SelectedCascade, BaseRayCount, RaySplitFactor);
-        uint CascadeRayIndex = CascadeStorageOffset +
-            BestBaseRay * ChildrenPerParent +
-            min(DescendantIndex, ChildrenPerParent - 1u);
+        // Angular splitting is disabled. Every cascade stores the same
+        // BaseRayCount directions, so the finest cascade's matching ray is
+        // a direct offset plus the receiver's base angular cell.
+        uint CascadeStorageOffset = SelectedCascade * SafeRayCount;
+        uint CascadeRayIndex = CascadeStorageOffset + BestBaseRay;
         // The ray is the deterministic angular cell containing the receiver
         // direction. Always test it; a cosine cutoff would disable visibility
         // precisely in the coarse angular regions most prone to light leaks.
