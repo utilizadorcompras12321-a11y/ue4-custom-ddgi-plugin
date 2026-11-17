@@ -264,10 +264,13 @@ float3 DDGISampleLevelValue(
         LocalPosition, Normal, Level, SpatialWeightSum, VisibleWeightSum);
     OutConfidence = saturate(
         VisibleWeightSum / max(SpatialWeightSum, 0.00001f));
-    // Preserve partial trilinear support as a continuous blend weight.
-    // A boolean valid/invalid switch caused abrupt changes when a sparse
-    // level gained or lost one of its eight interpolation corners.
-    OutCoverage = saturate(VisibleWeightSum);
+    // Coverage is geometric support, not receiver-side visibility.
+    // VisibleWeightSum includes the per-probe normal fade; using it here
+    // makes cascade blending follow individual probe influence lobes and
+    // creates circular/probe-shaped patterns at level transitions.
+    // SpatialWeightSum still preserves partial trilinear support when a
+    // sparse level is missing one or more interpolation corners.
+    OutCoverage = saturate(SpatialWeightSum);
     OutValid = SpatialWeightSum > 0.00001f && VisibleWeightSum > 0.00001f;
     return Value;
 }
