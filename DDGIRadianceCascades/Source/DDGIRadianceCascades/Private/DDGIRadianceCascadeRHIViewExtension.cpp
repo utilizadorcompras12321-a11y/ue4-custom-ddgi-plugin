@@ -1491,7 +1491,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 
 	// Primary BVH traversal and surface lighting are separate compute programs.
 	// The trace pass writes hit metadata/background; the shade pass consumes it
-	// and performs direct lighting, visibility and the deterministic diffuse bounce.
+	// and performs primary direct lighting and visibility. The resolve pass adds the diffuse bounce.
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 
