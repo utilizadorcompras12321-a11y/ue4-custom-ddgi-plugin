@@ -61,7 +61,7 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         // A tagged negative distance is a real blocker before this interval.
         // Preserve its zero radiance rather than allowing farther children
         // to leak through the occluder.
-        RadianceUAV[Pixel] = DDGIPackR11G11B10(0.0f);
+        RadianceUAV[Pixel] = DDGIPackR11G11B10(float3(0.0f, 0.0f, 0.0f));
         return;
     }
 
