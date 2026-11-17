@@ -17,7 +17,9 @@ Texture2D<float> HitDistanceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<int4> ProbeSpatialHash;
+StructuredBuffer<uint> ProbeNeighborIndices;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
+uint UsePrecomputedProbeNeighbors;
 Texture2D<float4> SceneColorTexture;
 RWTexture2D<float4> SceneColorOutputUAV;
 SamplerState PointClampSampler;
@@ -351,8 +353,36 @@ float3 DDGISampleProbeLevel(
         float Weight = AxisWeight.x * AxisWeight.y * AxisWeight.z;
         if (Weight <= 0.00001f) continue;
 
-        uint ProbeIndex;
-        if (!DDGIFindProbeInCell(Cell, Level, ProbeIndex)) continue;
+        uint ProbeIndex = 0u;
+        bool bFoundProbe = false;
+        if (UsePrecomputedProbeNeighbors != 0u)
+        {
+            // Resolve the lower corner once through the hash. Its precomputed
+            // 26-neighbor ring then supplies the other seven trilinear corners.
+            uint AnchorProbeIndex = 0u;
+            bool bHasAnchor = DDGIFindProbeInCell(BaseCell * (int)LevelStep, Level, AnchorProbeIndex);
+            if (X == 0 && Y == 0 && Z == 0)
+            {
+                ProbeIndex = AnchorProbeIndex;
+                bFoundProbe = bHasAnchor;
+            }
+            else if (bHasAnchor)
+            {
+                uint NeighborLinear = (uint)(Z + 1) * 9u + (uint)(Y + 1) * 3u + (uint)(X + 1);
+                uint NeighborSlot = NeighborLinear - (NeighborLinear > 13u ? 1u : 0u);
+                ProbeIndex = ProbeNeighborIndices[AnchorProbeIndex * 26u + NeighborSlot];
+                bFoundProbe = ProbeIndex != 0xFFFFFFFFu && ProbeIndex < ProbeCount;
+            }
+            else
+            {
+                bFoundProbe = DDGIFindProbeInCell(Cell, Level, ProbeIndex);
+            }
+        }
+        else
+        {
+            bFoundProbe = DDGIFindProbeInCell(Cell, Level, ProbeIndex);
+        }
+        if (!bFoundProbe) continue;
 
         uint2 ProbePixel = uint2(
             ProbeIndex % DDGI_RC_TEXTURE_WIDTH,
