@@ -474,6 +474,12 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 			}
 		}
 
+		// Only keep the pre-TAA pass in the override sequence when an extension subscribed to it.
+		if (PassSequence.GetAfterPassCallbacks(EPass::BeforeTemporalAA).Num() == 0)
+		{
+			PassSequence.SetEnabled(EPass::BeforeTemporalAA, false);
+		}
+
 		PassSequence.Finalize();
 
 		// Post Process Material Chain - Before Translucency
