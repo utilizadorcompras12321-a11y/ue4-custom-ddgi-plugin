@@ -91,22 +91,10 @@ float3 DDGIProbeDiffuseIrradiance(
     const uint SafeRayCount = min(BaseRayCount, min(TotalRaysPerProbe, 64u));
     if (SafeRayCount == 0u) return Irradiance;
 
-    float3 ProbeToReceiver = ReceiverPosition - ProbePosition;
-    float ReceiverDistance = length(ProbeToReceiver);
-    // Do not use a probe outside the distance actually covered by its ray
-    // hierarchy: no visibility result exists there, so treating it as visible
-    // would reintroduce unoccluded light leaks beyond MaxTraceDistance.
-    if (ReceiverDistance > max(MaxTraceDistance, 1.0f))
-    {
-        return Irradiance;
-    }
-    float3 ReceiverDirection = ReceiverDistance > 1.0e-3f
-        ? ProbeToReceiver / ReceiverDistance : Normal;
-    uint BestBaseRay = 0u;
-    float4 BestBaseRegion = 0.0f;
-    bool bFoundBaseRegion = false;
-    float ReceiverPhi = atan2(ReceiverDirection.z, ReceiverDirection.x);
-    if (ReceiverPhi < 0.0f) ReceiverPhi += 6.283185307179586f;
+    // The trace range limits how far a probe sees into the scene; it does
+    // not limit how far that probe's captured radiance may illuminate.
+    // Applying MaxTraceDistance to probe-to-receiver distance creates
+    // spherical cutoffs around probes and visible circular GI artifacts.
     uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
 
     // The base-ray loop performs irradiance accumulation and identifies the
@@ -120,21 +108,6 @@ float3 DDGIProbeDiffuseIrradiance(
             RayIndex / DDGI_RC_TEXTURE_WIDTH);
         float3 Direction = normalize(
             DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
-        float4 BaseRegion = DDGIRadianceCascadeBaseRegion(
-            RayIndex, SafeRayCount);
-        float RegionPhi = ReceiverPhi;
-        if (RegionPhi < BaseRegion.x) RegionPhi += 6.283185307179586f;
-        bool bContainsDirection =
-            RegionPhi >= BaseRegion.x && RegionPhi <= BaseRegion.y &&
-            ReceiverDirection.y >= BaseRegion.z &&
-            ReceiverDirection.y <= BaseRegion.w;
-        if (bContainsDirection)
-        {
-            BestBaseRay = RayIndex;
-            BestBaseRegion = BaseRegion;
-            bFoundBaseRegion = true;
-        }
-
         float Cosine = saturate(dot(Normal, -Direction));
         if (Cosine > 0.0f)
         {
@@ -146,112 +119,13 @@ float3 DDGIProbeDiffuseIrradiance(
         }
     }
 
-    float Visibility = 1.0f;
-    if (ReceiverDistance > 1.0f &&
-        ReceiverDistance <= max(MaxTraceDistance, 1.0f) &&
-        CascadeCount > 0u &&
-        bFoundBaseRegion)
-    {
-        // The finest cascade provides the most precise angular cell and traces
-        // from the probe through the complete distance range.
-        const uint SelectedCascade = CascadeCount - 1u;
-
-        // Each cascade doubles the angular resolution. Follow the receiver
-        // direction through the same alternating phi/z bisections used by
-        // DDGIRadianceCascadeHierarchicalRegion to select its finest child.
-        uint ChildCount = 1u << SelectedCascade;
-        uint ChildPath = 0u;
-        float4 RefinedRegion = BestBaseRegion;
-        float RefinedPhi = ReceiverPhi;
-        if (RefinedPhi < RefinedRegion.x)
-        {
-            RefinedPhi += 6.283185307179586f;
-        }
-        [loop]
-        for (uint Level = 0u; Level < SelectedCascade; ++Level)
-        {
-            uint PathBit = 0u;
-            if ((Level & 1u) == 0u)
-            {
-                float PhiMid = 0.5f * (RefinedRegion.x + RefinedRegion.y);
-                PathBit = RefinedPhi >= PhiMid ? 1u : 0u;
-                if (PathBit == 0u)
-                {
-                    RefinedRegion.y = PhiMid;
-                }
-                else
-                {
-                    RefinedRegion.x = PhiMid;
-                }
-            }
-            else
-            {
-                float ZMid = 0.5f * (RefinedRegion.z + RefinedRegion.w);
-                PathBit = ReceiverDirection.y >= ZMid ? 1u : 0u;
-                if (PathBit == 0u)
-                {
-                    RefinedRegion.w = ZMid;
-                }
-                else
-                {
-                    RefinedRegion.z = ZMid;
-                }
-            }
-            ChildPath = (ChildPath << 1u) | PathBit;
-        }
-
-        // Each level's ray is independent and originates at the probe.
-        // Test only the finest angular cell containing the receiver direction;
-        // its hit distance is already measured from ProbePosition.
-        uint SelectedRayIndex =
-            SafeRayCount * ((1u << SelectedCascade) - 1u) +
-            BestBaseRay * ChildCount + ChildPath;
-        uint CandidateLinearIndex =
-            PhysicalProbeIndex * TotalRaysPerProbe + SelectedRayIndex;
-        uint2 CandidatePixel = uint2(
-            CandidateLinearIndex % DDGI_RC_TEXTURE_WIDTH,
-            CandidateLinearIndex / DDGI_RC_TEXTURE_WIDTH);
-        uint CandidateTriangleTag = HitTriangleIndexTexture.Load(
-            int3(CandidatePixel, 0));
-        if (CandidateTriangleTag > 0u)
-        {
-            float CandidateDistance = HitDistanceTexture.Load(
-                int3(CandidatePixel, 0));
-            // Negative tagged distances encode a real hit before this
-            // cascade's interval. Its absolute value remains probe-relative.
-            if (isfinite(CandidateDistance))
-            {
-                CandidateDistance = abs(CandidateDistance);
-                float3 SelectedDirection = normalize(
-                    DirectionsTexture.Load(int3(
-                        SelectedRayIndex % DDGI_RC_TEXTURE_WIDTH,
-                        SelectedRayIndex / DDGI_RC_TEXTURE_WIDTH, 0)).xyz);
-                float3 OccluderPosition =
-                    ProbePosition + SelectedDirection * CandidateDistance;
-                float OccluderDistanceAlongReceiver = dot(
-                    OccluderPosition - ProbePosition,
-                    ReceiverDirection);
-                // Keep the bias in world centimetres small enough not to skip thin walls.
-                float VisibilityBias = clamp(ReceiverDistance * 0.0015f, 1.0f, 5.0f);
-                float DistanceBeforeReceiver =
-                    ReceiverDistance - OccluderDistanceAlongReceiver;
-                if (OccluderDistanceAlongReceiver > 0.0f &&
-                    DistanceBeforeReceiver > 0.0f)
-                {
-                    Visibility = 1.0f - smoothstep(
-                        VisibilityBias,
-                        VisibilityBias * 2.0f,
-                        DistanceBeforeReceiver);
-                }
-            }
-        }
-    }
-
     // Each base direction represents 4*PI/N steradians. The 1/PI
     // Lambertian BRDF normalization cancels PI, so this returns E/PI,
     // ready to multiply directly by diffuse albedo in the apply pass.
-    // The finest cascade ray tests visibility at the receiver distance.
-    return Irradiance * (4.0f / (float)SafeRayCount) * Visibility;
+    // Probe-to-receiver visibility is deliberately not applied here.
+    // The BVH trace and cascade integration already account for scene
+    // occlusion; a second coarse angular test caused false spherical cutoffs.
+    return Irradiance * (4.0f / (float)SafeRayCount);
 }
 uint DDGIGetSpatialLevelStep(uint Level)
 {
