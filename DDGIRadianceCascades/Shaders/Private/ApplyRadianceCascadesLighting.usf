@@ -152,11 +152,8 @@ float3 DDGIProbeDiffuseIrradiance(
         CascadeCount > 0u &&
         bFoundBaseRegion)
     {
-        // Every cascade ray traces from the probe origin to its own end
-        // distance. The finest (last) cascade therefore has the best angular
-        // resolution while still covering every receiver within MaxTraceDistance.
-        // Selecting a near-distance cascade here unnecessarily falls back to
-        // only BaseRayCount coarse directions and is a major source of wall leaks.
+        // The finest cascade provides the most precise angular cell and traces
+        // from the probe through the complete distance range.
         const uint SelectedCascade = CascadeCount - 1u;
 
         // Each cascade doubles the angular resolution. Follow the receiver
