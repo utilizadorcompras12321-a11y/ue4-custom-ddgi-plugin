@@ -100,13 +100,22 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
     float3 CenterRayOrigin = CenterPosition;
     float4 CenterRadianceSample = RadianceTexture.Load(int3(Pixel, 0));
     float CenterHitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
+    uint CenterTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel,0));
+    bool CenterHasSurfaceTag = CenterTriangleTag > 0u;
+    bool CenterBlockedBeforeInterval = CenterHitDistance < 0.0f && CenterHasSurfaceTag;
     bool CenterHit = CenterHitDistance >= 0.0f;
     float3 RadianceSum = CenterRadianceSample.rgb;
     float3 CenterHitPosition = CenterRayOrigin + CenterDirection * max(CenterHitDistance, 0.0f);
-    uint CenterTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel,0));
-    bool CenterHasSurfaceTag = CenterTriangleTag > 0u;
+    // A tagged negative distance is a real surface before this cascade's
+    // interval. It occludes the interval and must not be spatially gathered
+    // with misses or surfaces from other probes.
+    if (CenterBlockedBeforeInterval)
+    {
+        OutputRadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return;
+    }
     // Guard against stale or malformed hit metadata before reading triangle data.
-    if (CenterHitDistance >= 0.0f && !CenterHasSurfaceTag)
+    if (CenterHit && !CenterHasSurfaceTag)
     {
         OutputRadianceUAV[Pixel] = CenterRadianceSample;
         return;
@@ -193,13 +202,18 @@ void RadianceCascadeSpatialGatherCS(uint3 DispatchThreadId : SV_DispatchThreadID
         // layout, so every probe stores the exact same direction for this ray.
         // No per-neighbor direction texture fetch or normalization is needed.
         float NeighborHitDistance = HitDistanceTexture.Load(int3(NeighborPixel,0));
+        uint NeighborTriangleTag = HitTriangleIndexTexture.Load(int3(NeighborPixel,0));
+        bool NeighborHasSurfaceTag = NeighborTriangleTag > 0u;
+        bool NeighborBlockedBeforeInterval =
+            NeighborHitDistance < 0.0f && NeighborHasSurfaceTag;
+        // A pre-interval blocker contributes zero in this cascade. Never mix
+        // it with an unobstructed miss or a surface belonging to this interval.
+        if (NeighborBlockedBeforeInterval) continue;
         bool NeighborHit = NeighborHitDistance >= 0.0f;
         if (CenterHit != NeighborHit) continue;
         // Hit distances are measured from different probe origins. Their values
         // can differ by nearly one probe spacing even when both rays hit the
         // same plane; compare reconstructed world hit positions below instead.
-        uint NeighborTriangleTag = HitTriangleIndexTexture.Load(int3(NeighborPixel,0));
-        bool NeighborHasSurfaceTag = NeighborTriangleTag > 0u;
         if (CenterHasSurfaceTag != NeighborHasSurfaceTag) continue;
         if (CenterHit)
         {
