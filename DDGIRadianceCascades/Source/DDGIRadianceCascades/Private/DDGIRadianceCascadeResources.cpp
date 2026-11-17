@@ -476,6 +476,15 @@ void DDGIUpdateRadianceCascadeResources_RenderThread(
             return;
         }
 
+        // Establish a known SRV state for both persistent ping-pong masks.
+        // Every trace pass returns its written mask to SRV before the next level.
+        FRHITransitionInfo OcclusionMaskTransitions[2] =
+        {
+            FRHITransitionInfo(Storage.OcclusionMaskA->GetRenderTargetItem().ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute),
+            FRHITransitionInfo(Storage.OcclusionMaskB->GetRenderTargetItem().ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::SRVCompute)
+        };
+        RHICmdList.Transition(MakeArrayView(OcclusionMaskTransitions, 2));
+
         Storage.Dimensions = RequiredDimensions;
         Storage.DirectionDimensions = RequiredDirectionDimensions;
         Storage.TotalRaysPerProbe = Config.TotalRaysPerProbe;
