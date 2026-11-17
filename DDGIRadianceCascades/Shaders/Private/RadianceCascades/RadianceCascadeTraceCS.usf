@@ -897,8 +897,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ClosestTriangleB,
         ClosestTriangleC);
 
-    // HitDistance is local to this cascade ray origin. Gather reconstructs
-    // the origin from the parent direction and cascade start distance.
+    // HitDistance is measured from the probe for every independent direction.
     bool bHasSurfaceHit = bHit && ClosestHit >= CascadeStartDistance;
     if (bWriteCurrentMaskFloat != 0u)
     {
