@@ -58,7 +58,7 @@ struct FDDGIMasterConfig
 	UPROPERTY() TArray<FDDGIRadianceCascadeSlice> RadianceCascadeSlices;
 	UPROPERTY() int32 TotalRaysPerProbe = 0;
 	UPROPERTY() int64 EstimatedRadianceStorageBytes = 0;
-	UPROPERTY() float ProbeSpacing = 200.0f;
+	UPROPERTY() float ProbeSpacing = 100.0f;
 	UPROPERTY() FVector ProbeGridOrigin = FVector::ZeroVector;
 	// Continuous camera world-space center used for cascade blending; probe membership remains snapped.
 	UPROPERTY() FVector ActiveProbeWindowCenter = FVector::ZeroVector;
@@ -70,7 +70,7 @@ struct FDDGIMasterConfig
 	UPROPERTY() TArray<int32> ProbeLevels;
 	UPROPERTY() int32 ProbeCount = 0;
 	UPROPERTY() int32 MaxActiveProbes = 32768;
-	UPROPERTY() int32 ProbeUpdateBudget = 128;
+	UPROPERTY() int32 ProbeUpdateBudget = 256;
 	TSharedPtr<FDDGISoftwareBVHData, ESPMode::ThreadSafe> SoftwareBVH;
 	int32 MaxSoftwareTriangles = 250000;
 	UPROPERTY() bool bEnableStaticBackground = true;
