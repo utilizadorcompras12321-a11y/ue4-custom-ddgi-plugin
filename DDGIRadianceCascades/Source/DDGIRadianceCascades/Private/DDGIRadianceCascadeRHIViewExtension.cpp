@@ -1259,6 +1259,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		DDGITransitionTexture(RHICmdList, CurrentMaskTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	}
 
+	// Gather and integration still process the complete packed ray range for this probe batch.
+	const uint32 TraceTotalTexels = TraceProbeCount * TotalRaysPerProbe;
+	const uint32 TraceTotalGroups = FMath::DivideAndRoundUp(TraceTotalTexels, 64u);
+	const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
+	const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
+
 	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
