@@ -54,9 +54,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1", ClampMax = "64"))
 	int32 BaseRayCount = 6;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1", ClampMax = "4"))
-	int32 RaySplitFactor = 2;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1.0", Units = "cm"))
 	float BaseSegmentLength = 250.0f;
 
