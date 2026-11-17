@@ -11,6 +11,8 @@ Texture2D<float4> NormalTexture;
 Texture2D<float> DepthTexture;
 Texture2D<float4> BaseColorTexture;
 Texture2D<float4> MetallicTexture;
+Texture2D<float> ScreenSpaceAOTexture;
+uint bHasScreenSpaceAO;
 Texture2D<float4> DirectionsTexture;
 Texture2D<uint> RadianceTexture;
 Texture2D<float> HitDistanceTexture;
@@ -489,6 +491,12 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     // DDGIProbeDiffuseIrradiance includes the 1/PI normalization:
     // equal-solid-angle quadrature uses 4*PI/N, then Lambertian BRDF
     // normalization divides by PI, leaving the factor 4/N in the shader.
+    // DDGI is added after deferred lighting, so it would otherwise bypass
+    // the SSAO contribution already present in SceneColor. Reapply the AO
+    // visibility to the new indirect diffuse term only (never to existing color).
+    float ScreenSpaceAO = bHasScreenSpaceAO != 0u
+        ? saturate(ScreenSpaceAOTexture.SampleLevel(PointClampSampler, BufferUV, 0).r)
+        : 1.0f;
     SceneColorOutputUAV[BufferPixelIndex] =
-        SceneColor + float4(Irradiance * Albedo * PreExposure, 0.0f);
+        SceneColor + float4(Irradiance * Albedo * ScreenSpaceAO * PreExposure, 0.0f);
 }
