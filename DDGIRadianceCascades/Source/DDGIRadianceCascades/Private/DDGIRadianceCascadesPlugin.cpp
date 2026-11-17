@@ -23,6 +23,7 @@
 namespace
 {
 	TSharedPtr<FDDGIRadianceCascadeRHIViewExtension, ESPMode::ThreadSafe> GDDGIRadianceCascadeViewExtension;
+	FDelegateHandle GDDGIExperimentalGIDelegateHandle;
 }
 
 void FDDGIRadianceCascadesPlugin::StartupModule()
@@ -53,6 +54,12 @@ void FDDGIRadianceCascadesPlugin::ShutdownModule()
 		PostEngineInitHandle.Reset();
 	}
 
+	if (GDDGIExperimentalGIDelegateHandle.IsValid())
+	{
+		FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight().Remove(GDDGIExperimentalGIDelegateHandle);
+		GDDGIExperimentalGIDelegateHandle.Reset();
+	}
+
 	GDDGIRadianceCascadeViewExtension.Reset();
 }
 
@@ -63,6 +70,26 @@ void FDDGIRadianceCascadesPlugin::RegisterViewExtension()
 		GDDGIRadianceCascadeViewExtension =
 			FSceneViewExtensions::NewExtension<FDDGIRadianceCascadeRHIViewExtension>();
 		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: RHI view extension registered after engine initialization."));
+	}
+
+	if (!GDDGIExperimentalGIDelegateHandle.IsValid())
+	{
+		GDDGIExperimentalGIDelegateHandle =
+			FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight().AddStatic(
+				&FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect);
+	}
+
+	// UE4.27 only broadcasts the experimental GI delegate when this renderer
+	// switch is enabled. r.DDGI remains the actual per-frame DDGI on/off switch.
+	if (IConsoleVariable* ExperimentalGICVar =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("r.GlobalIllumination.ExperimentalPlugin")))
+	{
+		ExperimentalGICVar->Set(1, ECVF_SetByCode);
+		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: enabled UE4.27 experimental GI plugin dispatch."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("DDGI DIAG: r.GlobalIllumination.ExperimentalPlugin was not registered; DDGI apply callback will not run."));
 	}
 }
 
