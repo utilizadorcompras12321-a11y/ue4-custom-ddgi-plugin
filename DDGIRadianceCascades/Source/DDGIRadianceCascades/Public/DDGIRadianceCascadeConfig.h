@@ -7,8 +7,8 @@
  * World-level Radiance Cascades layout.
  *
  * Each cascade stores radiance for a non-overlapping distance interval.
- * Angular cells are hierarchically bisected in azimuth: each parent cell
- * maps to two equal-solid-angle child cells in the next cascade.
+ * Angular cells are hierarchically bisected in alternating azimuth and
+ * z=cos(theta) dimensions, keeping refinement balanced on the sphere.
  * This describes the ray hierarchy and packed per-probe ray-data layout;
  * it does not perform scene tracing or allocate GPU resources.
  */
