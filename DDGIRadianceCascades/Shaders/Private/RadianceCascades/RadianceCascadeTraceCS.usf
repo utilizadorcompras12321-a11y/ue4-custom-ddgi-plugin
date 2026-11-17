@@ -466,13 +466,16 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     // The static environment is injected only by the farthest cascade.
     // Injecting it into every interval would count the same environment many times.
-    float BackgroundFade = 0.0f;
-    if (bEnableStaticBackground != 0u && bIsLastActiveCascade && !bHit)
-    {
-        float ProbeDistance = distance(Origin, ActiveWindowCenter.xyz);
-        float TransitionWidth = max(BackgroundTransitionEnd - BackgroundTransitionStart, 1.0e-3f);
-        BackgroundFade = smoothstep(BackgroundTransitionStart, BackgroundTransitionStart + TransitionWidth, ProbeDistance);
-    }
+    // A static environment is direction/radiance for rays that miss the
+    // scene, not a radial volume around the camera. Fading it by distance
+    // from ActiveWindowCenter creates a spherical illumination boundary that
+    // appears as circular GI artifacts and moves with the camera.
+    // Keep the environment contribution spatially uniform; the clipmap
+    // selection already limits where probes can use this radiance.
+    float BackgroundFade =
+        (bEnableStaticBackground != 0u && bIsLastActiveCascade && !bHit)
+            ? 1.0f
+            : 0.0f;
 
     float3 BackgroundRadiance = StaticBackgroundColor.rgb * StaticBackgroundIntensity * GIIntensity * BackgroundFade;
     // Surface lighting is evaluated by the dedicated shade pass. This pass
