@@ -163,6 +163,11 @@ float3 DDGIProbeDiffuseIrradiance(
         uint ChildCount = 1u << SelectedCascade;
         uint ChildPath = 0u;
         float4 RefinedRegion = BestBaseRegion;
+        float RefinedPhi = ReceiverPhi;
+        if (RefinedPhi < RefinedRegion.x)
+        {
+            RefinedPhi += 6.283185307179586f;
+        }
         [loop]
         for (uint Level = 0u; Level < SelectedCascade; ++Level)
         {
@@ -170,7 +175,7 @@ float3 DDGIProbeDiffuseIrradiance(
             if ((Level & 1u) == 0u)
             {
                 float PhiMid = 0.5f * (RefinedRegion.x + RefinedRegion.y);
-                PathBit = RegionPhi >= PhiMid ? 1u : 0u;
+                PathBit = RefinedPhi >= PhiMid ? 1u : 0u;
                 if (PathBit == 0u)
                 {
                     RefinedRegion.y = PhiMid;
