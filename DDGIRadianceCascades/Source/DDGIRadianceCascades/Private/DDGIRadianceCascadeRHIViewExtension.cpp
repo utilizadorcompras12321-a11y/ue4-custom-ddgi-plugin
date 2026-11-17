@@ -868,6 +868,8 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, BaseColorTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MetallicTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ScreenSpaceAOTexture)
+		SHADER_PARAMETER(uint32, bHasScreenSpaceAO)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HitDistanceTexture)
@@ -1031,6 +1033,14 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->DepthTexture = (*Inputs.SceneTextures.SceneTextures)->SceneDepthTexture;
 	PassParameters->BaseColorTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferCTexture;
 	PassParameters->MetallicTexture = (*Inputs.SceneTextures.SceneTextures)->GBufferBTexture;
+	// The DDGI pass runs after deferred lighting, so its new indirect contribution
+	// must explicitly respect the same screen-space AO that already affected the
+	// scene's diffuse lighting. Bind depth as a harmless fallback when AO is absent.
+	FRDGTextureRef ScreenSpaceAOTexture = (*Inputs.SceneTextures.SceneTextures)->ScreenSpaceAOTexture;
+	PassParameters->bHasScreenSpaceAO = ScreenSpaceAOTexture != nullptr ? 1u : 0u;
+	PassParameters->ScreenSpaceAOTexture = ScreenSpaceAOTexture != nullptr
+		? ScreenSpaceAOTexture
+		: (*Inputs.SceneTextures.SceneTextures)->SceneDepthTexture;
 	PassParameters->DirectionsTexture = DirectionsTexture;
 	PassParameters->RadianceTexture = RadianceTexture;
 	PassParameters->HitDistanceTexture = HitDistanceTexture;
