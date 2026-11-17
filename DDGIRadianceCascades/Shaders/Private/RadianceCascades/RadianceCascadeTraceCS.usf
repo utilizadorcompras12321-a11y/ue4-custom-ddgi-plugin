@@ -294,7 +294,7 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
         return false;
     }
 
-    uint Stack[64];
+    uint Stack[49];
     uint StackSize = 0u;
     uint IterationCount = 0u;
     Stack[StackSize++] = 0u;
@@ -361,8 +361,8 @@ bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint Ignore
             // Near distances are finite and non-negative. Their unsigned IEEE-754
             // bit patterns preserve numeric ordering, avoiding the FXC dynamic
             // float-comparison optimizer issue while visiting the nearer child first.
-            // The CPU builder caps validated tree depth at 48, below this
-            // 64-entry stack capacity.
+            // The CPU builder caps leaf depth at 48. Depth-first traversal can therefore
+            // hold at most 49 pending nodes in this stack.
             if (bHitLeft && bHitRight)
             {
                 bool bLeftIsNearer = asuint(LeftNear) <= asuint(RightNear);
@@ -403,8 +403,8 @@ bool TraceClosestHit(
         return false;
     }
 
-    uint Stack[64];
-    float NearStack[64];
+    uint Stack[49];
+    float NearStack[49];
     uint StackSize = 0u;
     uint IterationCount = 0u;
     Stack[StackSize] = 0u;
@@ -497,9 +497,9 @@ bool TraceClosestHit(
                     BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
                     ClosestDistance, RightNear);
             }
-            // The CPU builder rejects BVHs deeper than 48 levels. A depth-first
-            // traversal therefore needs at most 49 stack entries, leaving room
-            // for both children in this 64-entry stack. Never silently discard
+            // The CPU builder emits leaves at depth 48. A depth-first traversal therefore
+            // needs at most 49 pending entries, including both children at the
+            // deepest internal node. Never silently discard
             // a hit child because of a defensive capacity branch.
             if (bHitLeft && bHitRight)
             {
