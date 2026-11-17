@@ -1135,7 +1135,7 @@ void FDDGIRadianceCascadeRHIViewExtension::SubscribeToPostProcessingPass(
 	FAfterPassCallbackDelegateArray& InOutPassCallbacks,
 	bool bIsPassEnabled)
 {
-	if (Pass == EPostProcessingPass::AfterMotionBlur)
+	if (Pass == EPostProcessingPass::MotionBlur)
 	{
 		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateStatic(
 			&DDGIApplyRadianceCascadesAfterMotionBlur));
