@@ -339,6 +339,13 @@ float3 DDGISampleProbeLevel(
     float3 GridPosition = (LocalPosition - ProbeGridOrigin.xyz) / LevelSpacing;
     int3 BaseCell = int3(floor(GridPosition));
     float3 CellFraction = frac(GridPosition);
+    uint AnchorProbeIndex = 0u;
+    bool bHasAnchor = false;
+    if (UsePrecomputedProbeNeighbors != 0u)
+    {
+        bHasAnchor = DDGIFindProbeInCell(
+            BaseCell * (int)LevelStep, Level, AnchorProbeIndex);
+    }
 
     [unroll]
     for (int Z = 0; Z <= 1; ++Z)
@@ -359,8 +366,6 @@ float3 DDGISampleProbeLevel(
         {
             // Resolve the lower corner once through the hash. Its precomputed
             // 26-neighbor ring then supplies the other seven trilinear corners.
-            uint AnchorProbeIndex = 0u;
-            bool bHasAnchor = DDGIFindProbeInCell(BaseCell * (int)LevelStep, Level, AnchorProbeIndex);
             if (X == 0 && Y == 0 && Z == 0)
             {
                 ProbeIndex = AnchorProbeIndex;
