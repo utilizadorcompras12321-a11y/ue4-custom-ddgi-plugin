@@ -72,7 +72,7 @@ public:
 
 	// Maximum number of sparse probes traced per frame. Higher values refresh the clipmap faster at greater GPU cost.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "0", ClampMax = "8192", UIMin = "0", UIMax = "2048"))
-	int32 ProbeUpdateBudget = 128;
+	int32 ProbeUpdateBudget = 256;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Background")
 	bool bEnableStaticBackground = true;
