@@ -384,6 +384,144 @@ IMPLEMENT_SHADER_TYPE(
 	SF_Compute);
 
 
+class FDDGIRadianceCascadeShadeRHI : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FDDGIRadianceCascadeShadeRHI, Global);
+public:
+    FDDGIRadianceCascadeShadeRHI() {}
+    explicit FDDGIRadianceCascadeShadeRHI(const ShaderMetaType::CompiledShaderInitializerType& I)
+        : FGlobalShader(I)
+    {
+        TextureWidth.Bind(I.ParameterMap, TEXT("TextureWidth"));
+        TotalTexels.Bind(I.ParameterMap, TEXT("TotalTexels"));
+        DispatchGroupsX.Bind(I.ParameterMap, TEXT("DispatchGroupsX"));
+        ProbeCount.Bind(I.ParameterMap, TEXT("ProbeCount"));
+        TraceStartIndex.Bind(I.ParameterMap, TEXT("TraceStartIndex"));
+        TotalRaysPerProbe.Bind(I.ParameterMap, TEXT("TotalRaysPerProbe"));
+        NodeCount.Bind(I.ParameterMap, TEXT("NodeCount"));
+        TriangleCount.Bind(I.ParameterMap, TEXT("TriangleCount"));
+        GIIntensity.Bind(I.ParameterMap, TEXT("GIIntensity"));
+        DirectionalLightDirection.Bind(I.ParameterMap, TEXT("DirectionalLightDirection"));
+        DirectionalLightColor.Bind(I.ParameterMap, TEXT("DirectionalLightColor"));
+        DirectionalLightIntensity.Bind(I.ParameterMap, TEXT("DirectionalLightIntensity"));
+        bHasDirectionalLight.Bind(I.ParameterMap, TEXT("bHasDirectionalLight"));
+        bDirectionalLightCastsShadows.Bind(I.ParameterMap, TEXT("bDirectionalLightCastsShadows"));
+        LocalLightCount.Bind(I.ParameterMap, TEXT("LocalLightCount"));
+        LocalLightPositionAndRadius.Bind(I.ParameterMap, TEXT("LocalLightPositionAndRadius"));
+        LocalLightDirectionAndCosOuter.Bind(I.ParameterMap, TEXT("LocalLightDirectionAndCosOuter"));
+        LocalLightColorAndIntensity.Bind(I.ParameterMap, TEXT("LocalLightColorAndIntensity"));
+        LocalLightParameters.Bind(I.ParameterMap, TEXT("LocalLightParameters"));
+        DirectionsTexture.Bind(I.ParameterMap, TEXT("DirectionsTexture"));
+        ProbePositionsTexture.Bind(I.ParameterMap, TEXT("ProbePositionsTexture"));
+        LogicalToPhysicalSlots.Bind(I.ParameterMap, TEXT("LogicalToPhysicalSlots"));
+        BVHNodes.Bind(I.ParameterMap, TEXT("BVHNodes"));
+        BVHTriangles.Bind(I.ParameterMap, TEXT("BVHTriangles"));
+        HitDistanceTexture.Bind(I.ParameterMap, TEXT("HitDistanceTexture"));
+        HitTriangleIndexTexture.Bind(I.ParameterMap, TEXT("HitTriangleIndexTexture"));
+        RadianceUAV.Bind(I.ParameterMap, TEXT("RadianceUAV"));
+    }
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P)
+    {
+        return IsFeatureLevelSupported(P.Platform, ERHIFeatureLevel::SM5);
+    }
+    template<typename TShaderRHIParamRef>
+    void SetParameters(
+        FRHICommandList& C, const TShaderRHIParamRef Sh,
+        FShaderResourceViewRHIRef Directions, FShaderResourceViewRHIRef Positions,
+        FShaderResourceViewRHIRef LogicalToPhysical, FShaderResourceViewRHIRef Nodes,
+        FShaderResourceViewRHIRef Triangles, FShaderResourceViewRHIRef HitDistances,
+        FShaderResourceViewRHIRef HitIndices, FUnorderedAccessViewRHIRef Radiance,
+        uint32 InTotalTexels, uint32 InGroupsX, uint32 InProbeCount,
+        uint32 InTraceStartIndex, uint32 InTotalRaysPerProbe,
+        uint32 InNodeCount, uint32 InTriangleCount, float InGIIntensity,
+        const FVector4& InDirectionalDirection, const FVector4& InDirectionalColor,
+        float InDirectionalIntensity, uint32 bInHasDirectionalLight,
+        uint32 bInDirectionalCastsShadows,
+        const TArray<FVector4>& InLocalPositions,
+        const TArray<FVector4>& InLocalDirections,
+        const TArray<FVector4>& InLocalColors,
+        const TArray<FVector4>& InLocalParameters, uint32 InLocalLightCount)
+    {
+        const uint32 Width = 4096u;
+        SetShaderValue(C, Sh, TextureWidth, Width);
+        SetShaderValue(C, Sh, TotalTexels, InTotalTexels);
+        SetShaderValue(C, Sh, DispatchGroupsX, InGroupsX);
+        SetShaderValue(C, Sh, ProbeCount, InProbeCount);
+        SetShaderValue(C, Sh, TraceStartIndex, InTraceStartIndex);
+        SetShaderValue(C, Sh, TotalRaysPerProbe, InTotalRaysPerProbe);
+        SetShaderValue(C, Sh, NodeCount, InNodeCount);
+        SetShaderValue(C, Sh, TriangleCount, InTriangleCount);
+        SetShaderValue(C, Sh, GIIntensity, InGIIntensity);
+        SetShaderValue(C, Sh, DirectionalLightDirection, InDirectionalDirection);
+        SetShaderValue(C, Sh, DirectionalLightColor, InDirectionalColor);
+        SetShaderValue(C, Sh, DirectionalLightIntensity, InDirectionalIntensity);
+        SetShaderValue(C, Sh, bHasDirectionalLight, bInHasDirectionalLight);
+        SetShaderValue(C, Sh, bDirectionalLightCastsShadows, bInDirectionalCastsShadows);
+        SetShaderValue(C, Sh, LocalLightCount, FMath::Min(InLocalLightCount, 32u));
+        check(InLocalPositions.Num() >= 32 && InLocalDirections.Num() >= 32 &&
+            InLocalColors.Num() >= 32 && InLocalParameters.Num() >= 32);
+        SetShaderValueArray(C, Sh, LocalLightPositionAndRadius, InLocalPositions.GetData(), 32u);
+        SetShaderValueArray(C, Sh, LocalLightDirectionAndCosOuter, InLocalDirections.GetData(), 32u);
+        SetShaderValueArray(C, Sh, LocalLightColorAndIntensity, InLocalColors.GetData(), 32u);
+        SetShaderValueArray(C, Sh, LocalLightParameters, InLocalParameters.GetData(), 32u);
+        if (DirectionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, DirectionsTexture.GetBaseIndex(), Directions);
+        if (ProbePositionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, ProbePositionsTexture.GetBaseIndex(), Positions);
+        if (LogicalToPhysicalSlots.IsBound()) C.SetShaderResourceViewParameter(Sh, LogicalToPhysicalSlots.GetBaseIndex(), LogicalToPhysical);
+        if (BVHNodes.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHNodes.GetBaseIndex(), Nodes);
+        if (BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHTriangles.GetBaseIndex(), Triangles);
+        if (HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitDistanceTexture.GetBaseIndex(), HitDistances);
+        if (HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitTriangleIndexTexture.GetBaseIndex(), HitIndices);
+        if (RadianceUAV.IsBound()) C.SetUAVParameter(Sh, RadianceUAV.GetBaseIndex(), Radiance);
+    }
+    template<typename TShaderRHIParamRef>
+    void UnbindResources(FRHICommandList& C, const TShaderRHIParamRef Sh)
+    {
+        if (DirectionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, DirectionsTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+        if (ProbePositionsTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, ProbePositionsTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+        if (LogicalToPhysicalSlots.IsBound()) C.SetShaderResourceViewParameter(Sh, LogicalToPhysicalSlots.GetBaseIndex(), FShaderResourceViewRHIRef());
+        if (BVHNodes.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHNodes.GetBaseIndex(), FShaderResourceViewRHIRef());
+        if (BVHTriangles.IsBound()) C.SetShaderResourceViewParameter(Sh, BVHTriangles.GetBaseIndex(), FShaderResourceViewRHIRef());
+        if (HitDistanceTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitDistanceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+        if (HitTriangleIndexTexture.IsBound()) C.SetShaderResourceViewParameter(Sh, HitTriangleIndexTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+        if (RadianceUAV.IsBound()) C.SetUAVParameter(Sh, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+    }
+private:
+    LAYOUT_FIELD(FShaderParameter, TextureWidth);
+    LAYOUT_FIELD(FShaderParameter, TotalTexels);
+    LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
+    LAYOUT_FIELD(FShaderParameter, ProbeCount);
+    LAYOUT_FIELD(FShaderParameter, TraceStartIndex);
+    LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
+    LAYOUT_FIELD(FShaderParameter, NodeCount);
+    LAYOUT_FIELD(FShaderParameter, TriangleCount);
+    LAYOUT_FIELD(FShaderParameter, GIIntensity);
+    LAYOUT_FIELD(FShaderParameter, DirectionalLightDirection);
+    LAYOUT_FIELD(FShaderParameter, DirectionalLightColor);
+    LAYOUT_FIELD(FShaderParameter, DirectionalLightIntensity);
+    LAYOUT_FIELD(FShaderParameter, bHasDirectionalLight);
+    LAYOUT_FIELD(FShaderParameter, bDirectionalLightCastsShadows);
+    LAYOUT_FIELD(FShaderParameter, LocalLightCount);
+    LAYOUT_FIELD(FShaderParameter, LocalLightPositionAndRadius);
+    LAYOUT_FIELD(FShaderParameter, LocalLightDirectionAndCosOuter);
+    LAYOUT_FIELD(FShaderParameter, LocalLightColorAndIntensity);
+    LAYOUT_FIELD(FShaderParameter, LocalLightParameters);
+    LAYOUT_FIELD(FShaderResourceParameter, DirectionsTexture);
+    LAYOUT_FIELD(FShaderResourceParameter, ProbePositionsTexture);
+    LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
+    LAYOUT_FIELD(FShaderResourceParameter, BVHNodes);
+    LAYOUT_FIELD(FShaderResourceParameter, BVHTriangles);
+    LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
+    LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexTexture);
+    LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
+};
+IMPLEMENT_SHADER_TYPE(
+    ,
+    FDDGIRadianceCascadeShadeRHI,
+    TEXT("/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeShadeCS.usf"),
+    TEXT("RadianceCascadeShadeCS"),
+    SF_Compute);
+
+
 class FDDGIRadianceCascadeSpatialGatherRHI : public FGlobalShader
 {
  DECLARE_SHADER_TYPE(FDDGIRadianceCascadeSpatialGatherRHI, Global);
@@ -1250,9 +1388,34 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
 	const uint32 TraceGroupsY = FMath::DivideAndRoundUp(TraceTotalGroups, TraceGroupsX);
 
-	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+	// Primary BVH traversal and surface lighting are separate compute programs.
+	// The trace pass writes hit metadata/background; the shade pass consumes it
+	// and performs direct lighting, visibility and the deterministic diffuse bounce.
 	DDGITransitionTexture(RHICmdList, HitDistanceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	DDGITransitionTexture(RHICmdList, HitTriangleIndexTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+
+	TShaderMapRef<FDDGIRadianceCascadeShadeRHI> ShadeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	RHICmdList.SetComputeShader(ShadeShader.GetComputeShader());
+	ShadeShader->SetParameters(
+		RHICmdList, ShadeShader.GetComputeShader(),
+		DirectionsSRV, ProbePositionsSRV, LogicalToPhysicalSRV, NodesSRV, TrianglesSRV,
+		IntegrationHitDistanceSRV, IntegrationHitTriangleIndexSRV, RadianceUAV,
+		TraceTotalTexels, TraceGroupsX, ProbeCount, TraceStartIndex, TotalRaysPerProbe,
+		NodeCount, TriangleCount, Config->GIIntensity,
+		FVector4(Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z, 0.0f),
+		FVector4(Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B, 0.0f),
+		Config->DirectionalLightIntensity,
+		Config->bHasDirectionalLight ? 1u : 0u,
+		Config->bDirectionalLightCastsShadows ? 1u : 0u,
+		Config->LocalLightPositionAndRadius,
+		Config->LocalLightDirectionAndCosOuter,
+		Config->LocalLightColorAndIntensity,
+		Config->LocalLightParameters,
+		Config->LocalLightCount);
+	DispatchComputeShader(RHICmdList, ShadeShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
+	ShadeShader->UnbindResources(RHICmdList, ShadeShader.GetComputeShader());
+
+	DDGITransitionTexture(RHICmdList, RadianceTexture, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 
 	// Spatial gather writes only probes traced in this batch, but may read
 	// persistent raw samples from neighboring probes updated in earlier batches.
