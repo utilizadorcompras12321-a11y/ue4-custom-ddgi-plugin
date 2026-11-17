@@ -203,111 +203,48 @@ float3 DDGIProbeDiffuseIrradiance(
             ChildPath = (ChildPath << 1u) | PathBit;
         }
 
-        // The selected finest ray is the deterministic angular cell
-        // containing the receiver direction. Walk its ancestry because a
-        // blocked descendant stores a zero-distance sentinel, not a surface hit.
-        float OccluderDistance = -1.0f;
-        uint OccluderCascade = 0u;
-        uint OccluderRayIndex = 0u;
-        uint LocalCascadeRayIndex = BestBaseRay * ChildCount + ChildPath;
-        [loop]
-        for (int SearchCascade = (int)SelectedCascade;
-            SearchCascade >= 0;
-            --SearchCascade)
+        // Each level's ray is independent and originates at the probe.
+        // Test only the finest angular cell containing the receiver direction;
+        // its hit distance is already measured from ProbePosition.
+        uint SelectedRayIndex =
+            SafeRayCount * ((1u << SelectedCascade) - 1u) +
+            BestBaseRay * ChildCount + ChildPath;
+        uint CandidateLinearIndex =
+            PhysicalProbeIndex * TotalRaysPerProbe + SelectedRayIndex;
+        uint2 CandidatePixel = uint2(
+            CandidateLinearIndex % DDGI_RC_TEXTURE_WIDTH,
+            CandidateLinearIndex / DDGI_RC_TEXTURE_WIDTH);
+        uint CandidateTriangleTag = HitTriangleIndexTexture.Load(
+            int3(CandidatePixel, 0));
+        if (CandidateTriangleTag > 0u)
         {
-            uint CandidateCascade = (uint)SearchCascade;
-            uint CandidateShift = SelectedCascade - CandidateCascade;
-            uint CandidateLocalRayIndex =
-                LocalCascadeRayIndex >> CandidateShift;
-            uint CandidateStorageOffset =
-                SafeRayCount * ((1u << CandidateCascade) - 1u);
-            uint CandidateRayIndex =
-                CandidateStorageOffset + CandidateLocalRayIndex;
-            uint CandidateLinearIndex =
-                PhysicalProbeIndex * TotalRaysPerProbe + CandidateRayIndex;
-            uint2 CandidatePixel = uint2(
-                CandidateLinearIndex % DDGI_RC_TEXTURE_WIDTH,
-                CandidateLinearIndex / DDGI_RC_TEXTURE_WIDTH);
-            // Misses and blocked descendants have no triangle tag. Avoid
-            // loading hit distance for those common cases.
-            uint CandidateTriangleTag = HitTriangleIndexTexture.Load(
+            float CandidateDistance = HitDistanceTexture.Load(
                 int3(CandidatePixel, 0));
-            if (CandidateTriangleTag > 0u)
+            if (CandidateDistance >= 0.0f)
             {
-                float CandidateDistance = HitDistanceTexture.Load(
-                    int3(CandidatePixel, 0));
-                if (CandidateDistance >= 0.0f)
+                float3 SelectedDirection = normalize(
+                    DirectionsTexture.Load(int3(
+                        SelectedRayIndex % DDGI_RC_TEXTURE_WIDTH,
+                        SelectedRayIndex / DDGI_RC_TEXTURE_WIDTH, 0)).xyz);
+                float3 OccluderPosition =
+                    ProbePosition + SelectedDirection * CandidateDistance;
+                float OccluderDistanceAlongReceiver = dot(
+                    OccluderPosition - ProbePosition,
+                    ReceiverDirection);
+                // Keep the bias in world centimetres small enough not to skip thin walls.
+                float VisibilityBias = clamp(ReceiverDistance * 0.0015f, 1.0f, 5.0f);
+                float DistanceBeforeReceiver =
+                    ReceiverDistance - OccluderDistanceAlongReceiver;
+                if (OccluderDistanceAlongReceiver > 0.0f &&
+                    DistanceBeforeReceiver > 0.0f)
                 {
-                    OccluderDistance = CandidateDistance;
-                    OccluderCascade = CandidateCascade;
-                    OccluderRayIndex = CandidateRayIndex;
-                    break;
+                    Visibility = 1.0f - smoothstep(
+                        VisibilityBias,
+                        VisibilityBias * 2.0f,
+                        DistanceBeforeReceiver);
                 }
             }
         }
-
-        if (OccluderDistance >= 0.0f)
-        {
-            // HitDistance is local to the cascade that found the surface.
-            // Reconstruct that cascade's complete piecewise ray origin.
-            float3 CascadeRayOrigin = ProbePosition;
-            uint OccluderLocalRayIndex =
-                LocalCascadeRayIndex >> (SelectedCascade - OccluderCascade);
-            [loop]
-            for (uint AncestorCascade = 0u;
-                AncestorCascade < OccluderCascade;
-                ++AncestorCascade)
-            {
-                uint AncestorShift = OccluderCascade - AncestorCascade;
-                uint AncestorLocalRayIndex =
-                    OccluderLocalRayIndex >> AncestorShift;
-                uint AncestorStorageOffset =
-                    SafeRayCount * ((1u << AncestorCascade) - 1u);
-                uint AncestorRayIndex =
-                    AncestorStorageOffset + AncestorLocalRayIndex;
-                uint2 AncestorDirectionPixel = uint2(
-                    AncestorRayIndex % DDGI_RC_TEXTURE_WIDTH,
-                    AncestorRayIndex / DDGI_RC_TEXTURE_WIDTH);
-                float3 AncestorDirection = normalize(
-                    DirectionsTexture.Load(
-                        int3(AncestorDirectionPixel, 0)).xyz);
-                CascadeRayOrigin += AncestorDirection *
-                    DDGIRadianceCascadeSegmentLength(
-                        (int)AncestorCascade,
-                        BaseSegmentLength,
-                        CascadeScale);
-            }
-
-            uint2 OccluderDirectionPixel = uint2(
-                OccluderRayIndex % DDGI_RC_TEXTURE_WIDTH,
-                OccluderRayIndex / DDGI_RC_TEXTURE_WIDTH);
-            float3 OccluderDirection = normalize(
-                DirectionsTexture.Load(
-                    int3(OccluderDirectionPixel, 0)).xyz);
-            float3 OccluderPosition =
-                CascadeRayOrigin + OccluderDirection * OccluderDistance;
-
-            // Project the reconstructed world-space hit onto the
-            // probe-to-receiver direction and compare like world-space values.
-            float OccluderDistanceAlongReceiver = dot(
-                OccluderPosition - ProbePosition,
-                ReceiverDirection);
-
-            // Keep the bias in world centimetres small enough not to skip thin walls.
-            float VisibilityBias = clamp(ReceiverDistance * 0.0015f, 1.0f, 5.0f);
-            float DistanceBeforeReceiver =
-                ReceiverDistance - OccluderDistanceAlongReceiver;
-            if (OccluderDistanceAlongReceiver > 0.0f &&
-                DistanceBeforeReceiver > 0.0f)
-            {
-                // A hit at the receiver distance is the receiver surface,
-                // not an occluder. Only a hit clearly before the receiver fades
-                // the probe contribution.
-                Visibility = 1.0f - smoothstep(
-                    VisibilityBias,
-                    VisibilityBias * 2.0f,
-                    DistanceBeforeReceiver);
-            }
         }
     }
 
