@@ -223,8 +223,10 @@ public:
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		HitDistanceUAV.Bind(Initializer.ParameterMap, TEXT("HitDistanceUAV"));
  		HitTriangleIndexUAV.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexUAV"));
-		ParentOcclusionMaskTexture.Bind(Initializer.ParameterMap, TEXT("ParentOcclusionMaskTexture"));
-		CurrentOcclusionMaskUAV.Bind(Initializer.ParameterMap, TEXT("CurrentOcclusionMaskUAV"));
+		ParentOcclusionMaskFloatTexture.Bind(Initializer.ParameterMap, TEXT("ParentOcclusionMaskFloatTexture"));
+		ParentOcclusionMaskUIntTexture.Bind(Initializer.ParameterMap, TEXT("ParentOcclusionMaskUIntTexture"));
+		CurrentOcclusionMaskFloatUAV.Bind(Initializer.ParameterMap, TEXT("CurrentOcclusionMaskFloatUAV"));
+		CurrentOcclusionMaskUIntUAV.Bind(Initializer.ParameterMap, TEXT("CurrentOcclusionMaskUIntUAV"));
 	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -244,10 +246,14 @@ public:
 		FUnorderedAccessViewRHIRef RadianceView,
 		FUnorderedAccessViewRHIRef HitDistanceView,
 		FUnorderedAccessViewRHIRef HitTriangleIndexView,
-		FShaderResourceViewRHIRef ParentMaskSRV,
-		FUnorderedAccessViewRHIRef CurrentMaskUAV,
+		FShaderResourceViewRHIRef ParentMaskFloatSRV,
+		FShaderResourceViewRHIRef ParentMaskUIntSRV,
+		FUnorderedAccessViewRHIRef CurrentMaskFloatUAV,
+		FUnorderedAccessViewRHIRef CurrentMaskUIntUAV,
 		uint32 InTraceCascadeIndex,
 		uint32 bInHasParentMask,
+		uint32 bInReadParentMaskFloat,
+		uint32 bInWriteCurrentMaskFloat,
 		uint32 InTotalTexels,
 		uint32 InDispatchGroupsX,
 		uint32 InProbeCount,
@@ -290,6 +296,8 @@ public:
  		SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, TraceCascadeIndex, InTraceCascadeIndex);
 		SetShaderValue(RHICmdList, ShaderRHI, bHasParentMask, bInHasParentMask);
+		SetShaderValue(RHICmdList, ShaderRHI, bReadParentMaskFloat, bInReadParentMaskFloat);
+		SetShaderValue(RHICmdList, ShaderRHI, bWriteCurrentMaskFloat, bInWriteCurrentMaskFloat);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseSegmentLength, InBaseSegmentLength);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeScale, InCascadeScale);
@@ -325,8 +333,10 @@ public:
 		if (RadianceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), RadianceView);
 		if (HitDistanceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitDistanceUAV.GetBaseIndex(), HitDistanceView);
  		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), HitTriangleIndexView);
-		if (ParentOcclusionMaskTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskTexture.GetBaseIndex(), ParentMaskSRV);
-		if (CurrentOcclusionMaskUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskUAV.GetBaseIndex(), CurrentMaskUAV);
+		if (ParentOcclusionMaskFloatTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskFloatTexture.GetBaseIndex(), ParentMaskFloatSRV);
+		if (ParentOcclusionMaskUIntTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskUIntTexture.GetBaseIndex(), ParentMaskUIntSRV);
+		if (CurrentOcclusionMaskFloatUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskFloatUAV.GetBaseIndex(), CurrentMaskFloatUAV);
+		if (CurrentOcclusionMaskUIntUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskUIntUAV.GetBaseIndex(), CurrentMaskUIntUAV);
 	}
 
 	template<typename TShaderRHIParamRef>
@@ -340,8 +350,10 @@ public:
 		if (RadianceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, RadianceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 		if (HitDistanceUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitDistanceUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
  		if (HitTriangleIndexUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, HitTriangleIndexUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
-		if (ParentOcclusionMaskTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
-		if (CurrentOcclusionMaskUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+		if (ParentOcclusionMaskFloatTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskFloatTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+		if (ParentOcclusionMaskUIntTexture.IsBound()) RHICmdList.SetShaderResourceViewParameter(ShaderRHI, ParentOcclusionMaskUIntTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+		if (CurrentOcclusionMaskFloatUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskFloatUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+		if (CurrentOcclusionMaskUIntUAV.IsBound()) RHICmdList.SetUAVParameter(ShaderRHI, CurrentOcclusionMaskUIntUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 	}
 
 private:
@@ -356,6 +368,8 @@ private:
  	LAYOUT_FIELD(FShaderParameter, CascadeCount);
 	LAYOUT_FIELD(FShaderParameter, TraceCascadeIndex);
 	LAYOUT_FIELD(FShaderParameter, bHasParentMask);
+	LAYOUT_FIELD(FShaderParameter, bReadParentMaskFloat);
+	LAYOUT_FIELD(FShaderParameter, bWriteCurrentMaskFloat);
 	LAYOUT_FIELD(FShaderParameter, BaseRayCount);
 	LAYOUT_FIELD(FShaderParameter, BaseSegmentLength);
 	LAYOUT_FIELD(FShaderParameter, CascadeScale);
@@ -386,8 +400,10 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceUAV);
  	LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexUAV);
-	LAYOUT_FIELD(FShaderResourceParameter, ParentOcclusionMaskTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, CurrentOcclusionMaskUAV);
+	LAYOUT_FIELD(FShaderResourceParameter, ParentOcclusionMaskFloatTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, ParentOcclusionMaskUIntTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, CurrentOcclusionMaskFloatUAV);
+	LAYOUT_FIELD(FShaderResourceParameter, CurrentOcclusionMaskUIntUAV);
 };
 
 IMPLEMENT_SHADER_TYPE(
