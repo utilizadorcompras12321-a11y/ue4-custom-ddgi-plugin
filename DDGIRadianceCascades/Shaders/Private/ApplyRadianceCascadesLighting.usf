@@ -283,11 +283,11 @@ float3 DDGISampleProbeLevel(
             BaseCell * (int)LevelStep, Level, AnchorProbeIndex);
     }
 
-    [unroll]
+    [loop]
     for (int Z = 0; Z <= 1; ++Z)
-    [unroll]
+    [loop]
     for (int Y = 0; Y <= 1; ++Y)
-    [unroll]
+    [loop]
     for (int X = 0; X <= 1; ++X)
     {
         int3 Cell = (BaseCell + int3(X, Y, Z)) * (int)LevelStep;
@@ -471,7 +471,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float3 Irradiance = 0.0f;
     bool bHasIrradiance = false;
     float PreviousClipmapExtent = 0.0f;
-    [unroll]
+    [loop]
     for (uint ClipmapLevel = 0u; ClipmapLevel < 4u; ++ClipmapLevel)
     {
         const float LevelScale = exp2((float)ClipmapLevel);
@@ -526,7 +526,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     // seam. Fall back through coarser levels in a fixed, deterministic order.
     if (!bHasIrradiance)
     {
-        [unroll]
+        [loop]
         for (uint FallbackLevel = 0u; FallbackLevel < 4u; ++FallbackLevel)
         {
             bool bFallbackValid = false;
