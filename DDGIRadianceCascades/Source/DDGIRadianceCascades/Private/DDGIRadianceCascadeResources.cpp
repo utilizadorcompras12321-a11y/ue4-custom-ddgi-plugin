@@ -82,8 +82,8 @@ namespace
 	{
 		TRefCountPtr<IPooledRenderTarget> Directions;
 		TRefCountPtr<IPooledRenderTarget> Radiance; // Immutable raw trace radiance.
-		TRefCountPtr<IPooledRenderTarget> RadianceScratch; // Gather output and temporary float occlusion mask during tracing.
-		TRefCountPtr<IPooledRenderTarget> RadianceIntegrationScratch; // Packed final output and temporary uint occlusion mask during tracing.
+		TRefCountPtr<IPooledRenderTarget> RadianceScratch; // Spatial gather output.
+		TRefCountPtr<IPooledRenderTarget> RadianceIntegrationScratch; // Persistent packed integrated radiance.
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> HitTriangleIndex;
 		TRefCountPtr<IPooledRenderTarget> ProbePositions;
