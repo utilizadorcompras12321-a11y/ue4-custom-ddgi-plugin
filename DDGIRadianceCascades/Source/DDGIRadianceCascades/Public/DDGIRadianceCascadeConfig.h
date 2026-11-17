@@ -7,7 +7,7 @@
  * World-level Radiance Cascades layout.
  *
  * Each cascade stores radiance for a non-overlapping distance interval.
- * Direction counts grow by RaySplitFactor between adjacent cascades.
+ * Every cascade reuses the same fixed angular ray count.
  * This describes the ray hierarchy and packed per-probe ray-data layout;
  * it does not perform scene tracing or allocate GPU resources.
  */
@@ -42,9 +42,6 @@ struct FDDGIRadianceCascadeConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radiance Cascades", meta = (ClampMin = "1", ClampMax = "64"))
 	int32 BaseRayCount = 6;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radiance Cascades", meta = (ClampMin = "1", ClampMax = "4"))
-	int32 RaySplitFactor = 2;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radiance Cascades", meta = (ClampMin = "1.0"))
 	float BaseSegmentLength = 250.0f;
@@ -89,20 +86,10 @@ struct FDDGIRadianceCascadeConfig
 
 	FORCEINLINE int32 GetRayCount(int32 CascadeIndex) const
 	{
-		const int32 SafeIndex = FMath::Clamp(CascadeIndex, 0, GetSafeCascadeCount() - 1);
-		int64 Count = FMath::Clamp(BaseRayCount, 1, 64);
-		const int32 Split = FMath::Clamp(RaySplitFactor, 1, 4);
-
-		for (int32 Index = 0; Index < SafeIndex; ++Index)
-		{
-			// Never create a partial child group at the storage limit. If a full
-			// split would exceed the cap, retain the parent count for this level.
-			if (Count <= 65536 / Split)
-			{
-				Count *= Split;
-			}
-		}
-		return static_cast<int32>(Count);
+		// Ray splitting is disabled: every distance interval reuses the
+		// same angular directions and fixed ray count.
+		(void)CascadeIndex;
+		return FMath::Clamp(BaseRayCount, 1, 64);
 	}
 
 	FORCEINLINE int32 GetRayStorageOffset(int32 CascadeIndex) const
