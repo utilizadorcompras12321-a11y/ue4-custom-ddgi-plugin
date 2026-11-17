@@ -500,6 +500,7 @@ public:
 		RadianceUAV.Bind(Initializer.ParameterMap, TEXT("RadianceUAV"));
 		GatheredRadianceTexture.Bind(Initializer.ParameterMap, TEXT("GatheredRadianceTexture"));
 		HitDistanceTexture.Bind(Initializer.ParameterMap, TEXT("HitDistanceTexture"));
+		HitTriangleIndexTexture.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexTexture"));
 		LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
 	}
 
@@ -515,6 +516,7 @@ public:
 		FUnorderedAccessViewRHIRef InRadianceUAV,
 		FShaderResourceViewRHIRef GatheredRadianceSRV,
 		FShaderResourceViewRHIRef HitDistanceSRV,
+		FShaderResourceViewRHIRef HitTriangleIndexSRV,
 		FShaderResourceViewRHIRef LogicalToPhysicalSRV,
 		uint32 InTotalIntegrationTexels,
 		uint32 InDispatchGroupsX,
@@ -549,6 +551,10 @@ public:
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitDistanceTexture.GetBaseIndex(), HitDistanceSRV);
 		}
+		if (HitTriangleIndexTexture.IsBound())
+		{
+			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitTriangleIndexTexture.GetBaseIndex(), HitTriangleIndexSRV);
+		}
 		if (LogicalToPhysicalSlots.IsBound())
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), LogicalToPhysicalSRV);
@@ -570,6 +576,10 @@ public:
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitDistanceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
 		}
+		if (HitTriangleIndexTexture.IsBound())
+		{
+			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, HitTriangleIndexTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+		}
 		if (LogicalToPhysicalSlots.IsBound())
 		{
 			RHICmdList.SetShaderResourceViewParameter(ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), FShaderResourceViewRHIRef());
@@ -590,6 +600,7 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, RadianceUAV);
 	LAYOUT_FIELD(FShaderResourceParameter, GatheredRadianceTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
+	LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexTexture);
 	LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
 };
 
@@ -1021,11 +1032,12 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FUnorderedAccessViewRHIRef IntegrationScratchUAV = RHICreateUnorderedAccessView(RadianceIntegrationScratchTexture);
 	FShaderResourceViewRHIRef IntegrationScratchSRV = RHICreateShaderResourceView(RadianceIntegrationScratchTexture, 0);
 	FShaderResourceViewRHIRef IntegrationHitDistanceSRV = RHICreateShaderResourceView(HitDistanceTexture, 0);
+	FShaderResourceViewRHIRef IntegrationHitTriangleIndexSRV = RHICreateShaderResourceView(HitTriangleIndexTexture, 0);
 	if (!GatherRadianceSRV.IsValid() || !GatherHitSRV.IsValid() || !GatherHitIndicesSRV.IsValid() ||
 		!GatherDirectionsSRV.IsValid() || !GatherPositionsSRV.IsValid() || !TrianglesSRV.IsValid() ||
 		!GatherOutputUAV.IsValid() || !GatherOutputSRV.IsValid() ||
 		!IntegrationScratchUAV.IsValid() || !IntegrationScratchSRV.IsValid() ||
-		!IntegrationHitDistanceSRV.IsValid())
+		!IntegrationHitDistanceSRV.IsValid() || !IntegrationHitTriangleIndexSRV.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to prepare Gather/Integrate SRV/UAV views."));
 		return;
@@ -1276,6 +1288,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	IntegrateShader->SetParameters(
 		RHICmdList, IntegrateShader.GetComputeShader(),
 		IntegrationScratchUAV, GatherOutputSRV, IntegrationHitDistanceSRV,
+		IntegrationHitTriangleIndexSRV,
 		LogicalToPhysicalSRV,
 		TraceTotalTexels, TraceGroupsX, TotalRaysPerProbe,
 		ProbeCount, TraceStartIndex, 0u, TotalRaysPerProbe, 0u, 1u);
