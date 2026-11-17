@@ -136,10 +136,20 @@ struct FDDGIRadianceCascadeConfig
 	FORCEINLINE float GetCascadeEndDistance(int32 CascadeIndex) const
 	{
 		const int32 SafeIndex = FMath::Clamp(CascadeIndex, 0, GetConfiguredCascadeCount() - 1);
+		const float SafeMaxDistance = FMath::Max(1.0f, MaxTraceDistance);
 		const float Start = GetCascadeStartDistance(SafeIndex);
+
+		// Match the trace shader: the farthest active cascade owns all remaining
+		// distance up to MaxTraceDistance, even when the configured geometric
+		// series would otherwise stop short of the requested ray distance.
+		if (SafeIndex == GetSafeCascadeCount() - 1)
+		{
+			return SafeMaxDistance;
+		}
+
 		return FMath::Min(
 			Start + GetCascadeSegmentLength(SafeIndex),
-			FMath::Max(1.0f, MaxTraceDistance));
+			SafeMaxDistance);
 	}
 
 	// Builds the packed per-probe cascade table consumed later by GPU upload.
