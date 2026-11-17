@@ -38,6 +38,7 @@ Texture2D<float4> DirectionsTexture;
 Texture2D<float4> ProbePositionsTexture;
 Texture2D<float> HitDistanceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
+Texture2D<float4> SurfaceRadianceTexture;
 StructuredBuffer<float4> BVHNodes;
 StructuredBuffer<float4> BVHTriangles;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
@@ -802,51 +803,41 @@ void RadianceCascadeResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     uint2 Pixel = uint2(PhysicalLinearIndex % TextureWidth, PhysicalLinearIndex / TextureWidth);
     uint2 ProbePixel = uint2(ProbeIndex % TextureWidth, ProbeIndex / TextureWidth);
 
+    float4 ResolvedRadiance = SurfaceRadianceTexture.Load(int3(Pixel, 0));
     float HitDistance = HitDistanceTexture.Load(int3(Pixel, 0));
     uint HitTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel, 0));
-    if (HitTriangleTag == 0u || HitDistance <= 0.0f)
+    if (HitTriangleTag != 0u && HitDistance > 0.0f)
     {
-        return;
+        uint TriangleIndex = HitTriangleTag - 1u;
+        if (TriangleIndex < TriangleCount)
+        {
+            uint TriangleBase = TriangleIndex * 4u;
+            float3 BaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
+            if (any(BaseColor > 1.0e-6f))
+            {
+                float3 Origin = ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
+                uint2 DirectionPixel = uint2(PackedRayIndex % TextureWidth, PackedRayIndex / TextureWidth);
+                float3 Direction = normalize(DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
+                float3 HitPosition = Origin + Direction * HitDistance;
+                float3 Normal = ComputeTriangleGeometricNormal(
+                    BVHTriangles[TriangleBase + 0u].xyz,
+                    BVHTriangles[TriangleBase + 1u].xyz,
+                    BVHTriangles[TriangleBase + 2u].xyz);
+                if (dot(Normal, Direction) > 0.0f)
+                {
+                    Normal = -Normal;
+                }
+                if (dot(Normal, Normal) > 0.0f)
+                {
+                    float3 IncomingBounceRadiance = TraceDeterministicDiffuseBounce(
+                        HitPosition, Normal, TriangleIndex, 4u);
+                    ResolvedRadiance.rgb += BaseColor * IncomingBounceRadiance;
+                }
+            }
+        }
     }
 
-    uint TriangleIndex = HitTriangleTag - 1u;
-    if (TriangleIndex >= TriangleCount)
-    {
-        return;
-    }
-
-    float3 BaseColor = max(BVHTriangles[TriangleIndex * 4u + 3u].xyz, 0.0f);
-    if (!any(BaseColor > 1.0e-6f))
-    {
-        return;
-    }
-
-    float3 Origin = ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
-    uint2 DirectionPixel = uint2(PackedRayIndex % TextureWidth, PackedRayIndex / TextureWidth);
-    float3 Direction = normalize(DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
-    float3 HitPosition = Origin + Direction * HitDistance;
-
-    uint TriangleBase = TriangleIndex * 4u;
-    float3 Normal = ComputeTriangleGeometricNormal(
-        BVHTriangles[TriangleBase + 0u].xyz,
-        BVHTriangles[TriangleBase + 1u].xyz,
-        BVHTriangles[TriangleBase + 2u].xyz);
-    if (dot(Normal, Direction) > 0.0f)
-    {
-        Normal = -Normal;
-    }
-    if (dot(Normal, Normal) <= 0.0f)
-    {
-        return;
-    }
-
-    float3 IncomingBounceRadiance = TraceDeterministicDiffuseBounce(
-        HitPosition, Normal, TriangleIndex, 4u);
-    float3 IndirectRadiance = BaseColor * IncomingBounceRadiance;
-    if (any(IndirectRadiance > 0.0f))
-    {
-        float4 ExistingRadiance = RadianceUAV[Pixel];
-        ExistingRadiance.rgb += IndirectRadiance;
-        RadianceUAV[Pixel] = ExistingRadiance;
-    }
+    // Copy the complete surface result and add the secondary diffuse contribution.
+    // This is a write-only UAV operation; the float16 scratch is read through an SRV.
+    RadianceUAV[Pixel] = ResolvedRadiance;
 }
