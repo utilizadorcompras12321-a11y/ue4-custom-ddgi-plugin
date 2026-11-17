@@ -11,9 +11,6 @@ uint NodeCount;
 uint TriangleCount;
 uint CascadeCount;
 uint TraceCascadeIndex;
-uint bHasParentMask;
-uint bReadParentMaskFloat;
-uint bWriteCurrentMaskFloat;
 uint BaseRayCount;
 float BaseSegmentLength;
 float CascadeScale;
@@ -42,10 +39,6 @@ Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<float4> BVHNodes;
 StructuredBuffer<float4> BVHTriangles;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
-Texture2D<float4> ParentOcclusionMaskFloatTexture;
-Texture2D<uint> ParentOcclusionMaskUIntTexture;
-RWTexture2D<float4> CurrentOcclusionMaskFloatUAV;
-RWTexture2D<uint> CurrentOcclusionMaskUIntUAV;
 RWTexture2D<float4> RadianceUAV;
 RWTexture2D<float> HitDistanceUAV;
 RWTexture2D<uint> HitTriangleIndexUAV;
@@ -831,14 +824,6 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // contribute any scene hit. Clear their outputs without traversing the BVH.
     if (CascadeStartDistance >= SafeMaxTraceDistance)
     {
-        if (bWriteCurrentMaskFloat != 0u)
-        {
-            CurrentOcclusionMaskFloatUAV[Pixel] = 0.0f;
-        }
-        else
-        {
-            CurrentOcclusionMaskUIntUAV[Pixel] = 0u;
-        }
         HitDistanceUAV[Pixel] = -1.0f;
         HitTriangleIndexUAV[Pixel] = 0u;
         RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -866,14 +851,6 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float CascadeRayLength = max(CascadeEndDistance, 0.0f);
     if (CascadeRayLength <= 0.0f)
     {
-        if (bWriteCurrentMaskFloat != 0u)
-        {
-            CurrentOcclusionMaskFloatUAV[Pixel] = 0.0f;
-        }
-        else
-        {
-            CurrentOcclusionMaskUIntUAV[Pixel] = 0u;
-        }
         HitDistanceUAV[Pixel] = -1.0f;
         HitTriangleIndexUAV[Pixel] = 0u;
         RadianceUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -900,14 +877,6 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     // HitDistance is measured from the probe for every independent direction.
     bool bHasSurfaceHit = bHit;
-    if (bWriteCurrentMaskFloat != 0u)
-    {
-        CurrentOcclusionMaskFloatUAV[Pixel] = bHasSurfaceHit ? 1.0f : 0.0f;
-    }
-    else
-    {
-        CurrentOcclusionMaskUIntUAV[Pixel] = bHasSurfaceHit ? 1u : 0u;
-    }
     // Preserve the first hit for visibility even when it lies before this
     // cascade's radiance interval. The interval only owns radiance integration;
     // hit metadata always remains probe-relative for the selected angular ray.
