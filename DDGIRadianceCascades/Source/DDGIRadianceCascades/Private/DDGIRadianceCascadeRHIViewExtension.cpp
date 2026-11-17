@@ -1231,7 +1231,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		IntegrationScratchUAV, GatherOutputSRV, IntegrationHitDistanceSRV,
 		LogicalToPhysicalSRV,
 		TraceTotalTexels, TraceGroupsX, TotalRaysPerProbe,
-		ProbeCount, TraceStartIndex, 0u, TotalRaysPerProbe, 0u, 1u, 1u);
+		ProbeCount, TraceStartIndex, 0u, TotalRaysPerProbe, 0u, 1u);
 	DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
 	IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
 	DDGITransitionTexture(RHICmdList, RadianceIntegrationScratchTexture,
