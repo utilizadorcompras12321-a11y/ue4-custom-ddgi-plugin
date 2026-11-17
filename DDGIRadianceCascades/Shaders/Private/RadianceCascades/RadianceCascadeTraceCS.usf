@@ -10,6 +10,7 @@ uint TotalRaysPerProbe;
 uint NodeCount;
 uint TriangleCount;
 uint CascadeCount;
+uint BaseRayCount;
 float BaseSegmentLength;
 float CascadeScale;
 float MaxTraceDistance;
@@ -841,7 +842,24 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     // Trace only this interval; earlier and farther intervals are handled by
     // adjacent cascades instead of repeating the full BVH traversal.
-    float3 CascadeRayOrigin = Origin + Direction * CascadeStartDistance;
+    // A child ray starts at its parent ray's endpoint, anchoring the child
+    // angular cone to the parent's spatial sample.
+    float3 CascadeRayOrigin = Origin;
+    if (CascadeIndex > 0u)
+    {
+        uint SafeBaseRayCount = clamp(BaseRayCount, 1u, 64u);
+        uint CascadeOffset = SafeBaseRayCount * ((1u << CascadeIndex) - 1u);
+        uint LocalCascadeRayIndex = PackedRayIndex - CascadeOffset;
+        uint ParentCascadeOffset =
+            SafeBaseRayCount * ((1u << (CascadeIndex - 1u)) - 1u);
+        uint ParentRayIndex = ParentCascadeOffset + (LocalCascadeRayIndex >> 1u);
+        uint2 ParentDirectionPixel = uint2(
+            ParentRayIndex % TextureWidth,
+            ParentRayIndex / TextureWidth);
+        float3 ParentDirection = normalize(
+            DirectionsTexture.Load(int3(ParentDirectionPixel, 0)).xyz);
+        CascadeRayOrigin += ParentDirection * CascadeStartDistance;
+    }
     float CascadeRayLength = max(CascadeEndDistance - CascadeStartDistance, 0.0f);
     if (CascadeRayLength <= 0.0f)
     {
@@ -869,12 +887,8 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ClosestTriangleB,
         ClosestTriangleC);
 
-    // Store distance from the original probe; gather reconstructs world-space
-    // hit positions using the unshifted probe origin.
-    if (bHit)
-    {
-        ClosestHit += CascadeStartDistance;
-    }
+    // HitDistance is local to this cascade ray origin. Gather reconstructs
+    // the origin from the parent direction and cascade start distance.
     bool bHasSurfaceHit = bHit;
     HitDistanceUAV[Pixel] = bHasSurfaceHit ? ClosestHit : -1.0f;
     HitTriangleIndexUAV[Pixel] = bHasSurfaceHit ? (ClosestTriangleIndex + 1u) : 0u;
@@ -906,7 +920,7 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             GeometricNormal = -GeometricNormal;
         }
 
-        float3 HitPosition = Origin + Direction * ClosestHit;
+        float3 HitPosition = CascadeRayOrigin + Direction * ClosestHit;
         float3 HitBaseColor = max(BVHTriangles[HitTriangleBase + 3u].xyz, 0.0f);
         HitEmissiveRadiance = float3(
             BVHTriangles[HitTriangleBase + 0u].w,
