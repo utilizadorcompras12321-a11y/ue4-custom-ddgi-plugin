@@ -52,7 +52,7 @@ public:
 	int32 CascadeCount = 3;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1", ClampMax = "64"))
-	int32 BaseRayCount = 16;
+	int32 BaseRayCount = 32;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Radiance Cascades", meta = (ClampMin = "1.0", Units = "cm"))
 	float BaseSegmentLength = 250.0f;
@@ -72,7 +72,7 @@ public:
 
 	// Maximum number of sparse probes traced per frame. Higher values refresh the clipmap faster at greater GPU cost.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Performance", meta = (ClampMin = "0", ClampMax = "8192", UIMin = "0", UIMax = "2048"))
-	int32 ProbeUpdateBudget = 64;
+	int32 ProbeUpdateBudget = 128;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Background")
 	bool bEnableStaticBackground = true;
