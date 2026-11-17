@@ -283,15 +283,19 @@ float3 DDGIInterpolateLevelPair(
     float3 ValueB = DDGISampleLevelValue(
         LocalPosition, Normal, LevelB, bValidB, ConfidenceB);
 
-    // Keep the geometric transition as a true continuous interpolation.
-    // Renormalizing by the combined confidence makes the weaker cascade
-    // disappear abruptly as soon as the other gains a little support.
+    // Confidence affects which cascade contributes, not the total energy.
+    // Normalize the confidence-weighted blend so a partially populated
+    // clipmap cannot darken the result as the transition advances.
     float Blend = saturate(T);
-    float3 ConfidentA = ValueA * ConfidenceA;
-    float3 ConfidentB = ValueB * ConfidenceB;
-    OutValid = (ConfidenceA > 0.00001f && bValidA) ||
-        (ConfidenceB > 0.00001f && bValidB);
-    return lerp(ConfidentA, ConfidentB, Blend);
+    float WeightA = (1.0f - Blend) * (bValidA ? ConfidenceA : 0.0f);
+    float WeightB = Blend * (bValidB ? ConfidenceB : 0.0f);
+    float TotalWeight = WeightA + WeightB;
+    OutValid = TotalWeight > 0.00001f;
+    if (!OutValid)
+    {
+        return 0.0f;
+    }
+    return (ValueA * WeightA + ValueB * WeightB) / TotalWeight;
 }
 
 [numthreads(8, 8, 1)]
@@ -356,8 +360,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         bool bDebugLevelValid = false;
         float DebugLevelConfidence = 0.0f;
         float3 DebugLevelIrradiance = DDGISampleLevelValue(
-            LocalPosition, Normal, DebugLevel, bDebugLevelValid, DebugLevelConfidence) *
-            DebugLevelConfidence;
+            LocalPosition, Normal, DebugLevel, bDebugLevelValid, DebugLevelConfidence);
         if (!bDebugLevelValid)
         {
             SceneColorOutputUAV[BufferPixelIndex] = float4(1.0f, 0.0f, 1.0f, 1.0f);
@@ -400,10 +403,13 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         {
             if (ClipmapLevel < 3u && ClipmapDistance > ClipmapExtent - TransitionWidth)
             {
-                const float T = smoothstep(
-                    ClipmapExtent - TransitionWidth,
-                    ClipmapExtent + TransitionWidth,
-                    ClipmapDistance);
+                // Quintic smootherstep has zero slope at both ends,
+                // avoiding a perceptible velocity change while crossing levels.
+                const float TransitionU = saturate(
+                    (ClipmapDistance - (ClipmapExtent - TransitionWidth)) /
+                    max(2.0f * TransitionWidth, 0.001f));
+                const float T = TransitionU * TransitionU * TransitionU *
+                    (TransitionU * (TransitionU * 6.0f - 15.0f) + 10.0f);
                 bool bTransitionValid = false;
                 const float3 TransitionIrradiance = DDGIInterpolateLevelPair(
                     LocalPosition, Normal, ClipmapLevel, ClipmapLevel + 1u,
@@ -422,7 +428,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
                 float CurrentLevelConfidence = 0.0f;
                 float3 CurrentLevelIrradiance = DDGISampleLevelValue(
                     LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid,
-                    CurrentLevelConfidence) * CurrentLevelConfidence;
+                    CurrentLevelConfidence);
                 if (bCurrentLevelValid)
                 {
                     Irradiance = CurrentLevelIrradiance;
@@ -446,7 +452,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             float FallbackConfidence = 0.0f;
             float3 FallbackIrradiance = DDGISampleLevelValue(
                 LocalPosition, Normal, FallbackLevel, bFallbackValid,
-                FallbackConfidence) * FallbackConfidence;
+                FallbackConfidence);
             if (bFallbackValid)
             {
                 Irradiance = FallbackIrradiance;
