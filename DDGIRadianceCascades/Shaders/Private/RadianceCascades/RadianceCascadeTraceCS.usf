@@ -269,117 +269,12 @@ bool IntersectTriangle(float3 Origin, float3 Direction, float3 A, float3 B, floa
 }
 
 
-bool TraceAnyHit(float3 Origin, float3 Direction, float MaxDistance, uint IgnoreTriangleIndex)
-{
-    if (NodeCount == 0u || TriangleCount == 0u || MaxDistance <= 0.0f)
-    {
-        return false;
-    }
-
-    // Test the root once before traversal. Child bounds are tested before
-    // insertion, so no per-node near-distance stack is needed.
-    if (!IntersectBounds(
-        Origin, Direction,
-        BVHNodes[0u].xyz,
-        BVHNodes[1u].xyz,
-        MaxDistance))
-    {
-        return false;
-    }
-
-    uint Stack[49];
-    uint StackSize = 0u;
-    uint IterationCount = 0u;
-    Stack[StackSize++] = 0u;
-
-    [loop]
-    while (StackSize > 0u && IterationCount < NodeCount)
-    {
-        ++IterationCount;
-        uint NodeIndex = Stack[--StackSize];
-        if (NodeIndex >= NodeCount)
-        {
-            continue;
-        }
-
-        uint NodeBase = NodeIndex * 3u;
-        float4 Metadata = BVHNodes[NodeBase + 2u];
-        uint FirstTriangle = (uint)max(Metadata.z, 0.0f);
-        uint LeafTriangleCount = (uint)max(Metadata.w, 0.0f);
-        if (LeafTriangleCount > 0u)
-        {
-            [loop]
-            for (uint LocalTriangle = 0u; LocalTriangle < LeafTriangleCount; ++LocalTriangle)
-            {
-                uint TriangleIndex = FirstTriangle + LocalTriangle;
-                if (TriangleIndex >= TriangleCount || TriangleIndex == IgnoreTriangleIndex)
-                {
-                    continue;
-                }
-
-                uint TriangleBase = TriangleIndex * 4u;
-                float ShadowHitDistance;
-                if (IntersectTriangle(Origin, Direction,
-                    BVHTriangles[TriangleBase + 0u].xyz,
-                    BVHTriangles[TriangleBase + 1u].xyz,
-                    BVHTriangles[TriangleBase + 2u].xyz,
-                    ShadowHitDistance) && ShadowHitDistance < MaxDistance)
-                {
-                    return true;
-                }
-            }
-        }
-        else
-        {
-            uint LeftChild = (uint)max(Metadata.x, 0.0f);
-            uint RightChild = (uint)max(Metadata.y, 0.0f);
-            float LeftNear = 0.0f;
-            float RightNear = 0.0f;
-            bool bHitLeft = false;
-            bool bHitRight = false;
-            if (LeftChild < NodeCount)
-            {
-                uint LeftBase = LeftChild * 3u;
-                bHitLeft = IntersectBoundsWithNear(Origin, Direction,
-                    BVHNodes[LeftBase + 0u].xyz, BVHNodes[LeftBase + 1u].xyz,
-                    MaxDistance, LeftNear);
-            }
-            if (RightChild < NodeCount)
-            {
-                uint RightBase = RightChild * 3u;
-                bHitRight = IntersectBoundsWithNear(Origin, Direction,
-                    BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
-                    MaxDistance, RightNear);
-            }
-            // Near distances are finite and non-negative. Their unsigned IEEE-754
-            // bit patterns preserve numeric ordering, avoiding the FXC dynamic
-            // float-comparison optimizer issue while visiting the nearer child first.
-            // The CPU builder caps leaf depth at 48. Depth-first traversal can therefore
-            // hold at most 49 pending nodes in this stack.
-            if (bHitLeft && bHitRight)
-            {
-                bool bLeftIsNearer = asuint(LeftNear) <= asuint(RightNear);
-                Stack[StackSize++] = bLeftIsNearer ? RightChild : LeftChild;
-                Stack[StackSize++] = bLeftIsNearer ? LeftChild : RightChild;
-            }
-            else if (bHitLeft)
-            {
-                Stack[StackSize++] = LeftChild;
-            }
-            else if (bHitRight)
-            {
-                Stack[StackSize++] = RightChild;
-            }
-        }
-    }
-    return false;
-}
-
-bool TraceClosestHit(
+bool TraceBVH(
     float3 Origin,
     float3 Direction,
     float MaxDistance,
     uint IgnoreTriangleIndex,
+    bool bAnyHit,
     out float ClosestDistance,
     out uint ClosestTriangleIndex,
     out float3 ClosestA,
@@ -391,7 +286,7 @@ bool TraceClosestHit(
     ClosestA = 0.0f;
     ClosestB = 0.0f;
     ClosestC = 0.0f;
-    if (NodeCount == 0u || TriangleCount == 0u)
+    if (NodeCount == 0u || TriangleCount == 0u || MaxDistance <= 0.0f)
     {
         return false;
     }
@@ -401,9 +296,9 @@ bool TraceClosestHit(
     uint StackSize = 0u;
     uint IterationCount = 0u;
     Stack[StackSize] = 0u;
-    NearStack[StackSize++] = -1.0f; // Root bounds have not been tested yet.
-    bool bFoundHit = false;
+    NearStack[StackSize++] = -1.0f;
 
+    bool bFoundHit = false;
     [loop]
     while (StackSize > 0u && IterationCount < NodeCount)
     {
@@ -411,15 +306,15 @@ bool TraceClosestHit(
         --StackSize;
         uint NodeIndex = Stack[StackSize];
         float NodeNear = NearStack[StackSize];
-        if (NodeIndex >= NodeCount || (NodeNear >= 0.0f && NodeNear > ClosestDistance))
+        if (NodeIndex >= NodeCount ||
+            (NodeNear >= 0.0f && NodeNear > ClosestDistance))
         {
             continue;
         }
 
         uint NodeBase = NodeIndex * 3u;
-        // Child bounds were tested before insertion. Reuse their saved
-        // near distance and only test the root bounds on first visit.
-        if (NodeNear < 0.0f && !IntersectBounds(Origin, Direction,
+        if (NodeNear < 0.0f && !IntersectBounds(
+            Origin, Direction,
             BVHNodes[NodeBase + 0u].xyz,
             BVHNodes[NodeBase + 1u].xyz,
             ClosestDistance))
@@ -433,10 +328,13 @@ bool TraceClosestHit(
         if (LeafTriangleCount > 0u)
         {
             [loop]
-            for (uint LocalTriangle = 0u; LocalTriangle < LeafTriangleCount; ++LocalTriangle)
+            for (uint LocalTriangle = 0u;
+                 LocalTriangle < LeafTriangleCount;
+                 ++LocalTriangle)
             {
                 uint TriangleIndex = FirstTriangle + LocalTriangle;
-                if (TriangleIndex >= TriangleCount || TriangleIndex == IgnoreTriangleIndex)
+                if (TriangleIndex >= TriangleCount ||
+                    TriangleIndex == IgnoreTriangleIndex)
                 {
                     continue;
                 }
@@ -445,26 +343,24 @@ bool TraceClosestHit(
                 float3 CandidateA = BVHTriangles[TriangleBase + 0u].xyz;
                 float3 CandidateB = BVHTriangles[TriangleBase + 1u].xyz;
                 float3 CandidateC = BVHTriangles[TriangleBase + 2u].xyz;
-                float CandidateDistance = MaxDistance;
-                bool bTriangleHit = IntersectTriangle(
-                    Origin,
-                    Direction,
-                    CandidateA,
-                    CandidateB,
-                    CandidateC,
-                    CandidateDistance);
-
-                if (bTriangleHit)
+                float CandidateDistance;
+                if (IntersectTriangle(
+                    Origin, Direction,
+                    CandidateA, CandidateB, CandidateC,
+                    CandidateDistance) &&
+                    CandidateDistance < ClosestDistance)
                 {
-                    if (CandidateDistance < ClosestDistance)
+                    if (bAnyHit)
                     {
-                        ClosestDistance = CandidateDistance;
-                        ClosestTriangleIndex = TriangleIndex;
-                        ClosestA = CandidateA;
-                        ClosestB = CandidateB;
-                        ClosestC = CandidateC;
-                        bFoundHit = true;
+                        return true;
                     }
+
+                    ClosestDistance = CandidateDistance;
+                    ClosestTriangleIndex = TriangleIndex;
+                    ClosestA = CandidateA;
+                    ClosestB = CandidateB;
+                    ClosestC = CandidateC;
+                    bFoundHit = true;
                 }
             }
         }
@@ -479,26 +375,24 @@ bool TraceClosestHit(
             if (LeftChild < NodeCount)
             {
                 uint LeftBase = LeftChild * 3u;
-                bHitLeft = IntersectBoundsWithNear(Origin, Direction,
-                    BVHNodes[LeftBase + 0u].xyz, BVHNodes[LeftBase + 1u].xyz,
+                bHitLeft = IntersectBoundsWithNear(
+                    Origin, Direction,
+                    BVHNodes[LeftBase + 0u].xyz,
+                    BVHNodes[LeftBase + 1u].xyz,
                     ClosestDistance, LeftNear);
             }
             if (RightChild < NodeCount)
             {
                 uint RightBase = RightChild * 3u;
-                bHitRight = IntersectBoundsWithNear(Origin, Direction,
-                    BVHNodes[RightBase + 0u].xyz, BVHNodes[RightBase + 1u].xyz,
+                bHitRight = IntersectBoundsWithNear(
+                    Origin, Direction,
+                    BVHNodes[RightBase + 0u].xyz,
+                    BVHNodes[RightBase + 1u].xyz,
                     ClosestDistance, RightNear);
             }
-            // The CPU builder emits leaves at depth 48. A depth-first traversal therefore
-            // needs at most 49 pending entries, including both children at the
-            // deepest internal node. Never silently discard
-            // a hit child because of a defensive capacity branch.
+
             if (bHitLeft && bHitRight)
             {
-                // Compare the non-negative finite near distances as unsigned
-                // IEEE-754 bit patterns. This preserves their ordering without
-                // triggering FXC's dynamic float-comparison optimizer issue.
                 bool bLeftIsNearer = asuint(LeftNear) <= asuint(RightNear);
                 uint FarChild = bLeftIsNearer ? RightChild : LeftChild;
                 float FarNear = bLeftIsNearer ? RightNear : LeftNear;
@@ -523,6 +417,38 @@ bool TraceClosestHit(
     }
 
     return bFoundHit;
+}
+
+bool TraceAnyHit(
+    float3 Origin,
+    float3 Direction,
+    float MaxDistance,
+    uint IgnoreTriangleIndex)
+{
+    float ClosestDistance;
+    uint ClosestTriangleIndex;
+    float3 ClosestA;
+    float3 ClosestB;
+    float3 ClosestC;
+    return TraceBVH(
+        Origin, Direction, MaxDistance, IgnoreTriangleIndex, true,
+        ClosestDistance, ClosestTriangleIndex, ClosestA, ClosestB, ClosestC);
+}
+
+bool TraceClosestHit(
+    float3 Origin,
+    float3 Direction,
+    float MaxDistance,
+    uint IgnoreTriangleIndex,
+    out float ClosestDistance,
+    out uint ClosestTriangleIndex,
+    out float3 ClosestA,
+    out float3 ClosestB,
+    out float3 ClosestC)
+{
+    return TraceBVH(
+        Origin, Direction, MaxDistance, IgnoreTriangleIndex, false,
+        ClosestDistance, ClosestTriangleIndex, ClosestA, ClosestB, ClosestC);
 }
 
 float3 EvaluateLocalDirectLighting(
