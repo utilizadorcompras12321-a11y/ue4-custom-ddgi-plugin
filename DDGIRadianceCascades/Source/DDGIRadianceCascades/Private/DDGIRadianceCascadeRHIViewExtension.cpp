@@ -58,7 +58,6 @@ public:
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
 		CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
 		BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
-		RaySplitFactor.Bind(Initializer.ParameterMap, TEXT("RaySplitFactor"));
 		TextureWidth.Bind(Initializer.ParameterMap, TEXT("TextureWidth"));
 		TotalTexels.Bind(Initializer.ParameterMap, TEXT("TotalTexels"));
 		DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
@@ -93,7 +92,6 @@ public:
 		uint32 InTotalRaysPerProbe,
 		uint32 InCascadeCount,
 		uint32 InBaseRayCount,
-		uint32 InRaySplitFactor,
 		uint32 InProbeCount,
 		uint32 InTotalTexels,
 		uint32 InDispatchGroupsX)
@@ -103,7 +101,6 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
-		SetShaderValue(RHICmdList, ShaderRHI, RaySplitFactor, InRaySplitFactor);
 		SetShaderValue(RHICmdList, ShaderRHI, TextureWidth, InTextureWidth);
 		SetShaderValue(RHICmdList, ShaderRHI, TotalTexels, InTotalTexels);
 		SetShaderValue(RHICmdList, ShaderRHI, DispatchGroupsX, InDispatchGroupsX);
@@ -153,7 +150,6 @@ private:
 	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
 	LAYOUT_FIELD(FShaderParameter, CascadeCount);
 	LAYOUT_FIELD(FShaderParameter, BaseRayCount);
-	LAYOUT_FIELD(FShaderParameter, RaySplitFactor);
 	LAYOUT_FIELD(FShaderParameter, TextureWidth);
 	LAYOUT_FIELD(FShaderParameter, TotalTexels);
 	LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
@@ -630,7 +626,6 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(float, CascadeScale)
 		SHADER_PARAMETER(float, MaxTraceDistance)
 		SHADER_PARAMETER(uint32, CascadeCount)
-		SHADER_PARAMETER(uint32, RaySplitFactor)
 		SHADER_PARAMETER(float, ProbeGridDistance)
 		SHADER_PARAMETER(FVector4, ProbeGridOrigin)
 		SHADER_PARAMETER(FVector4, ActiveWindowCenter)
@@ -788,7 +783,6 @@ static FScreenPassTexture DDGIApplyRadianceCascadesAfterMotionBlur(
 	PassParameters->CascadeScale = Config->RadianceCascades.CascadeScale;
 	PassParameters->MaxTraceDistance = Config->RadianceCascades.MaxTraceDistance;
 	PassParameters->CascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
-	PassParameters->RaySplitFactor = static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.RaySplitFactor, 1, 4));
 	PassParameters->ProbeGridDistance = Config->ProbeGridDistance;
 	PassParameters->ProbeGridOrigin = FVector4(
 		Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f);
@@ -1101,7 +1095,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 				TotalRaysPerProbe,
 				static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount()),
 				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64)),
-				static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.RaySplitFactor, 1, 4)),
 				InitPendingSlotCount, InitTotalTexels, InitGroupsX);
 			DispatchComputeShader(RHICmdList, InitializeShader.GetShader(), InitGroupsX, InitGroupsY, 1);
 			InitializeShader->UnbindResources(RHICmdList, InitializeShader.GetComputeShader());
