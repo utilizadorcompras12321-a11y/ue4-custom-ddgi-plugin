@@ -1213,7 +1213,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	for (uint32 CascadeIndex = 0u; CascadeIndex < ActiveCascadeCount; ++CascadeIndex)
 	{
 		const uint32 CascadeRayCount = BaseRayCount << CascadeIndex;
-		const uint32 CascadeStorageOffset = BaseRayCount * ((1u << CascadeIndex) - 1u);
 		const uint32 TraceTotalTexels = TraceProbeCount * CascadeRayCount;
 		const uint32 TraceTotalGroups = FMath::DivideAndRoundUp(TraceTotalTexels, 64u);
 		const uint32 TraceGroupsX = FMath::Max(1u, FMath::Min(TraceTotalGroups, 65535u));
