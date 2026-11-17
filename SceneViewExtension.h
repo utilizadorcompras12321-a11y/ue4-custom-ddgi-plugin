@@ -100,6 +100,7 @@ public:
 
 	enum class EPostProcessingPass : uint32
 	{
+		BeforeTemporalAA,
 		MotionBlur,
 		Tonemap,
 		FXAA,
