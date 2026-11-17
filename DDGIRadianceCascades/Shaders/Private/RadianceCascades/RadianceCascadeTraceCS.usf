@@ -795,7 +795,8 @@ void RadianceCascadeTraceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 
     uint SafeBaseRayCount = clamp(BaseRayCount, 1u, 64u);
-    uint CascadeIndex = min(TraceCascadeIndex, max(CascadeCount, 1u) - 1u);
+    uint SafeCascadeCount = max(CascadeCount, 1u);
+    uint CascadeIndex = min(TraceCascadeIndex, SafeCascadeCount - 1u);
     uint CascadeRayCount = SafeBaseRayCount << CascadeIndex;
     uint CascadeStorageOffset = SafeBaseRayCount * ((1u << CascadeIndex) - 1u);
     uint ScheduledProbeIndex = LinearIndex / CascadeRayCount;
