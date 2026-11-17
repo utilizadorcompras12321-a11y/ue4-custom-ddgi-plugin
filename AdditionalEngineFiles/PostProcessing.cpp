@@ -742,6 +742,10 @@ void AddPostProcessingPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View, i
 
 		SceneColorBeforeTonemap = SceneColor;
 
+		// The minimal post-processing path skips temporal AA, but extensions
+		// subscribed to BeforeTemporalAA must still be consumed before tonemapping.
+		SceneColor = AddAfterPass(EPass::BeforeTemporalAA, SceneColor);
+
 		if (PassSequence.IsEnabled(EPass::Tonemap))
 		{
 			const FPostProcessMaterialChain MaterialChain = GetPostProcessMaterialChain(View, BL_ReplacingTonemapper);
