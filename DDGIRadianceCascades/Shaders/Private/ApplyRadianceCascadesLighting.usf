@@ -83,9 +83,7 @@ bool DDGIFindProbeInCell(int3 Cell, uint Level, out uint OutProbeIndex)
 
 float3 DDGIProbeDiffuseIrradiance(
     uint ProbeIndex,
-    float3 Normal,
-    float3 ReceiverPosition,
-    float3 ProbePosition)
+    float3 Normal)
 {
     float3 Irradiance = 0.0f;
     const uint SafeRayCount = min(BaseRayCount, min(TotalRaysPerProbe, 64u));
@@ -97,9 +95,9 @@ float3 DDGIProbeDiffuseIrradiance(
     // spherical cutoffs around probes and visible circular GI artifacts.
     uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
 
-    // The base-ray loop performs irradiance accumulation and identifies the
-    // angular cell that actually contains the receiver direction. Selecting
-    // the nearest cell center is not equivalent for unequal spherical cells.
+    // Integrate the base angular directions. The higher cascades refine the
+    // radiance captured along those directions; they are not extra quadrature
+    // samples for the final diffuse irradiance.
     [loop]
     for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
     {
@@ -222,7 +220,7 @@ float3 DDGISampleProbeLevel(
         if (Weight <= 0.00001f) continue;
 
         Irradiance += DDGIProbeDiffuseIrradiance(
-            ProbeIndex, Normal, LocalPosition, ProbePosition) * Weight;
+            ProbeIndex, Normal) * Weight;
         OutVisibleWeightSum += Weight;
     }
 
