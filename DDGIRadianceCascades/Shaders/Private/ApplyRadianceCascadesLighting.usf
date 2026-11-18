@@ -11,6 +11,8 @@ Texture2D<float4> NormalTexture;
 Texture2D<float> DepthTexture;
 Texture2D<float4> BaseColorTexture;
 Texture2D<float4> MetallicTexture;
+Texture2D<float> ScreenSpaceAOTexture;
+uint bHasScreenSpaceAO;
 Texture2D<float4> DirectionsTexture;
 Texture2D<uint> RadianceTexture;
 Texture2D<float> HitDistanceTexture;
@@ -534,6 +536,12 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     // engine applies its standard SSAO/DFAO once, without double-darkening.
     // The engine's normal diffuse-indirect/AO composite runs after this
     // delegate and applies SSAO/DFAO to this contribution once.
+    // The DDGI contribution is written before the engine AO composite. Apply
+    // the already-generated screen-space AO to this indirect term so it cannot
+    // escape occlusion when the scene-color path is subsequently composed.
+    float ScreenSpaceAO = bHasScreenSpaceAO != 0u
+        ? saturate(ScreenSpaceAOTexture.SampleLevel(PointClampSampler, BufferUV, 0).r)
+        : 1.0f;
     SceneColorOutputUAV[BufferPixelIndex] =
-        SceneColor + float4(Irradiance * Albedo * PreExposure, 0.0f);
+        SceneColor + float4(Irradiance * Albedo * ScreenSpaceAO * PreExposure, 0.0f);
 }
