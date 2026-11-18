@@ -1,10 +1,8 @@
 # Additional UE4.27.2 engine files
 
-These files are engine-source replacements required by the DDGI integration and its SSAO diagnostics.
+These are complete engine-source replacements required by the DDGI integration.
 
-## Files and replacement locations
-
-Copy each file over the matching file in your local Unreal Engine 4.27.2 source tree:
+## Replacement locations
 
 | File in this folder | Replace this local file |
 |---|---|
@@ -16,22 +14,18 @@ For this checkout, the full destination paths are:
 
 - `C:\Users\Utilizador~\Desktop\UnrealEngine\Engine\Source\Runtime\Engine\Public\SceneViewExtension.h`
 - `C:\Users\Utilizador~\Desktop\UnrealEngine\Engine\Source\Runtime\Renderer\Private\PostProcess\PostProcessing.cpp`
+- `C:\Users\Utilizador~\Desktop\UnrealEngine\Engine\Source\Runtime\Renderer\Private\CompositionLighting\CompositionLighting.cpp`
 
-## What these changes do
+## Relevant renderer behavior
 
-- Add `EPostProcessingPass::BeforeTemporalAA` to the Scene View Extension API.
-- Keep the engine's `BeforeTemporalAA` pass sequence from assigning the same pass twice.
-- Add temporary SSAO diagnostics to `FCompositionLighting::ProcessAfterBasePass()`.
-- Log the AO show flag, lighting flag, post-process intensity/radius, LPV state, ray-tracing overlay gate, computed SSAO levels, and whether AO generation completed. Logging runs once every 120 frames.
+- Adds `EPostProcessingPass::BeforeTemporalAA` to the Scene View Extension API.
+- Prevents duplicate assignment of the `BeforeTemporalAA` pass.
+- Treats a registered `RenderDiffuseIndirectLight` experimental GI delegate as a consumer of native SSAO. This ensures UE4.27 generates its SSAO texture in scenes without a skylight, ambient cubemap, reflection capture, or another built-in AO consumer.
+- Does not add diagnostic logging or replace UE4's SSAO implementation.
 
 ## Installation
 
 1. Close Unreal Editor and any process using this engine build.
 2. Back up the original engine files.
-3. Copy each replacement from this folder to its matching destination above.
-4. Regenerate project files only if your normal source workflow requires it.
-5. Build the Editor/Renderer target.
-6. Read the `SSAO DIAG` lines in the Output Log. They are emitted for the first 10 frames only.
-7. If compilation fails, restore the backups.
-
-These are complete source files, not patches. They are intended for the UE4.27.2 engine tree used by this project.
+3. Copy each replacement over its matching destination above.
+4. Build the Editor/Renderer target.
