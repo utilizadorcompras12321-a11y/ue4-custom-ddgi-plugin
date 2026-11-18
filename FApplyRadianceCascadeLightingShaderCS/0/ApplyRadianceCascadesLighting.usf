@@ -5474,14 +5474,6 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (View_ViewSizeAndInvSize.x != ScaledViewSizeAndInvSize.x)
         Albedo = 1.0f;
 
-    // Apply UE's native screen-space AO to DDGI's diffuse indirect contribution.
-    // CompositionLighting generates this texture before the diffuse-indirect callback.
-    float AmbientOcclusion = Texture2DSampleLevel(
-        SceneTexturesStruct_ScreenSpaceAOTexture,
-        SceneTexturesStruct_PointClampSampler,
-        GBufferUV,
-        0).r;
-    Irradiance *= saturate(AmbientOcclusion);
 
     float PreExposure = ShouldUsePreExposure != 0u ? View_PreExposure : 1.0f;
     LightingPassUAV[PixelIndex] += float4(Irradiance * Albedo * PreExposure, 0.0f);
