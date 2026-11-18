@@ -1039,7 +1039,9 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	// here rather than relying on a later scene-color pass to preserve it.
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 	FRDGTextureRef ScreenSpaceAOTexture = nullptr;
-	if (SceneContext.bScreenSpaceAOIsValid && SceneContext.ScreenSpaceAO.IsValid())
+	if (SceneContext.bScreenSpaceAOIsValid &&
+		SceneContext.ScreenSpaceAO.IsValid() &&
+		View.FinalPostProcessSettings.AmbientOcclusionStaticFraction <= SMALL_NUMBER)
 	{
 		ScreenSpaceAOTexture = GraphBuilder.RegisterExternalTexture(
 			SceneContext.ScreenSpaceAO, TEXT("DDGI.ScreenSpaceAO"));
