@@ -6,6 +6,7 @@
 
 #include "CompositionLighting/CompositionLighting.h"
 #include "ScenePrivate.h"
+#include "DeferredShadingRenderer.h"
 #include "PostProcess/RenderingCompositionGraph.h"
 #include "PostProcess/PostProcessInput.h"
 #include "PostProcess/PostProcessing.h"
@@ -127,15 +128,17 @@ bool ShouldRenderScreenSpaceAmbientOcclusion(const FViewInfo& View)
 
 	if (!IsLpvIndirectPassRequired(View))
 	{
-		// Generate SSAO whenever the AO show flag is enabled. Restricting this
-		// to existing indirect-lighting consumers skips the AO texture in scenes
-		// where a renderer extension (such as DDGI) consumes it later in the frame.
+		// The experimental GI plugin contributes diffuse indirect lighting.
+		// Treat its registered callback as an AO consumer so UE generates the
+		// native SSAO texture even when no skylight or reflection capture exists.
+		const bool bExperimentalGIPluginBound =
+			FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight().IsBound();
+
 		bEnabled = View.FinalPostProcessSettings.AmbientOcclusionIntensity > 0
 			&& View.Family->EngineShowFlags.Lighting
-			&& View.Family->EngineShowFlags.AmbientOcclusion
 			&& View.FinalPostProcessSettings.AmbientOcclusionRadius >= 0.1f
 			&& !View.Family->UseDebugViewPS()
-			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer || View.Family->EngineShowFlags.AmbientOcclusion)
+			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || bExperimentalGIPluginBound || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer)
 			&& !IsSimpleForwardShadingEnabled(View.GetShaderPlatform());
 	}
 #if RHI_RAYTRACING
