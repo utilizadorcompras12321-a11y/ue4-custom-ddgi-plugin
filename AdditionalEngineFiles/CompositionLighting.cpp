@@ -136,9 +136,10 @@ bool ShouldRenderScreenSpaceAmbientOcclusion(const FViewInfo& View)
 
 		bEnabled = View.FinalPostProcessSettings.AmbientOcclusionIntensity > 0
 			&& View.Family->EngineShowFlags.Lighting
+			&& View.Family->EngineShowFlags.AmbientOcclusion
 			&& View.FinalPostProcessSettings.AmbientOcclusionRadius >= 0.1f
 			&& !View.Family->UseDebugViewPS()
-			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || bExperimentalGIPluginBound || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer)
+			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || bExperimentalGIPluginBound || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer || View.Family->EngineShowFlags.AmbientOcclusion)
 			&& !IsSimpleForwardShadingEnabled(View.GetShaderPlatform());
 	}
 #if RHI_RAYTRACING
