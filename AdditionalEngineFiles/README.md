@@ -1,6 +1,6 @@
 # Additional UE4.27.2 engine files
 
-These files are engine-source replacements required by the DDGI pre-TAA integration.
+These files are engine-source replacements required by the DDGI integration and its SSAO diagnostics.
 
 ## Files and replacement locations
 
@@ -10,6 +10,7 @@ Copy each file over the matching file in your local Unreal Engine 4.27.2 source 
 |---|---|
 | `SceneViewExtension.h` | `Engine/Source/Runtime/Engine/Public/SceneViewExtension.h` |
 | `PostProcessing.cpp` | `Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp` |
+| `CompositionLighting.cpp` | `Engine/Source/Runtime/Renderer/Private/CompositionLighting/CompositionLighting.cpp` |
 
 For this checkout, the full destination paths are:
 
@@ -19,18 +20,18 @@ For this checkout, the full destination paths are:
 ## What these changes do
 
 - Add `EPostProcessingPass::BeforeTemporalAA` to the Scene View Extension API.
-- Run subscribed view-extension callbacks after the HDR scene color is ready and before desktop TAA.
-- Keep the pass enabled only when an extension actually subscribes, avoiding the pass-sequence ordering assertions seen when no extension is registered.
-
-The DDGI plugin callback must subscribe to `EPostProcessingPass::BeforeTemporalAA`.
+- Keep the engine's `BeforeTemporalAA` pass sequence from assigning the same pass twice.
+- Add temporary SSAO diagnostics to `FCompositionLighting::ProcessAfterBasePass()`.
+- Log the AO show flag, lighting flag, post-process intensity/radius, LPV state, ray-tracing overlay gate, computed SSAO levels, and whether AO generation completed. Logging is limited to the first 10 frames.
 
 ## Installation
 
 1. Close Unreal Editor and any process using this engine build.
-2. Back up the two original files.
-3. Copy the two files from this folder to the exact destinations above, replacing the originals.
+2. Back up the original engine files.
+3. Copy each replacement from this folder to its matching destination above.
 4. Regenerate project files only if your normal source workflow requires it.
 5. Build the Editor/Renderer target.
-6. If compilation fails, do not continue using a mixture of old and new files; restore both backups or install both replacements together.
+6. Read the `SSAO DIAG` lines in the Output Log. They are emitted for the first 10 frames only.
+7. If compilation fails, restore the backups.
 
 These are complete source files, not patches. They are intended for the UE4.27.2 engine tree used by this project.
