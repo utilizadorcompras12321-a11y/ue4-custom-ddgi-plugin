@@ -551,7 +551,7 @@ void FCompositionLighting::ProcessBeforeBasePass(
 {
 	check(IsInRenderingThread());
 
-	const bool bNeedSSAO = SSAOLevels && FSSAOHelper::GetGTAOPassType(View, SSAOLevels) != EGTAOType::ENonAsync;
+	const bool bNeedSSAO = SSAOLevels > 0;
 
 	// so that the passes can register themselves to the graph
 	if (bDBuffer || bNeedSSAO)
