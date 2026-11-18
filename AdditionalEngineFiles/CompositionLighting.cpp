@@ -598,24 +598,6 @@ void FCompositionLighting::ProcessAfterBasePass(
 {
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
-	// DDGI diagnostic: report why deferred SSAO is or is not generated.
-	if ((GFrameCounter % 120) == 0)
-	{
-		const bool bCanOverlayRayTracing = CanOverlayRayTracingOutput(View);
-		const bool bShouldRenderSSAO = ShouldRenderScreenSpaceAmbientOcclusion(View);
-		UE_LOG(LogRenderer, Warning,
-			TEXT("SSAO DIAG: Frame=%llu AOFlag=%d Lighting=%d Intensity=%.3f Radius=%.3f LPV=%d CanOverlayRT=%d ShouldRenderAO=%d AOValidBefore=%d"),
-			(uint64)GFrameCounter,
-			View.Family->EngineShowFlags.AmbientOcclusion ? 1 : 0,
-			View.Family->EngineShowFlags.Lighting ? 1 : 0,
-			View.FinalPostProcessSettings.AmbientOcclusionIntensity,
-			View.FinalPostProcessSettings.AmbientOcclusionRadius,
-			IsLpvIndirectPassRequired(View) ? 1 : 0,
-			bCanOverlayRayTracing ? 1 : 0,
-			bShouldRenderSSAO ? 1 : 0,
-			SceneContext.bScreenSpaceAOIsValid ? 1 : 0);
-	}
-
 	if (CanOverlayRayTracingOutput(View))
 	{
 		const FSceneViewFamily& ViewFamily = *View.Family;
@@ -668,14 +650,6 @@ void FCompositionLighting::ProcessAfterBasePass(
 #endif
 
 			const uint32 SSAOLevels = FSSAOHelper::ComputeAmbientOcclusionPassCount(View);
-			if ((GFrameCounter % 120) == 0)
-			{
-				UE_LOG(LogRenderer, Warning,
-					TEXT("SSAO DIAG: Frame=%llu ComputedLevels=%u GTAOType=%d"),
-					(uint64)GFrameCounter,
-					SSAOLevels,
-					(int32)FSSAOHelper::GetGTAOPassType(View, SSAOLevels));
-			}
 			if (SSAOLevels)
 			{
 				const EGTAOType GTAOType = FSSAOHelper::GetGTAOPassType(View, SSAOLevels);
@@ -715,10 +689,6 @@ void FCompositionLighting::ProcessAfterBasePass(
 				}
 
 				SceneContext.bScreenSpaceAOIsValid = true;
-				if ((GFrameCounter % 120) == 0)
-				{
-					UE_LOG(LogRenderer, Warning, TEXT("SSAO DIAG: Frame=%llu AO generation completed; AOValid=1"), (uint64)GFrameCounter);
-				}
 			}
 		}
 	}
