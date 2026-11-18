@@ -22,7 +22,7 @@ For this checkout, the full destination paths are:
 - Add `EPostProcessingPass::BeforeTemporalAA` to the Scene View Extension API.
 - Keep the engine's `BeforeTemporalAA` pass sequence from assigning the same pass twice.
 - Add temporary SSAO diagnostics to `FCompositionLighting::ProcessAfterBasePass()`.
-- Log the AO show flag, lighting flag, post-process intensity/radius, LPV state, ray-tracing overlay gate, computed SSAO levels, and whether AO generation completed. Logging is limited to the first 10 frames.
+- Log the AO show flag, lighting flag, post-process intensity/radius, LPV state, ray-tracing overlay gate, computed SSAO levels, and whether AO generation completed. Logging runs once every 120 frames.
 
 ## Installation
 
