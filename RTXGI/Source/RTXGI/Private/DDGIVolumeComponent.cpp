@@ -534,7 +534,7 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar = volumeProxy->ComponentData.IrradianceScalar;
 
 				// Apply the lighting multiplier to artificially lighten or darken the indirect light from the volume
-				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar /= volumeProxy->ComponentData.LightingMultiplier;
+				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar *= volumeProxy->ComponentData.LightingMultiplier;
 			}
 
 			// When there are fewer relevant volumes than the maximum supported, set the empty volume texture slots to dummy values
