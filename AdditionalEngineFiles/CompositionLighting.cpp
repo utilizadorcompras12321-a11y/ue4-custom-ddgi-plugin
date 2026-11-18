@@ -134,15 +134,13 @@ bool ShouldRenderScreenSpaceAmbientOcclusion(const FViewInfo& View)
 		const bool bExperimentalGIPluginBound =
 			FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight().IsBound();
 
-		// Preserve UE4.27's native AmbientOcclusion show-flag gate.
-		// The DDGI callback is an additional consumer, not a replacement for
-		// the engine's show-flag eligibility rules.
+		// Match the native UE4.27 eligibility checks. AmbientOcclusion is not a
+		// global gate here; it is consumed by the native lighting/composition path.
 		bEnabled = View.FinalPostProcessSettings.AmbientOcclusionIntensity > 0
 			&& View.Family->EngineShowFlags.Lighting
-			&& View.Family->EngineShowFlags.AmbientOcclusion
 			&& View.FinalPostProcessSettings.AmbientOcclusionRadius >= 0.1f
 			&& !View.Family->UseDebugViewPS()
-			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || bExperimentalGIPluginBound || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer || View.Family->EngineShowFlags.AmbientOcclusion)
+			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || bExperimentalGIPluginBound || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer)
 			&& !IsSimpleForwardShadingEnabled(View.GetShaderPlatform());
 	}
 #if RHI_RAYTRACING
