@@ -140,7 +140,7 @@ bool ShouldRenderScreenSpaceAmbientOcclusion(const FViewInfo& View)
 			&& View.Family->EngineShowFlags.Lighting
 			&& View.FinalPostProcessSettings.AmbientOcclusionRadius >= 0.1f
 			&& !View.Family->UseDebugViewPS()
-			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || bExperimentalGIPluginBound || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer)
+			&& (View.Family->EngineShowFlags.AmbientOcclusion || FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || bExperimentalGIPluginBound || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer)
 			&& !IsSimpleForwardShadingEnabled(View.GetShaderPlatform());
 	}
 #if RHI_RAYTRACING
