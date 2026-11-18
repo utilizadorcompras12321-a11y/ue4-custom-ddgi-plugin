@@ -10,6 +10,7 @@
 #include "SceneInterface.h"
 #include "ScenePrivate.h"
 #include "DeferredShadingRenderer.h"
+#include "SceneRenderTargets.h"
 #include "SceneView.h"
 #include "HAL/IConsoleManager.h"
 #include "ScreenPass.h"
@@ -861,6 +862,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, NormalTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ScreenSpaceAOTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, BaseColorTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MetallicTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
@@ -921,6 +923,18 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	}
 
 	const FSceneInterface* Scene = static_cast<const FSceneInterface*>(&InScene);
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+	if (!SceneContext.bScreenSpaceAOIsValid || !SceneContext.ScreenSpaceAO.IsValid())
+	{
+		return;
+	}
+	FRDGTextureRef ScreenSpaceAOTexture = GraphBuilder.RegisterExternalTexture(
+		SceneContext.ScreenSpaceAO, TEXT("DDGI.ScreenSpaceAO"));
+	if (!ScreenSpaceAOTexture)
+	{
+		return;
+	}
+
 	if (!Scene ||
 		!Resources.SceneColor.IsValid() ||
 		!Resources.GBufferA.IsValid() ||
@@ -1028,6 +1042,7 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	PassParameters->SceneColorTexture = SceneColorTexture;
 	PassParameters->NormalTexture = NormalTexture;
 	PassParameters->DepthTexture = DepthTexture;
+	PassParameters->ScreenSpaceAOTexture = ScreenSpaceAOTexture;
 	PassParameters->BaseColorTexture = BaseColorTexture;
 	PassParameters->MetallicTexture = MetallicTexture;
 
