@@ -134,15 +134,15 @@ bool ShouldRenderScreenSpaceAmbientOcclusion(const FViewInfo& View)
 		const bool bExperimentalGIPluginBound =
 			FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight().IsBound();
 
-		// Match UE4.27's native SSAO eligibility rules. AmbientOcclusion is a
-		// show flag, not a prerequisite for generating the AO texture; using it
-		// as an additional gate can suppress SSAO before the diffuse-indirect
-		// composite gets a chance to consume it.
+		// Preserve UE4.27's native AmbientOcclusion show-flag gate.
+		// The DDGI callback is an additional consumer, not a replacement for
+		// the engine's show-flag eligibility rules.
 		bEnabled = View.FinalPostProcessSettings.AmbientOcclusionIntensity > 0
 			&& View.Family->EngineShowFlags.Lighting
+			&& View.Family->EngineShowFlags.AmbientOcclusion
 			&& View.FinalPostProcessSettings.AmbientOcclusionRadius >= 0.1f
 			&& !View.Family->UseDebugViewPS()
-			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || bExperimentalGIPluginBound || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer)
+			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || bExperimentalGIPluginBound || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer || View.Family->EngineShowFlags.AmbientOcclusion)
 			&& !IsSimpleForwardShadingEnabled(View.GetShaderPlatform());
 	}
 #if RHI_RAYTRACING
