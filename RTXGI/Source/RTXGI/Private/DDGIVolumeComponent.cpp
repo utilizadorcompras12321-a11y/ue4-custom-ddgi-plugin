@@ -530,11 +530,16 @@ void FDDGIVolumeSceneProxy::RenderDiffuseIndirectLight_RenderThread(
 				bool applyLighting = true;
 				applyLighting = applyLighting && (enableRelocation == volumeProxy->ComponentData.EnableProbeRelocation);
 				applyLighting = applyLighting && (enableScrolling == volumeProxy->ComponentData.EnableProbeScrolling);
-				PassParameters->DDGIVolume[volumeIndex].ApplyLighting = applyLighting;
+				const float LightingMultiplier = FMath::Max(0.0f, volumeProxy->ComponentData.LightingMultiplier);
+				PassParameters->DDGIVolume[volumeIndex].ApplyLighting = applyLighting && LightingMultiplier > 0.0f;
 				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar = volumeProxy->ComponentData.IrradianceScalar;
 
-				// Apply the lighting multiplier to artificially lighten or darken the indirect light from the volume
-				PassParameters->DDGIVolume[volumeIndex].IrradianceScalar *= volumeProxy->ComponentData.LightingMultiplier;
+				// The shader divides by IrradianceScalar, so divide it by the multiplier to scale final lighting.
+				// A zero multiplier disables this volume without passing infinity to the shader.
+				if (LightingMultiplier > 0.0f)
+				{
+					PassParameters->DDGIVolume[volumeIndex].IrradianceScalar /= LightingMultiplier;
+				}
 			}
 
 			// When there are fewer relevant volumes than the maximum supported, set the empty volume texture slots to dummy values
