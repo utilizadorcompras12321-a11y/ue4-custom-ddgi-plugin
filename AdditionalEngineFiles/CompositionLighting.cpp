@@ -592,7 +592,7 @@ void FCompositionLighting::ProcessAfterBasePass(
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 
 	// DDGI diagnostic: report why deferred SSAO is or is not generated.
-	if (GFrameCounter < 10)
+	if ((GFrameCounter % 120) == 0)
 	{
 		const bool bCanOverlayRayTracing = CanOverlayRayTracingOutput(View);
 		const bool bShouldRenderSSAO = ShouldRenderScreenSpaceAmbientOcclusion(View);
@@ -661,7 +661,7 @@ void FCompositionLighting::ProcessAfterBasePass(
 #endif
 
 			const uint32 SSAOLevels = FSSAOHelper::ComputeAmbientOcclusionPassCount(View);
-			if (GFrameCounter < 10)
+			if ((GFrameCounter % 120) == 0)
 			{
 				UE_LOG(LogRenderer, Warning,
 					TEXT("SSAO DIAG: Frame=%llu ComputedLevels=%u GTAOType=%d"),
@@ -708,7 +708,7 @@ void FCompositionLighting::ProcessAfterBasePass(
 				}
 
 				SceneContext.bScreenSpaceAOIsValid = true;
-				if (GFrameCounter < 10)
+				if ((GFrameCounter % 120) == 0)
 				{
 					UE_LOG(LogRenderer, Warning, TEXT("SSAO DIAG: Frame=%llu AO generation completed; AOValid=1"), (uint64)GFrameCounter);
 				}
