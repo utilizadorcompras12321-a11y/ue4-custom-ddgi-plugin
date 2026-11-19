@@ -997,6 +997,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		Config.ProbeLayoutHash = 0;
 		Config.ProbeGridOrigin = FVector::ZeroVector;
 		Config.ActiveProbeWindowCenter = FVector::ZeroVector;
+		Config.ActiveProbeWindowCenterCell = FIntVector::ZeroValue;
 		CachedSoftwareBVHTriangleLimit = INDEX_NONE;
 		ActiveWindowCenterCell = FIntVector::ZeroValue;
 		bHasActiveWindowCenterCell = false;
@@ -1094,6 +1095,7 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	const float RequestedProbeSpacing = Config.ProbeSpacing;
 	const FVector InitialCameraLocation = DDGIGetCameraWorldLocation(InActor);
 	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(InitialCameraLocation, Config.ProbeSpacing);
+	Config.ActiveProbeWindowCenterCell = ActiveWindowCenterCell;
 	bHasActiveWindowCenterCell = true;
 	// Keep the blend origin continuous with the camera. The snapped cell
 	// remains the deterministic lattice-selection anchor, but must not drive
@@ -1159,6 +1161,7 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 	}
 
 	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(CameraLocation, SafeSpacing);
+	Config.ActiveProbeWindowCenterCell = ActiveWindowCenterCell;
 	bHasActiveWindowCenterCell = true;
 	DDGIBuildActiveProbePositions(
 		SafeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
