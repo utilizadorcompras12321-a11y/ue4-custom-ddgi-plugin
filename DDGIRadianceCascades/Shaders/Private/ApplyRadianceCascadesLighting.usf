@@ -16,7 +16,7 @@ uint bHasScreenSpaceAO;
 Texture2D<float4> DirectionsTexture;
 Texture2D<uint> RadianceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
-Texture2D<float4> VisibilityMomentsTexture;
+Texture2D<float4> VisibilityHistogramTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<int4> ProbeSpatialHash;
 StructuredBuffer<uint> ProbeNeighborIndices;
@@ -96,55 +96,74 @@ bool DDGIIsProbeInitialized(uint ProbeIndex)
     return HitTriangleIndexTexture.Load(int3(Pixel, 0)) != 0xFFFFFFFFu;
 }
 
-// Read precomputed hit-distance moments for the angular cell facing this
-// receiver. Moments occupy base-ray texels in the gather scratch texture
-// after integration has finished for the updated probe batch.
-float DDGIProbeChebyshevVisibility(float4 Moments, float ReceiverDistance)
+// Estimate the fraction of child rays that remain unblocked at the receiver.
+// The histogram includes misses as a separate open-space bin, so mixed near/far
+// hit distributions cannot be hidden by a mean that lies behind the receiver.
+float DDGIGetVisibilityHistogramBin(float4 Histogram0, float4 Histogram1, uint BinIndex)
 {
-    const float SampleCount = Moments.w;
-    const float HitCount = Moments.z;
-    if (!all(isfinite(Moments)) || SampleCount < 2.0f ||
-        HitCount < 0.0f || HitCount > SampleCount)
-    {
-        return 1.0f;
-    }
-    if (HitCount <= 0.0f)
+    return BinIndex < 4u ? Histogram0[BinIndex] : Histogram1[BinIndex - 4u];
+}
+
+float DDGIProbeVisibility(
+    float4 Histogram0,
+    float4 Histogram1,
+    float ReceiverDistance)
+{
+    if (!all(isfinite(Histogram0)) || !all(isfinite(Histogram1)) ||
+        any(Histogram0 < 0.0f) || any(Histogram1 < 0.0f))
     {
         return 1.0f;
     }
 
-    // Moments contain only actual hits. Misses contribute through hit
-    // coverage, not an artificial far distance that would bias the mean.
-    const float DistanceScale = max(MaxTraceDistance, 1.0f);
-    const float MeanDistance = (Moments.x / HitCount) * DistanceScale;
-    const float MeanSquaredDistance = (Moments.y / HitCount) * DistanceScale * DistanceScale;
-    if (!isfinite(MeanDistance) || MeanDistance <= 0.0f ||
-        MeanDistance > max(MaxTraceDistance, 1.0f))
+    const uint SampleCount = 1u << min(CascadeCount - 1u, 7u);
+    const float TotalSamples =
+        dot(Histogram0, 1.0f) + dot(Histogram1, 1.0f);
+    if (SampleCount < 2u ||
+        abs(TotalSamples - (float)SampleCount) > 0.25f)
     {
         return 1.0f;
     }
-    const float VarianceFloor = max(ProbeSpacing * 0.02f, 0.5f);
-    const float Variance = max(
-        MeanSquaredDistance - MeanDistance * MeanDistance,
-        VarianceFloor * VarianceFloor);
+
+    const float SafeMaxTraceDistance = max(MaxTraceDistance, 1.0f);
+    // Beyond the traced range there is no evidence either way. Do not invent
+    // occlusion from a histogram that never observed the receiver distance.
+    if (!isfinite(ReceiverDistance) || ReceiverDistance > SafeMaxTraceDistance)
+    {
+        return 1.0f;
+    }
 
     const float ReceiverBias = max(ProbeSpacing * 0.05f, 0.5f);
-    const float BiasedReceiverDistance = max(ReceiverDistance - ReceiverBias, 0.0f);
-    const float DistanceFromMean = BiasedReceiverDistance - MeanDistance;
-    float ChebyshevVisibility = 1.0f;
-    if (DistanceFromMean > 0.0f)
+    const float BiasedReceiverDistance =
+        max(ReceiverDistance - ReceiverBias, 0.0f);
+    const float LogDistanceRange =
+        max(log2(1.0f + SafeMaxTraceDistance), 1.0e-6f);
+    const float BinCoordinate = saturate(
+        log2(1.0f + BiasedReceiverDistance) / LogDistanceRange) * 7.0f;
+    const uint FullBinCount = min((uint)floor(BinCoordinate), 6u);
+    const float PartialBinFraction =
+        saturate(BinCoordinate - (float)FullBinCount);
+
+    float BlockedHitCount = 0.0f;
+    [unroll]
+    for (uint BinIndex = 0u; BinIndex < 7u; ++BinIndex)
     {
-        const float Denominator =
-            Variance + DistanceFromMean * DistanceFromMean;
-        ChebyshevVisibility = Denominator > 1.0e-8f
-            ? saturate(Variance / Denominator)
-            : 0.0f;
+        const float BinCount =
+            DDGIGetVisibilityHistogramBin(Histogram0, Histogram1, BinIndex);
+        if (BinIndex < FullBinCount)
+        {
+            BlockedHitCount += BinCount;
+        }
+        else if (BinIndex == FullBinCount)
+        {
+            // Linear interpolation within the current logarithmic bin keeps
+            // visibility continuous as the receiver crosses bin boundaries.
+            BlockedHitCount += BinCount * PartialBinFraction;
+        }
     }
 
-    // A partially open angular cell should not behave like a fully blocked
-    // cell. Blend the moment bound with the fraction of child rays that hit.
-    const float HitFraction = saturate(HitCount / SampleCount);
-    return lerp(1.0f, ChebyshevVisibility, HitFraction);
+    const float MissCount = Histogram1.w;
+    return saturate(
+        ((float)SampleCount - BlockedHitCount) / (float)SampleCount);
 }
 
 float3 DDGIProbeDiffuseIrradiance(
@@ -223,9 +242,16 @@ float3 DDGIProbeDiffuseIrradiance(
         const uint2 BestPixel = uint2(
             BestLinearIndex % DDGI_RC_TEXTURE_WIDTH,
             BestLinearIndex / DDGI_RC_TEXTURE_WIDTH);
-        const float4 BestMoments = VisibilityMomentsTexture.Load(int3(BestPixel, 0));
+        const uint BestHistogramLinearIndex = BestLinearIndex + BaseRayCount;
+        const uint2 BestHistogramPixel = uint2(
+            BestHistogramLinearIndex % DDGI_RC_TEXTURE_WIDTH,
+            BestHistogramLinearIndex / DDGI_RC_TEXTURE_WIDTH);
+        const float4 BestHistogram0 =
+            VisibilityHistogramTexture.Load(int3(BestPixel, 0));
+        const float4 BestHistogram1 =
+            VisibilityHistogramTexture.Load(int3(BestHistogramPixel, 0));
         const float BestVisibility =
-            DDGIProbeChebyshevVisibility(BestMoments, ReceiverDistance);
+            DDGIProbeVisibility(BestHistogram0, BestHistogram1, ReceiverDistance);
 
         const float AlignmentGap =
             max(BestAngularAlignment - SecondAngularAlignment, 0.0f);
@@ -238,10 +264,16 @@ float3 DDGIProbeDiffuseIrradiance(
             const uint2 SecondPixel = uint2(
                 SecondLinearIndex % DDGI_RC_TEXTURE_WIDTH,
                 SecondLinearIndex / DDGI_RC_TEXTURE_WIDTH);
-            const float4 SecondMoments =
-                VisibilityMomentsTexture.Load(int3(SecondPixel, 0));
+            const uint SecondHistogramLinearIndex = SecondLinearIndex + BaseRayCount;
+            const uint2 SecondHistogramPixel = uint2(
+                SecondHistogramLinearIndex % DDGI_RC_TEXTURE_WIDTH,
+                SecondHistogramLinearIndex / DDGI_RC_TEXTURE_WIDTH);
+            const float4 SecondHistogram0 =
+                VisibilityHistogramTexture.Load(int3(SecondPixel, 0));
+            const float4 SecondHistogram1 =
+                VisibilityHistogramTexture.Load(int3(SecondHistogramPixel, 0));
             const float SecondVisibility =
-                DDGIProbeChebyshevVisibility(SecondMoments, ReceiverDistance);
+                DDGIProbeVisibility(SecondHistogram0, SecondHistogram1, ReceiverDistance);
             const float BestWeight =
                 0.5f + 0.5f * smoothstep(0.0f, 0.25f, AlignmentGap);
             Visibility = lerp(SecondVisibility, BestVisibility, BestWeight);
