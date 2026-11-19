@@ -586,14 +586,14 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         const float3 ClipmapOffset = LocalPosition - ActiveWindowCenterLocal.xyz;
         const float ClipmapDistance = length(ClipmapOffset);
 
-        // The generated lattice spans [-8,+7] cells around LevelCenterCell.
+        // The generated lattice spans [-7,+7] cells around LevelCenterCell.
         // Limit the radial boundary to the nearest supported face, reserving
         // one whole level cell for the transition. This guarantees all eight
         // trilinear corners exist even when the continuous center is offset
         // from the snapped level lattice.
         const float3 CenterOffset = ActiveWindowCenterLocal.xyz - LevelCenterLocal;
         const float3 PositiveSupport = 7.0f * LevelSpacing - CenterOffset;
-        const float3 NegativeSupport = 8.0f * LevelSpacing + CenterOffset;
+        const float3 NegativeSupport = 7.0f * LevelSpacing + CenterOffset;
         const float3 AxisSupport = min(PositiveSupport, NegativeSupport);
         const float AvailableOuterRadius = max(0.0f,
             min(AxisSupport.x, min(AxisSupport.y, AxisSupport.z)));
