@@ -11,6 +11,8 @@ Texture2D<float4> NormalTexture;
 Texture2D<float> DepthTexture;
 Texture2D<float4> BaseColorTexture;
 Texture2D<float4> MetallicTexture;
+Texture2D<float> ScreenSpaceAOTexture;
+uint bHasScreenSpaceAO;
 Texture2D<float4> DirectionsTexture;
 Texture2D<uint> RadianceTexture;
 Texture2D<float> HitDistanceTexture;
@@ -529,9 +531,12 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     // DDGIProbeDiffuseIrradiance includes the 1/PI normalization:
     // equal-solid-angle quadrature uses 4*PI/N, then Lambertian BRDF
     // normalization divides by PI, leaving the factor 4/N in the shader.
-    // The GI delegate runs before UE4.27's native diffuse-indirect/AO composite.
-    // Do not multiply by SSAO here: the renderer applies its AO mask to this
-    // SceneColor contribution immediately after the delegate.
+    // When StaticFraction is zero, the native composite deliberately skips
+    // AO. In that configuration, apply the generated SSAO mask to DDGI here.
+    // Otherwise the native composite handles AO after this delegate.
+    float ScreenSpaceAO = bHasScreenSpaceAO != 0u
+        ? saturate(ScreenSpaceAOTexture.SampleLevel(PointClampSampler, BufferUV, 0).r)
+        : 1.0f;
     SceneColorOutputUAV[BufferPixelIndex] =
-        SceneColor + float4(Irradiance * Albedo * PreExposure, 0.0f);
+        SceneColor + float4(Irradiance * Albedo * ScreenSpaceAO * PreExposure, 0.0f);
 }
