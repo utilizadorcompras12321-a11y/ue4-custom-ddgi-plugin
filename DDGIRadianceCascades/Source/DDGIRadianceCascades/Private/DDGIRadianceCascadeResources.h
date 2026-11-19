@@ -118,8 +118,8 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     const FSceneInterface* Scene,
     FRDGTextureRef& OutDirections,
     FRDGTextureRef& OutRadiance,
-    FRDGTextureRef& OutHitDistance,
     FRDGTextureRef& OutHitTriangleIndex,
+    FRDGTextureRef& OutVisibilityMoments,
     FRDGTextureRef& OutProbePositions,
     uint32& OutProbeCount,
     uint32& OutTotalRaysPerProbe);
