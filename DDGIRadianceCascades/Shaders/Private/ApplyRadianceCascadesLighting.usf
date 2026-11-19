@@ -96,12 +96,9 @@ bool DDGIIsProbeInitialized(uint ProbeIndex)
     return HitTriangleIndexTexture.Load(int3(Pixel, 0)) != 0xFFFFFFFFu;
 }
 
-// Chebyshev visibility for the angular cell facing the receiver. The finest
-// cascade provides several sub-rays inside that cell; their probe-relative
-// first-hit distances form a compact local distance distribution.
-// Read the precomputed hit-distance moments for the angular cell facing
-// this receiver. Moments live in the otherwise transient gather scratch
-// texture, after integration has finished for the updated probe batch.
+// Read precomputed hit-distance moments for the angular cell facing this
+// receiver. Moments occupy base-ray texels in the gather scratch texture
+// after integration has finished for the updated probe batch.
 float DDGIProbeChebyshevVisibility(float4 Moments, float ReceiverDistance)
 {
     const float SampleCount = Moments.w;
