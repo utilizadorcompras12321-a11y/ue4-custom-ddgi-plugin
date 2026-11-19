@@ -993,8 +993,8 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(uint32, bHasScreenSpaceAO)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HitDistanceTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HitTriangleIndexTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VisibilityMomentsTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbePositionsTexture)
 		SHADER_PARAMETER_SRV(StructuredBuffer<int4>, ProbeSpatialHash)
 		SHADER_PARAMETER_SRV(StructuredBuffer<uint>, ProbeNeighborIndices)
@@ -1076,14 +1076,15 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 
 	FRDGTextureRef DirectionsTexture = nullptr;
 	FRDGTextureRef RadianceTexture = nullptr;
-	FRDGTextureRef HitDistanceTexture = nullptr;
 	FRDGTextureRef HitTriangleIndexTexture = nullptr;
+	FRDGTextureRef VisibilityMomentsTexture = nullptr;
 	FRDGTextureRef ProbePositionsTexture = nullptr;
 	uint32 ProbeCount = 0;
 	uint32 TotalRaysPerProbe = 0;
 	if (!DDGIGetRadianceCascadeLightingTextures_RenderThread(
-		GraphBuilder, Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture,
-		HitTriangleIndexTexture, ProbePositionsTexture, ProbeCount, TotalRaysPerProbe))
+		GraphBuilder, Scene, DirectionsTexture, RadianceTexture,
+		HitTriangleIndexTexture, VisibilityMomentsTexture, ProbePositionsTexture,
+		ProbeCount, TotalRaysPerProbe))
 	{
 		return;
 	}
@@ -1156,8 +1157,8 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	// composite. Leave AO application to that pass so SSAO/DFAO is applied once.
 	PassParameters->DirectionsTexture = DirectionsTexture;
 	PassParameters->RadianceTexture = RadianceTexture;
-	PassParameters->HitDistanceTexture = HitDistanceTexture;
 	PassParameters->HitTriangleIndexTexture = HitTriangleIndexTexture;
+	PassParameters->VisibilityMomentsTexture = VisibilityMomentsTexture;
 	PassParameters->ProbePositionsTexture = ProbePositionsTexture;
 	PassParameters->ProbeSpatialHash = ProbeSpatialHashSRV;
 	PassParameters->ProbeNeighborIndices = bHasPrecomputedNeighbors
