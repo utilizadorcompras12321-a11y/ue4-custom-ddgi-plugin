@@ -429,6 +429,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     // receiver is sampled, with a narrow overlap at each clipmap boundary.
     float3 Irradiance = 0.0f;
     bool bHasIrradiance = false;
+    uint FallbackStartLevel = 0u;
     float PreviousClipmapExtent = 0.0f;
     [loop]
     for (uint ClipmapLevel = 0u; ClipmapLevel < 4u; ++ClipmapLevel)
@@ -448,6 +449,12 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         {
             break;
         }
+
+        // This level has now been considered (either as the primary level
+        // or as the fine side of a transition). Any fallback must move only
+        // outward; sampling a finer level beyond its clipmap extent can pull
+        // stale edge probes into the coarse region and create a visible seam.
+        FallbackStartLevel = ClipmapLevel + 1u;
 
         // Blend across most of the fine/coarse overlap. A narrow transition
         // exposed confidence changes as a visible clipmap boundary.
@@ -502,11 +509,12 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     // A missing fine-level sample must not create a dark hole at a clipmap
-    // seam. Fall back through coarser levels in a fixed, deterministic order.
+    // seam. Fall back only to coarser levels; finer levels are outside their
+    // declared spatial support and must not leak into this region.
     if (!bHasIrradiance)
     {
         [loop]
-        for (uint FallbackLevel = 0u; FallbackLevel < 4u; ++FallbackLevel)
+        for (uint FallbackLevel = FallbackStartLevel; FallbackLevel < 4u; ++FallbackLevel)
         {
             bool bFallbackValid = false;
             float FallbackConfidence = 0.0f;
