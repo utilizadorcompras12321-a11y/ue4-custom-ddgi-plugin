@@ -121,15 +121,6 @@ void FDDGIRadianceCascadesPlugin::RegisterViewExtension()
 				CurrentSetBy == static_cast<uint32>(ECVF_SetByCode);
 		}
 
-		if (ExperimentalGICVar->GetInt() == 1)
-		{
-		}
-		else
-		{
-		}
-	}
-	else
-	{
 	}
 }
 
