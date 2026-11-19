@@ -117,6 +117,11 @@ float DDGIProbeChebyshevVisibility(float4 Moments, float ReceiverDistance)
     // coverage, not an artificial far distance that would bias the mean.
     const float MeanDistance = Moments.x / HitCount;
     const float MeanSquaredDistance = Moments.y / HitCount;
+    if (!isfinite(MeanDistance) || MeanDistance <= 0.0f ||
+        MeanDistance > max(MaxTraceDistance, 1.0f))
+    {
+        return 1.0f;
+    }
     const float VarianceFloor = max(ProbeSpacing * 0.02f, 0.5f);
     const float Variance = max(
         MeanSquaredDistance - MeanDistance * MeanDistance,
