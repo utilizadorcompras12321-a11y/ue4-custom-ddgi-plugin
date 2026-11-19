@@ -13,13 +13,12 @@ float MaxTraceDistance;
 Texture2D<float> HitDistanceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
-RWTexture2D<float4> VisibilityMomentsUAV;
+RWTexture2D<float4> VisibilityHistogramUAV;
 
-
-// One thread builds the hit-distance distribution for one base angular cell.
-// The finest cascade's child rays all lie inside that base cell. Store
-// hit-only sums and counts so Apply can combine the distance bound with the
-// observed hit fraction, without assigning artificial distances to misses.
+// Store an empirical hit-distance histogram instead of only its mean and
+// variance. Moments can hide a nearby blocker when most child rays hit much
+// farther away. Seven logarithmic distance bins plus one miss bin preserve
+// that mixed distribution in two RGBA texels per base angular cell.
 [numthreads(64, 1, 1)]
 void RadianceCascadeVisibilityMomentsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -27,7 +26,7 @@ void RadianceCascadeVisibilityMomentsCS(uint3 DispatchThreadId : SV_DispatchThre
         DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
     if (LinearIndex >= TotalTexels || ProbeCount == 0u ||
         TotalRaysPerProbe == 0u || BaseRayCount == 0u ||
-        CascadeCount < 2u)
+        CascadeCount < 2u || TotalRaysPerProbe < BaseRayCount * 2u)
     {
         return;
     }
@@ -53,10 +52,11 @@ void RadianceCascadeVisibilityMomentsCS(uint3 DispatchThreadId : SV_DispatchThre
         return;
     }
 
-    float HitDistanceSum = 0.0f;
-    float HitDistanceSquaredSum = 0.0f;
-    float HitCount = 0.0f;
+    float4 Histogram0 = 0.0f; // hit-distance bins 0..3
+    float4 Histogram1 = 0.0f; // hit-distance bins 4..6, then misses
     bool bSamplesValid = true;
+    const float SafeMaxTraceDistance = max(MaxTraceDistance, 1.0f);
+    const float LogDistanceRange = max(log2(1.0f + SafeMaxTraceDistance), 1.0e-6f);
 
     [loop]
     for (uint ChildIndex = 0u; ChildIndex < ChildCount; ++ChildIndex)
@@ -69,41 +69,60 @@ void RadianceCascadeVisibilityMomentsCS(uint3 DispatchThreadId : SV_DispatchThre
             LinearRayIndex / TextureWidth);
         const uint TriangleTag = HitTriangleIndexTexture.Load(int3(Pixel, 0));
 
-        // Newly allocated or incompletely traced slots must not publish
-        // partially valid moments. A zero tag is a valid miss.
+        // Zero is a valid miss. The all-ones value means this ray was never
+        // traced, so never publish a partially accumulated histogram.
         if (TriangleTag == 0xFFFFFFFFu)
         {
             bSamplesValid = false;
             break;
         }
 
-        if (TriangleTag != 0u)
+        if (TriangleTag == 0u)
         {
-            // A negative tagged distance is a hit before this cascade's
-            // interval; abs() restores its probe-relative first-hit distance.
-            const float DistanceScale = max(MaxTraceDistance, 1.0f);
-            const float HitDistance = abs(HitDistanceTexture.Load(int3(Pixel, 0))) / DistanceScale;
-            if (!isfinite(HitDistance) || HitDistance <= 0.0f)
-            {
-                bSamplesValid = false;
-                break;
-            }
-
-            HitDistanceSum += HitDistance;
-            HitDistanceSquaredSum += HitDistance * HitDistance;
-            HitCount += 1.0f;
+            Histogram1.w += 1.0f;
+            continue;
         }
+
+        // Negative tagged distances are hits before this cascade interval;
+        // abs() restores their probe-relative first-hit distance.
+        const float HitDistance =
+            abs(HitDistanceTexture.Load(int3(Pixel, 0)));
+        if (!isfinite(HitDistance) || HitDistance <= 0.0f)
+        {
+            bSamplesValid = false;
+            break;
+        }
+
+        const float ClampedDistance = min(HitDistance, SafeMaxTraceDistance);
+        const float BinCoordinate = saturate(
+            log2(1.0f + ClampedDistance) / LogDistanceRange) * 7.0f;
+        const uint BinIndex = min((uint)BinCoordinate, 6u);
+
+        if (BinIndex == 0u) Histogram0.x += 1.0f;
+        else if (BinIndex == 1u) Histogram0.y += 1.0f;
+        else if (BinIndex == 2u) Histogram0.z += 1.0f;
+        else if (BinIndex == 3u) Histogram0.w += 1.0f;
+        else if (BinIndex == 4u) Histogram1.x += 1.0f;
+        else if (BinIndex == 5u) Histogram1.y += 1.0f;
+        else Histogram1.z += 1.0f;
     }
 
     const uint BaseLinearIndex =
         PhysicalProbeIndex * TotalRaysPerProbe + BaseRayIndex;
+    const uint SecondaryLinearIndex = BaseLinearIndex + BaseRayCount;
     const uint2 BasePixel = uint2(
         BaseLinearIndex % TextureWidth,
         BaseLinearIndex / TextureWidth);
+    const uint2 SecondaryPixel = uint2(
+        SecondaryLinearIndex % TextureWidth,
+        SecondaryLinearIndex / TextureWidth);
 
-    // x=sum(hit distances), y=sum(hit distance squared), z=hit count,
-    // w=total samples. The alpha sentinel makes incomplete data explicit.
-    VisibilityMomentsUAV[BasePixel] = bSamplesValid
-        ? float4(HitDistanceSum, HitDistanceSquaredSum, HitCount, (float)ChildCount)
-        : float4(0.0f, 0.0f, 0.0f, 0.0f);
+    // A valid histogram sums to ChildCount. Negative values are an explicit
+    // invalid sentinel; all counts are small exact integers in half-float.
+    VisibilityHistogramUAV[BasePixel] = bSamplesValid
+        ? Histogram0
+        : float4(-1.0f, -1.0f, -1.0f, -1.0f);
+    VisibilityHistogramUAV[SecondaryPixel] = bSamplesValid
+        ? Histogram1
+        : float4(-1.0f, -1.0f, -1.0f, -1.0f);
 }
