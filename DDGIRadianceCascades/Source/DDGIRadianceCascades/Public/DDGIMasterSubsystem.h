@@ -61,7 +61,7 @@ struct FDDGIMasterConfig
 	UPROPERTY() int64 EstimatedRadianceStorageBytes = 0;
 	UPROPERTY() float ProbeSpacing = 100.0f;
 	UPROPERTY() FVector ProbeGridOrigin = FVector::ZeroVector;
-	// Continuous camera world-space center used for cascade blending; probe membership remains snapped.
+	// Continuous camera world-space center used by trace/background transitions; clipmap blending uses the snapped cell below.
 	UPROPERTY() FVector ActiveProbeWindowCenter = FVector::ZeroVector;
 	// Integer world-lattice center used by the spatial clipmap builder and apply-pass boundaries.
 	UPROPERTY() FIntVector ActiveProbeWindowCenterCell = FIntVector::ZeroValue;
