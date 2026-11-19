@@ -18,7 +18,7 @@ void DDGIReleaseRadianceCascadeResources_RenderThread(const FSceneInterface* Sce
 
 /** Claims this scene's DDGI update slot for the supplied render frame. */
 bool DDGIBeginRadianceCascadeUpdate_RenderThread(const FSceneInterface* Scene, uint32 FrameNumber);
-/** Schedules the complete active probe set once per layout; returns MAX_uint32 after that layout is fully traced. */
+/** Returns the next round-robin probe batch start; TraceProbeCount probes are scheduled each update. */
 uint32 DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
 	const FSceneInterface* Scene, uint32 ProbeCount, uint32 TraceProbeCount);
 
