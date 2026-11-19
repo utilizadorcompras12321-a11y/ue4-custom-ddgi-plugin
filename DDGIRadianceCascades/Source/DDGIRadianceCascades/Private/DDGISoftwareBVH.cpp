@@ -60,7 +60,7 @@ namespace
 		const FVector Scale = Transform.GetScale3D();
 		// Rotation has a positive determinant. The sign of an FTransform's
 		// linear determinant is therefore the parity of its negative scale axes.
-		return (Scale.X < 0.0f) != (Scale.Y < 0.0f) != (Scale.Z < 0.0f);
+		return ((Scale.X < 0.0f) != (Scale.Y < 0.0f)) != (Scale.Z < 0.0f);
 	}
 
 	void IncludePoint(FVector& BoundsMin, FVector& BoundsMax, const FVector& Point)
