@@ -5,8 +5,6 @@ uint TextureWidth;
 uint TotalIntegrationTexels;
 uint DispatchGroupsX;
 uint TotalRaysPerProbe;
-uint BaseRayCount;
-float TemporalBlendAlpha;
 uint ProbeCount;
 uint ProbeStartIndex;
 uint CascadeStorageOffset;
@@ -19,31 +17,6 @@ Texture2D<float> HitDistanceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
 RWTexture2D<uint> RadianceUAV;
-
-// This sentinel cannot be produced by DDGIPackR11G11B10 (all channel
-// exponents are capped at 30), so first-use probes can seed history directly.
-static const uint DDGIInvalidRadianceHistory = 0xFFFFFFFFu;
-
-void DDGIStoreIntegratedRadiance(uint2 Pixel, float3 NewRadiance)
-{
-    const bool bBlendHistory =
-        CascadeStorageOffset == 0u &&
-        CascadeRayCount == BaseRayCount &&
-        BaseRayCount < TotalRaysPerProbe &&
-        TemporalBlendAlpha < 1.0f;
-
-    if (bBlendHistory)
-    {
-        const uint PreviousPacked = RadianceUAV[Pixel];
-        if (PreviousPacked != DDGIInvalidRadianceHistory)
-        {
-            const float3 PreviousRadiance = DDGIUnpackR11G11B10(PreviousPacked);
-            NewRadiance = lerp(PreviousRadiance, NewRadiance, saturate(TemporalBlendAlpha));
-        }
-    }
-
-    RadianceUAV[Pixel] = DDGIPackR11G11B10(NewRadiance);
-}
 
 [numthreads(64, 1, 1)]
 void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -69,12 +42,6 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // storage. Subsequent dispatches integrate parent levels in place.
     if (bCopyGatherToFinal != 0u)
     {
-        // Keep base-cascade values intact until the final integration pass
-        // can blend them with the newly integrated result.
-        if (BaseRayCount < TotalRaysPerProbe && LocalRayIndex < BaseRayCount)
-        {
-            return;
-        }
         RadianceUAV[Pixel] = DDGIPackR11G11B10(GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
         return;
     }
@@ -84,8 +51,8 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     {
         // A hit inside this cascade's interval owns this angular cell and
         // terminates transport to farther intervals.
-        DDGIStoreIntegratedRadiance(
-            Pixel, GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
+        RadianceUAV[Pixel] = DDGIPackR11G11B10(
+            GatheredRadianceTexture.Load(int3(Pixel, 0)).rgb);
         return;
     }
 
@@ -97,7 +64,7 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         // A tagged negative distance is a real blocker before this interval.
         // Preserve its zero radiance rather than allowing farther children
         // to leak through the occluder.
-        DDGIStoreIntegratedRadiance(Pixel, float3(0.0f, 0.0f, 0.0f));
+        RadianceUAV[Pixel] = DDGIPackR11G11B10(float3(0.0f, 0.0f, 0.0f));
         return;
     }
 
@@ -121,5 +88,5 @@ void RadianceCascadeIntegrateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         DDGIUnpackR11G11B10(RadianceUAV[SecondChildPixel]);
     const float3 MergedChildRadiance =
         0.5f * (FirstChildRadiance + SecondChildRadiance);
-    DDGIStoreIntegratedRadiance(Pixel, MergedChildRadiance);
+    RadianceUAV[Pixel] = DDGIPackR11G11B10(MergedChildRadiance);
 }
