@@ -20,7 +20,8 @@ public:
 
 	// Rebuild the static-scene acceleration structure after loading or changing static geometry.
 	// This is an explicit, potentially expensive operation; it is not performed every frame.
-	UFUNCTION(BlueprintCallable, Category = "DDGI|Radiance Cascades")
+	// CallInEditor exposes a Details-panel button for editor workflows; BlueprintCallable supports runtime rebuilds.
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "DDGI|Radiance Cascades")
 	void RebuildStaticGeometryBVH();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DDGI|Global")
