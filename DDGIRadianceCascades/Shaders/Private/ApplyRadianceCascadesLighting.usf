@@ -607,9 +607,9 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         // stale edge probes into the coarse region and create a visible seam.
         FallbackStartLevel = ClipmapLevel + 1u;
 
-        // Blend within the generated support. The first reserved cell
-        // covers this transition; the second keeps its trilinear upper
-        // corners inside the generated lattice.
+        // Blend over half a level cell on either side of the nominal
+        // boundary. The remaining lattice margin contains every non-zero
+        // trilinear corner, including the maximum half-cell center offset.
         const float TransitionWidth = min(
             max(1.0f, LevelSpacing * 0.5f),
             max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.30f));
