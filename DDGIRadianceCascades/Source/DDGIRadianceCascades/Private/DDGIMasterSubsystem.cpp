@@ -339,13 +339,17 @@ namespace
 							// Keep one coarse cell of overlap inside the previous
 							// clipmap so trilinear sampling has all eight corners
 							// while blending across the clipmap boundary.
-							const int64 Overlap = Step;
-							const int64 InnerMinX = PreviousCenterX + ClipmapMinOffset * PreviousStep + Overlap;
-							const int64 InnerMaxX = PreviousCenterX + ClipmapMaxOffset * PreviousStep - Overlap;
-							const int64 InnerMinY = PreviousCenterY + ClipmapMinOffset * PreviousStep + Overlap;
-							const int64 InnerMaxY = PreviousCenterY + ClipmapMaxOffset * PreviousStep - Overlap;
-							const int64 InnerMinZ = PreviousCenterZ + ClipmapMinOffset * PreviousStep + Overlap;
-							const int64 InnerMaxZ = PreviousCenterZ + ClipmapMaxOffset * PreviousStep - Overlap;
+							// The shader starts fine/coarse blending at roughly four
+							// previous-level cells from the center. Keep the coarse
+							// lattice corners at that boundary; excluding them leaves
+							// the coarse trilinear sample unsupported exactly where
+							// the transition begins.
+							const int64 InnerMinX = PreviousCenterX - 4ll * PreviousStep;
+							const int64 InnerMaxX = PreviousCenterX + 4ll * PreviousStep;
+							const int64 InnerMinY = PreviousCenterY - 4ll * PreviousStep;
+							const int64 InnerMaxY = PreviousCenterY + 4ll * PreviousStep;
+							const int64 InnerMinZ = PreviousCenterZ - 4ll * PreviousStep;
+							const int64 InnerMaxZ = PreviousCenterZ + 4ll * PreviousStep;
 							// Keep the coarse lattice samples exactly on the inner
 							// boundary. They are the one-cell overlap needed by trilinear
 							// interpolation at the fine/coarse clipmap transition.
