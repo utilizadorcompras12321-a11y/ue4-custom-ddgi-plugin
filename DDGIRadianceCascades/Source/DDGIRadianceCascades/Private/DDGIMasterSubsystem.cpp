@@ -706,7 +706,13 @@ bool UDDGIMasterSubsystem::UpdateDirectionalLighting(const ADDGIMasterActor* InA
 	if (IsValid(Light) && Light->IsVisible() && Light->Intensity > 0.0f)
 	{
 		Config.DirectionalLightDirection = -Light->GetComponentTransform().GetUnitAxis(EAxis::X).GetSafeNormal();
-		Config.DirectionalLightColor = Light->LightColor.ReinterpretAsLinear();
+		// Match UE4's FLightSceneProxy color path: convert the sRGB filter to linear,
+		// then apply the same blackbody tint used by the renderer when enabled.
+		Config.DirectionalLightColor = FLinearColor(Light->LightColor);
+		if (Light->bUseTemperature)
+		{
+			Config.DirectionalLightColor *= FLinearColor::MakeFromColorTemperature(Light->Temperature);
+		}
 		// UE4 directional-light intensity is illuminance in lux. Preserve that value
 		// for DDGI; the radiance shader applies the Lambertian 1/PI factor.
 		// The optional actor scale is artistic only and defaults to 1.0 (no calibration).
@@ -846,7 +852,13 @@ bool UDDGIMasterSubsystem::UpdateLocalLighting(const ADDGIMasterActor* InActor)
 			? Light->Intensity * FMath::Max(0.0f, Light->IndirectLightingIntensity) *
 				(10000.0f / LightSolidAngle) * IntensityScale
 			: Light->Intensity * FMath::Max(0.0f, Light->IndirectLightingIntensity) * IntensityScale;
-		const FLinearColor Color = Light->LightColor.ReinterpretAsLinear();
+		// Match UE4's renderer: linearized light filter multiplied by its optional
+		// blackbody temperature tint. GetLightColor() alone does not include temperature in UE4.27.
+		FLinearColor Color(Light->LightColor);
+		if (Light->bUseTemperature)
+		{
+			Color *= FLinearColor::MakeFromColorTemperature(Light->Temperature);
+		}
 
 		NewPositionAndRadius[NewLightCount] = FVector4(
 			LocalPosition.X, LocalPosition.Y, LocalPosition.Z,
