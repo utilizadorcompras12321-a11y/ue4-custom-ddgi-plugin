@@ -232,10 +232,12 @@ float3 DDGIProbeDiffuseIrradiance(
         }
     }
 
-    // Evaluate visibility only from the angular cell facing this receiver.
-    // This avoids treating unrelated directions around the probe as blockers.
+    // Evaluate visibility only from angular cells facing this receiver.
+    // Histogram distances are measured along each probe ray, so compare them
+    // with the receiver's projection onto that ray, not its radial distance.
     float Visibility = 1.0f;
-    if (bCanEvaluateVisibility && CascadeCount >= 2u)
+    if (bCanEvaluateVisibility && CascadeCount >= 2u &&
+        BestAngularAlignment > 1.0e-3f)
     {
         const uint BestLinearIndex =
             PhysicalProbeIndex * TotalRaysPerProbe + VisibilityBaseRayIndex;
@@ -250,15 +252,18 @@ float3 DDGIProbeDiffuseIrradiance(
             VisibilityMomentsTexture.Load(int3(BestPixel, 0));
         const float4 BestHistogram1 =
             VisibilityMomentsTexture.Load(int3(BestHistogramPixel, 0));
-        const float BestVisibility =
-            DDGIProbeVisibility(BestHistogram0, BestHistogram1, ReceiverDistance);
+        const float BestProjectedDistance =
+            ReceiverDistance * BestAngularAlignment;
+        const float BestVisibility = DDGIProbeVisibility(
+            BestHistogram0, BestHistogram1, BestProjectedDistance);
 
         const float AlignmentGap =
             max(BestAngularAlignment - SecondAngularAlignment, 0.0f);
-        if (SafeRayCount > 1u && AlignmentGap < 0.25f)
+        if (SafeRayCount > 1u && SecondAngularAlignment > 1.0e-3f &&
+            AlignmentGap < 0.25f)
         {
-            // Only fetch the adjacent cell near a Voronoi boundary. Away
-            // from boundaries, the nearest angular cell is sufficient.
+            // The adjacent angular cell has its own ray direction and must
+            // use its own projected receiver distance as well.
             const uint SecondLinearIndex =
                 PhysicalProbeIndex * TotalRaysPerProbe + SecondVisibilityBaseRayIndex;
             const uint2 SecondPixel = uint2(
@@ -272,8 +277,10 @@ float3 DDGIProbeDiffuseIrradiance(
                 VisibilityMomentsTexture.Load(int3(SecondPixel, 0));
             const float4 SecondHistogram1 =
                 VisibilityMomentsTexture.Load(int3(SecondHistogramPixel, 0));
-            const float SecondVisibility =
-                DDGIProbeVisibility(SecondHistogram0, SecondHistogram1, ReceiverDistance);
+            const float SecondProjectedDistance =
+                ReceiverDistance * SecondAngularAlignment;
+            const float SecondVisibility = DDGIProbeVisibility(
+                SecondHistogram0, SecondHistogram1, SecondProjectedDistance);
             const float BestWeight =
                 0.5f + 0.5f * smoothstep(0.0f, 0.25f, AlignmentGap);
             Visibility = lerp(SecondVisibility, BestVisibility, BestWeight);
