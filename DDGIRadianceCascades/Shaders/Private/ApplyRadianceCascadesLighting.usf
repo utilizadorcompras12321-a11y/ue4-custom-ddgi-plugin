@@ -15,8 +15,8 @@ Texture2D<float> ScreenSpaceAOTexture;
 uint bHasScreenSpaceAO;
 Texture2D<float4> DirectionsTexture;
 Texture2D<uint> RadianceTexture;
-Texture2D<float> HitDistanceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
+Texture2D<float4> VisibilityMomentsTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<int4> ProbeSpatialHash;
 StructuredBuffer<uint> ProbeNeighborIndices;
@@ -99,6 +99,9 @@ bool DDGIIsProbeInitialized(uint ProbeIndex)
 // Chebyshev visibility for the angular cell facing the receiver. The finest
 // cascade provides several sub-rays inside that cell; their probe-relative
 // first-hit distances form a compact local distance distribution.
+// Read the precomputed hit-distance moments for the angular cell facing
+// this receiver. Moments live in the otherwise transient gather scratch
+// texture, after integration has finished for the updated probe batch.
 float DDGIProbeChebyshevVisibility(
     uint PhysicalProbeIndex,
     uint BaseRayIndex,
@@ -107,65 +110,42 @@ float DDGIProbeChebyshevVisibility(
     if (CascadeCount < 2u || BaseRayCount == 0u ||
         BaseRayIndex >= BaseRayCount || !isfinite(ReceiverDistance))
     {
-        // One angular sample cannot define a useful distance distribution.
         return 1.0f;
     }
 
-    const uint SafeCascadeIndex = min(CascadeCount - 1u, 7u);
-    const uint ChildCount = 1u << SafeCascadeIndex;
-    const uint CascadeStorageOffset = BaseRayCount * (ChildCount - 1u);
-    const uint FirstChildRay = CascadeStorageOffset + BaseRayIndex * ChildCount;
-    if (ChildCount < 2u ||
-        FirstChildRay >= TotalRaysPerProbe ||
-        ChildCount > TotalRaysPerProbe - FirstChildRay)
+    const uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + BaseRayIndex;
+    const uint2 Pixel = uint2(
+        LinearIndex % DDGI_RC_TEXTURE_WIDTH,
+        LinearIndex / DDGI_RC_TEXTURE_WIDTH);
+    const float4 Moments = VisibilityMomentsTexture.Load(int3(Pixel, 0));
+
+    const float SampleCount = Moments.w;
+    const float HitCount = Moments.z;
+    if (!all(isfinite(Moments)) || SampleCount < 2.0f ||
+        HitCount < 0.0f || HitCount > SampleCount)
+    {
+        // Uninitialized or incomplete probe history is unoccluded until its
+        // complete finest-cascade distribution has been generated.
+        return 1.0f;
+    }
+
+    if (HitCount <= 0.0f)
     {
         return 1.0f;
     }
 
-    // A miss means no occluder was found before the trace limit. Keep that
-    // sample beyond this receiver instead of creating a MaxTraceDistance
-    // sphere that would darken otherwise unoccluded distant receivers.
+    const float MissCount = max(SampleCount - HitCount, 0.0f);
+    // A miss only says that no surface was found within the trace limit.
+    // Place it beyond this receiver so trace range cannot create spherical
+    // cutoffs around probes.
     const float MissDistance = max(
         MaxTraceDistance,
         ReceiverDistance + max(ProbeSpacing, 1.0f));
+    const float DistanceSum = Moments.x + MissCount * MissDistance;
+    const float DistanceSquaredSum =
+        Moments.y + MissCount * MissDistance * MissDistance;
 
-    float DistanceSum = 0.0f;
-    float DistanceSquaredSum = 0.0f;
-    [loop]
-    for (uint ChildIndex = 0u; ChildIndex < ChildCount; ++ChildIndex)
-    {
-        const uint PackedRayIndex = FirstChildRay + ChildIndex;
-        const uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
-        const uint2 Pixel = uint2(
-            LinearIndex % DDGI_RC_TEXTURE_WIDTH,
-            LinearIndex / DDGI_RC_TEXTURE_WIDTH);
-        const uint HitTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel, 0));
-
-        // A partially traced/recycled probe must not produce transient
-        // visibility from an incomplete set of finest-cascade samples.
-        if (HitTriangleTag == 0xFFFFFFFFu)
-        {
-            return 1.0f;
-        }
-
-        float SampleDistance = MissDistance;
-        if (HitTriangleTag != 0u)
-        {
-            // Negative tagged distances are real hits before this cascade's
-            // interval. Their magnitude remains the probe-relative hit range.
-            const float StoredDistance = HitDistanceTexture.Load(int3(Pixel, 0));
-            SampleDistance = abs(StoredDistance);
-            if (!isfinite(SampleDistance) || SampleDistance <= 0.0f)
-            {
-                return 1.0f;
-            }
-        }
-
-        DistanceSum += SampleDistance;
-        DistanceSquaredSum += SampleDistance * SampleDistance;
-    }
-
-    const float InvSampleCount = rcp((float)ChildCount);
+    const float InvSampleCount = rcp(SampleCount);
     const float MeanDistance = DistanceSum * InvSampleCount;
     const float MeanSquaredDistance = DistanceSquaredSum * InvSampleCount;
     const float Variance = max(
