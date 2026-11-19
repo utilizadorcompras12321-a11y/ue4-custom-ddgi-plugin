@@ -69,6 +69,11 @@ bool DDGIGetSoftwareBVHResources_RenderThread(
     uint32& OutTriangleCount);
 
 /** Returns logical-to-physical ray-slot mapping and slots requiring fresh history initialization. */
+/** Returns logical probe indices whose physical slots need a first trace this frame. */
+bool DDGIGetRadianceCascadeNewLogicalProbeIndices_RenderThread(
+    const FSceneInterface* Scene,
+    TArray<uint32>& OutLogicalProbeIndices);
+
 bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
     const FSceneInterface* Scene,
     FShaderResourceViewRHIRef& OutLogicalToPhysicalSRV,
