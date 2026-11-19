@@ -82,7 +82,7 @@ namespace
 	{
 		TRefCountPtr<IPooledRenderTarget> Directions;
 		TRefCountPtr<IPooledRenderTarget> Radiance; // Immutable raw trace radiance.
-		TRefCountPtr<IPooledRenderTarget> RadianceScratch; // Spatial gather output.
+		TRefCountPtr<IPooledRenderTarget> RadianceScratch; // Gather output; base-ray texels hold visibility moments after integration.
 		TRefCountPtr<IPooledRenderTarget> RadianceIntegrationScratch; // Persistent packed integrated radiance.
 		TRefCountPtr<IPooledRenderTarget> HitDistance;
 		TRefCountPtr<IPooledRenderTarget> HitTriangleIndex;
