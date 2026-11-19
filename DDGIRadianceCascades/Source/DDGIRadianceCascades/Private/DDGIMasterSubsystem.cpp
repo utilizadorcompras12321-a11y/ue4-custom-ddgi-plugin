@@ -345,8 +345,11 @@ namespace
 						const double DY = static_cast<double>(CellY - CenterY) * SafeSpacing;
 						const double DZ = static_cast<double>(CellZ - CenterZ) * SafeSpacing;
 						const double EffectiveHalfExtent = FMath::Min(HalfExtent, SafeRadius);
+						// Keep two cells beyond the nominal receiver extent:
+						// one for the full fine/coarse transition and one for the
+						// upper trilinear corner at the end of that transition.
 						if (FMath::Max(FMath::Abs(DX), FMath::Max(FMath::Abs(DY), FMath::Abs(DZ))) >
-							EffectiveHalfExtent + SafeSpacing * static_cast<double>(Step) ||
+							EffectiveHalfExtent + 2.0 * SafeSpacing * static_cast<double>(Step) ||
 							CellX < MIN_int32 || CellX > MAX_int32 ||
 							CellY < MIN_int32 || CellY > MAX_int32 ||
 							CellZ < MIN_int32 || CellZ > MAX_int32)
