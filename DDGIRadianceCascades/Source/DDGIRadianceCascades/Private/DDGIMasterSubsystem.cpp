@@ -306,10 +306,6 @@ namespace
 		TArray<FVector4> LevelPositions[ClipmapLevelCount];
 		TArray<FIntVector> LevelCells[ClipmapLevelCount];
 		int32 ActiveLevelCount = 0;
-		int64 PreviousCenterX = 0;
-		int64 PreviousCenterY = 0;
-		int64 PreviousCenterZ = 0;
-		int64 PreviousStep = 1;
 
 		for (int32 Level = 0; Level < ClipmapLevelCount; ++Level)
 		{
@@ -377,10 +373,6 @@ namespace
 				++ActiveLevelCount;
 			}
 
-			PreviousCenterX = CenterX;
-			PreviousCenterY = CenterY;
-			PreviousCenterZ = CenterZ;
-			PreviousStep = Step;
 
 			if (HalfExtent >= SafeRadius)
 			{
