@@ -115,8 +115,9 @@ float DDGIProbeChebyshevVisibility(float4 Moments, float ReceiverDistance)
 
     // Moments contain only actual hits. Misses contribute through hit
     // coverage, not an artificial far distance that would bias the mean.
-    const float MeanDistance = Moments.x / HitCount;
-    const float MeanSquaredDistance = Moments.y / HitCount;
+    const float DistanceScale = max(MaxTraceDistance, 1.0f);
+    const float MeanDistance = (Moments.x / HitCount) * DistanceScale;
+    const float MeanSquaredDistance = (Moments.y / HitCount) * DistanceScale * DistanceScale;
     if (!isfinite(MeanDistance) || MeanDistance <= 0.0f ||
         MeanDistance > max(MaxTraceDistance, 1.0f))
     {
