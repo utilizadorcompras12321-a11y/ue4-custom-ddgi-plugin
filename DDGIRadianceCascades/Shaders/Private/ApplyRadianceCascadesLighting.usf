@@ -397,9 +397,8 @@ float3 DDGISampleProbeLevel(
         // separately for converting local receiver coordinates to world cells.
         float3 ProbePosition =
             ProbePositionsTexture.Load(int3(ProbePixel, 0)).xyz;
-        // Track geometric support separately from the surface-side visibility
-        // fade. Sparse coarse levels can then be renormalized without cancelling
-        // the fade that rejects probes behind the receiving surface.
+        // Count geometric trilinear support before applying the receiver-side
+        // fade. The latter remains in the radiance value, not in clipmap validity.
         OutSpatialWeightSum += Weight;
 
         float3 SurfaceToProbe = ProbePosition - LocalPosition;
@@ -416,10 +415,8 @@ float3 DDGISampleProbeLevel(
             ProbeIndex, ProbePosition, LocalPosition, Normal) * Weight;
     }
 
-    // Normalize by available geometric support, not by visible support.
-    // Dividing by OutVisibleWeightSum cancels the receiver-side visibility
-    // fade whenever any probes remain visible, allowing probes behind the
-    // surface to contribute almost full strength.
+    // Normalize by available geometric support. The receiver-side fade is
+    // already applied to each probe's radiance contribution above.
     return Irradiance / max(OutSpatialWeightSum, 0.00001f);
 }
 
@@ -433,12 +430,8 @@ float3 DDGISampleLevelValue(
     float SpatialWeightSum = 0.0f;
     float3 Value = DDGISampleProbeLevel(
         LocalPosition, Normal, Level, SpatialWeightSum);
-    // Coverage is geometric support, not receiver-side visibility.
-    // VisibleWeightSum includes the per-probe normal fade; using it here
-    // makes cascade blending follow individual probe influence lobes and
-    // creates circular/probe-shaped patterns at level transitions.
-    // SpatialWeightSum still preserves partial trilinear support when a
-    // sparse level is missing one or more interpolation corners.
+    // Coverage is the fraction of the trilinear lattice represented by
+    // initialized probes. Partial support is retained for transition weights.
     OutCoverage = saturate(SpatialWeightSum);
     // A level is supported when its trilinear lattice exists, even if its
     // probes are currently faded by the receiver-side normal test. Treating
@@ -468,10 +461,9 @@ float3 DDGIInterpolateLevelPair(
         LocalPosition, Normal, LevelB, bValidB, CoverageB);
 
     const float Blend = saturate(T);
-    // Geometric coverage controls the relative contribution, but a level
-    // with no receiver-visible probes must not contribute a black value.
-    // Keep visibility out of the continuous weight itself: doing so makes
-    // the transition follow per-probe normal-fade lobes and creates rings.
+    // Both supported levels participate according to the spatial transition
+    // and their available trilinear coverage. Receiver-side fading is already
+    // encoded in ValueA/ValueB; do not turn it into a binary validity switch.
     float WeightA = bValidA ? (1.0f - Blend) * CoverageA : 0.0f;
     float WeightB = bValidB ? Blend * CoverageB : 0.0f;
     float TotalWeight = WeightA + WeightB;
@@ -498,7 +490,7 @@ float3 DDGIInterpolateLevelPair(
         return 0.0f;
     }
 
-    // Normalize only across levels that actually produced receiver-visible data.
+    // Normalize across the supported levels while preserving the spatial blend.
     return (ValueA * WeightA + ValueB * WeightB) / TotalWeight;
 }
 
