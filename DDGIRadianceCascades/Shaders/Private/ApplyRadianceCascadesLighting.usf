@@ -261,7 +261,11 @@ float3 DDGISampleProbeLevel(
         OutVisibleWeightSum += Weight;
     }
 
-    return Irradiance / max(OutVisibleWeightSum, 0.00001f);
+    // Normalize by available geometric support, not by visible support.
+    // Dividing by OutVisibleWeightSum cancels the receiver-side visibility
+    // fade whenever any probes remain visible, allowing probes behind the
+    // surface to contribute almost full strength.
+    return Irradiance / max(OutSpatialWeightSum, 0.00001f);
 }
 
 float3 DDGISampleLevelValue(
