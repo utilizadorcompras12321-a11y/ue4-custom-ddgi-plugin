@@ -224,8 +224,12 @@ float3 DDGIProbeDiffuseIrradiance(
         const float BestVisibility =
             DDGIProbeChebyshevVisibility(BestMoments, ReceiverDistance);
 
-        if (SafeRayCount > 1u)
+        const float AlignmentGap =
+            max(BestAngularAlignment - SecondAngularAlignment, 0.0f);
+        if (SafeRayCount > 1u && AlignmentGap < 0.25f)
         {
+            // Only fetch the adjacent cell near a Voronoi boundary. Away
+            // from boundaries, the nearest angular cell is sufficient.
             const uint SecondLinearIndex =
                 PhysicalProbeIndex * TotalRaysPerProbe + SecondVisibilityBaseRayIndex;
             const uint2 SecondPixel = uint2(
@@ -235,8 +239,6 @@ float3 DDGIProbeDiffuseIrradiance(
                 VisibilityMomentsTexture.Load(int3(SecondPixel, 0));
             const float SecondVisibility =
                 DDGIProbeChebyshevVisibility(SecondMoments, ReceiverDistance);
-            const float AlignmentGap =
-                max(BestAngularAlignment - SecondAngularAlignment, 0.0f);
             const float BestWeight =
                 0.5f + 0.5f * smoothstep(0.0f, 0.25f, AlignmentGap);
             Visibility = lerp(SecondVisibility, BestVisibility, BestWeight);
