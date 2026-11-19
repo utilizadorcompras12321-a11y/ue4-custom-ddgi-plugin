@@ -871,6 +871,7 @@ public:
         TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
         BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
         CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
+        MaxTraceDistance.Bind(Initializer.ParameterMap, TEXT("MaxTraceDistance"));
         HitDistanceTexture.Bind(Initializer.ParameterMap, TEXT("HitDistanceTexture"));
         HitTriangleIndexTexture.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexTexture"));
         LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
@@ -896,7 +897,8 @@ public:
         uint32 InTraceStartIndex,
         uint32 InTotalRaysPerProbe,
         uint32 InBaseRayCount,
-        uint32 InCascadeCount)
+        uint32 InCascadeCount,
+        float InMaxTraceDistance)
     {
         const uint32 InTextureWidth = 4096u;
         SetShaderValue(RHICmdList, ShaderRHI, TextureWidth, InTextureWidth);
@@ -907,6 +909,7 @@ public:
         SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
         SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
         SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
+        SetShaderValue(RHICmdList, ShaderRHI, MaxTraceDistance, InMaxTraceDistance);
         if (HitDistanceTexture.IsBound())
         {
             RHICmdList.SetShaderResourceViewParameter(
@@ -963,6 +966,7 @@ private:
     LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
     LAYOUT_FIELD(FShaderParameter, BaseRayCount);
     LAYOUT_FIELD(FShaderParameter, CascadeCount);
+    LAYOUT_FIELD(FShaderParameter, MaxTraceDistance);
     LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
     LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexTexture);
     LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
@@ -1687,7 +1691,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
             LogicalToPhysicalSRV, GatherOutputUAV,
             VisibilityMomentTexels, VisibilityMomentGroupsX,
             ProbeCount, TraceStartIndex, TotalRaysPerProbe,
-            BaseRayCount, ActiveCascadeCount);
+            BaseRayCount, ActiveCascadeCount,
+            Config->RadianceCascades.MaxTraceDistance);
         DispatchComputeShader(
             RHICmdList, VisibilityMomentsShader.GetShader(),
             VisibilityMomentGroupsX, VisibilityMomentGroupsY, 1);
