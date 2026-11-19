@@ -1,0 +1,107 @@
+#include "/Engine/Public/Platform.ush"
+
+uint TextureWidth;
+uint TotalTexels;
+uint DispatchGroupsX;
+uint ProbeCount;
+uint TraceStartIndex;
+uint TotalRaysPerProbe;
+uint BaseRayCount;
+uint CascadeCount;
+
+Texture2D<float> HitDistanceTexture;
+Texture2D<uint> HitTriangleIndexTexture;
+StructuredBuffer<uint> LogicalToPhysicalSlots;
+RWTexture2D<float4> VisibilityMomentsUAV;
+
+
+// One thread builds the hit-distance distribution for one base angular cell.
+// The finest cascade's child rays all lie inside that base cell. Store
+// hit-only sums and counts so Apply can treat misses as unoccluded at the
+// actual receiver distance without introducing a MaxTraceDistance sphere.
+[numthreads(64, 1, 1)]
+void RadianceCascadeVisibilityMomentsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint LinearIndex =
+        DispatchThreadId.x + DispatchThreadId.y * DispatchGroupsX * 64u;
+    if (LinearIndex >= TotalTexels || ProbeCount == 0u ||
+        TotalRaysPerProbe == 0u || BaseRayCount == 0u ||
+        CascadeCount < 2u)
+    {
+        return;
+    }
+
+    const uint ScheduledProbeIndex = LinearIndex / BaseRayCount;
+    const uint BaseRayIndex = LinearIndex - ScheduledProbeIndex * BaseRayCount;
+    if (ScheduledProbeIndex >= TotalTexels / BaseRayCount)
+    {
+        return;
+    }
+
+    const uint ProbeIndex = (TraceStartIndex + ScheduledProbeIndex) % ProbeCount;
+    const uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+
+    const uint SafeCascadeIndex = min(CascadeCount - 1u, 7u);
+    const uint ChildCount = 1u << SafeCascadeIndex;
+    const uint CascadeStorageOffset = BaseRayCount * (ChildCount - 1u);
+    const uint FirstChildRay = CascadeStorageOffset + BaseRayIndex * ChildCount;
+    if (ChildCount < 2u ||
+        FirstChildRay >= TotalRaysPerProbe ||
+        ChildCount > TotalRaysPerProbe - FirstChildRay)
+    {
+        return;
+    }
+
+    float HitDistanceSum = 0.0f;
+    float HitDistanceSquaredSum = 0.0f;
+    float HitCount = 0.0f;
+    bool bSamplesValid = true;
+
+    [loop]
+    for (uint ChildIndex = 0u; ChildIndex < ChildCount; ++ChildIndex)
+    {
+        const uint PackedRayIndex = FirstChildRay + ChildIndex;
+        const uint LinearRayIndex =
+            PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
+        const uint2 Pixel = uint2(
+            LinearRayIndex % TextureWidth,
+            LinearRayIndex / TextureWidth);
+        const uint TriangleTag = HitTriangleIndexTexture.Load(int3(Pixel, 0));
+
+        // Newly allocated or incompletely traced slots must not publish
+        // partially valid moments. A zero tag is a valid miss.
+        if (TriangleTag == 0xFFFFFFFFu)
+        {
+            bSamplesValid = false;
+            break;
+        }
+
+        if (TriangleTag != 0u)
+        {
+            // A negative tagged distance is a hit before this cascade's
+            // interval; abs() restores its probe-relative first-hit distance.
+            const float HitDistance = abs(HitDistanceTexture.Load(int3(Pixel, 0)));
+            if (!isfinite(HitDistance) || HitDistance <= 0.0f)
+            {
+                bSamplesValid = false;
+                break;
+            }
+
+            HitDistanceSum += HitDistance;
+            HitDistanceSquaredSum += HitDistance * HitDistance;
+            HitCount += 1.0f;
+        }
+    }
+
+    const uint BaseLinearIndex =
+        PhysicalProbeIndex * TotalRaysPerProbe + BaseRayIndex;
+    const uint2 BasePixel = uint2(
+        BaseLinearIndex % TextureWidth,
+        BaseLinearIndex / TextureWidth);
+
+    // x=sum(hit distances), y=sum(hit distance squared), z=hit count,
+    // w=total samples. The alpha sentinel makes incomplete data explicit.
+    VisibilityMomentsUAV[BasePixel] = bSamplesValid
+        ? float4(HitDistanceSum, HitDistanceSquaredSum, HitCount, (float)ChildCount)
+        : float4(0.0f, 0.0f, 0.0f, 0.0f);
+}
