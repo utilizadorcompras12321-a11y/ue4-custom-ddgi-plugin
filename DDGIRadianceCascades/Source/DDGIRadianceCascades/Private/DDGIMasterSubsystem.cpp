@@ -224,11 +224,6 @@ namespace
 					static_cast<FEditorViewportClient*>(ActiveViewport->GetClient()))
 				{
 					const FVector CameraLocation = ViewportClient->GetViewLocation();
-
-					if (!bLoggedEditorViewport)
-					{
-
-					}
 					return CameraLocation;
 				}
 			}
@@ -243,11 +238,6 @@ namespace
 				if (APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager)
 				{
 					const FVector CameraLocation = CameraManager->GetCameraLocation();
-
-					if (!bLoggedCameraManager)
-					{
-
-					}
 					return CameraLocation;
 				}
 
@@ -256,18 +246,8 @@ namespace
 				FVector ViewLocation = FVector::ZeroVector;
 				FRotator ViewRotation = FRotator::ZeroRotator;
 				PlayerController->GetPlayerViewPoint(ViewLocation, ViewRotation);
-
-				if (!bLoggedControllerFallback)
-				{
-
-				}
 				return ViewLocation;
 			}
-		}
-
-		if (!bLoggedRootFallback)
-		{
-
 		}
 		return InActor->GetActorLocation();
 	}
