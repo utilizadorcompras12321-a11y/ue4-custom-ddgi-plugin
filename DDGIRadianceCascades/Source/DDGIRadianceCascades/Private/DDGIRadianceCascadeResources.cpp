@@ -1369,15 +1369,12 @@ uint32 DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
 		return 0u;
 	}
 
-	// A complete active-probe pass is scheduled once after each layout or
-	// physical-slot invalidation. Returning MAX_uint32 means this layout has
-	// already been fully traced; do not retrace static geometry every frame.
-	if (Storage->NextTraceProbeIndex >= ProbeCount)
-	{
-		return MAX_uint32;
-	}
-	const uint32 StartIndex = Storage->NextTraceProbeIndex;
-	Storage->NextTraceProbeIndex = ProbeCount;
+	// Keep refreshing the active probes so moving lights and changing scene
+	// lighting eventually propagate through the indirect-radiance cache.
+	// The caller limits the batch size to bound per-frame tracing cost.
+	const uint32 StartIndex = Storage->NextTraceProbeIndex % ProbeCount;
+	const uint32 SafeBatchCount = FMath::Min(TraceProbeCount, ProbeCount);
+	Storage->NextTraceProbeIndex = (StartIndex + SafeBatchCount) % ProbeCount;
 	return StartIndex;
 }
 
