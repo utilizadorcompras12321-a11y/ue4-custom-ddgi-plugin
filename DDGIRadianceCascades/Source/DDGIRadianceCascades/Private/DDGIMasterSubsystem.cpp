@@ -336,8 +336,9 @@ namespace
 						// patches and hard fallback snaps. Four full levels are only
 						// 13,500 probes, within the default 32,768-probe budget.
 
-						// Retain one current-level cell beyond the requested
-						// radius so trilinear reconstruction has its outer corners.
+						// Retain two current-level cells beyond the requested
+						// radius: one for the transition and one for the outer
+						// trilinear corner.
 						// Match the shader's clipmap distance calculation: each level
 						// is centered on its independently snapped lattice center,
 						// not on the finest-level camera cell.
