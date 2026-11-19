@@ -536,26 +536,6 @@ namespace
 		OutCellCoordinates = MoveTemp(NearestCells);
 		OutLevels = MoveTemp(NearestLevels);
 	}
-	void DDGICountSpatialProbeLevels(
-		const TArray<int32>& ProbeLevels,
-		int32& OutLevel0,
-		int32& OutLevel1,
-		int32& OutLevel2,
-		int32& OutLevel3)
-	{
-		OutLevel0 = 0;
-		OutLevel1 = 0;
-		OutLevel2 = 0;
-		OutLevel3 = 0;
-		for (int32 Level : ProbeLevels)
-		{
-			if (Level == 0) ++OutLevel0;
-			else if (Level == 1) ++OutLevel1;
-			else if (Level == 2) ++OutLevel2;
-			else if (Level == 3) ++OutLevel3;
-		}
-	}
-
 	uint32 DDGIComputeProbeLayoutHash(
 		const TArray<FIntVector>& CellCoordinates,
 		const TArray<int32>& ProbeLevels)
