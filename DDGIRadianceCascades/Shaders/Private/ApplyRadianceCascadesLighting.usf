@@ -645,6 +645,32 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
                         float4(1.0f - T, T, 0.0f, 1.0f);
                     return;
                 }
+                if (DebugMode == 9u)
+                {
+                    bool bFineSupport = false;
+                    bool bCoarseSupport = false;
+                    float FineCoverage = 0.0f;
+                    float CoarseCoverage = 0.0f;
+                    DDGISampleLevelValue(
+                        LocalPosition, Normal, ClipmapLevel,
+                        bFineSupport, FineCoverage);
+                    DDGISampleLevelValue(
+                        LocalPosition, Normal, ClipmapLevel + 1u,
+                        bCoarseSupport, CoarseCoverage);
+
+                    // Green = both levels have initialized trilinear support.
+                    // Red = fine only; blue = coarse only; magenta = neither.
+                    float3 SupportColor = float3(1.0f, 0.0f, 1.0f);
+                    if (bFineSupport && bCoarseSupport)
+                        SupportColor = float3(0.0f, 1.0f, 0.0f);
+                    else if (bFineSupport)
+                        SupportColor = float3(1.0f, 0.0f, 0.0f);
+                    else if (bCoarseSupport)
+                        SupportColor = float3(0.0f, 0.0f, 1.0f);
+                    SceneColorOutputUAV[BufferPixelIndex] =
+                        float4(SupportColor, 1.0f);
+                    return;
+                }
                 bool bTransitionValid = false;
                 const float3 TransitionIrradiance = DDGIInterpolateLevelPair(
                     LocalPosition, Normal, ClipmapLevel, ClipmapLevel + 1u,
