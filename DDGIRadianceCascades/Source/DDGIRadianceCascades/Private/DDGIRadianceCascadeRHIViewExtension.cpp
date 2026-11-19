@@ -890,7 +890,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(uint32, CascadeCount)
 		SHADER_PARAMETER(float, ProbeGridDistance)
 		SHADER_PARAMETER(FVector4, ProbeGridOrigin)
-		SHADER_PARAMETER(FVector4, ActiveWindowCenter)
+		SHADER_PARAMETER(FVector4, ActiveWindowCenterCell)
 		SHADER_PARAMETER(FVector4, BVHWorldOrigin)
 		SHADER_PARAMETER(uint32, ShouldUsePreExposure)
 		SHADER_PARAMETER(uint32, DebugMode)
@@ -1061,9 +1061,11 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	PassParameters->ProbeGridDistance = Config->ProbeGridDistance;
 	PassParameters->ProbeGridOrigin = FVector4(
 		Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f);
-	const FVector ActiveWindowCenterLocal = Config->ActiveProbeWindowCenter - Config->SoftwareBVH->WorldOrigin;
-	PassParameters->ActiveWindowCenter = FVector4(
-		ActiveWindowCenterLocal.X, ActiveWindowCenterLocal.Y, ActiveWindowCenterLocal.Z, 0.0f);
+	// Apply-pass clipmap boundaries must follow the exact snapped lattice center used by the CPU builder.
+	PassParameters->ActiveWindowCenterCell = FVector4(
+		static_cast<float>(Config->ActiveProbeWindowCenterCell.X),
+		static_cast<float>(Config->ActiveProbeWindowCenterCell.Y),
+		static_cast<float>(Config->ActiveProbeWindowCenterCell.Z), 0.0f);
 	PassParameters->BVHWorldOrigin = FVector4(
 		Config->SoftwareBVH->WorldOrigin.X,
 		Config->SoftwareBVH->WorldOrigin.Y,
