@@ -1027,6 +1027,7 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER(float, ProbeGridDistance)
 		SHADER_PARAMETER(FVector4, ProbeGridOrigin)
 		SHADER_PARAMETER(FVector4, ActiveWindowCenterCell)
+		SHADER_PARAMETER(FVector4, ActiveWindowCenterLocal)
 		SHADER_PARAMETER(FVector4, BVHWorldOrigin)
 		SHADER_PARAMETER(uint32, ShouldUsePreExposure)
 		SHADER_PARAMETER(uint32, DebugMode)
@@ -1203,6 +1204,13 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 		static_cast<float>(Config->ActiveProbeWindowCenterCell.X),
 		static_cast<float>(Config->ActiveProbeWindowCenterCell.Y),
 		static_cast<float>(Config->ActiveProbeWindowCenterCell.Z), 0.0f);
+	// The lattice remains snapped, but clipmap ownership follows the continuous
+	// camera center so the transition does not jump when the probe window recenters.
+	const FVector ActiveWindowCenterLocal =
+		Config->ActiveProbeWindowCenter - Config->SoftwareBVH->WorldOrigin;
+	PassParameters->ActiveWindowCenterLocal = FVector4(
+		ActiveWindowCenterLocal.X, ActiveWindowCenterLocal.Y,
+		ActiveWindowCenterLocal.Z, 0.0f);
 	PassParameters->BVHWorldOrigin = FVector4(
 		Config->SoftwareBVH->WorldOrigin.X,
 		Config->SoftwareBVH->WorldOrigin.Y,
