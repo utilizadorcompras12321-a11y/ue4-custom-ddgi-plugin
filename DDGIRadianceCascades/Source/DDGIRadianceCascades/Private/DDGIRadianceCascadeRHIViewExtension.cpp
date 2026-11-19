@@ -1715,14 +1715,19 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
     }
 	};
 
-	if (NewLogicalProbeIndices.Num() > 0)
+	auto DispatchProbeIndexRanges = [&](const TArray<uint32>& ProbeIndices)
 	{
-		uint32 RangeStart = NewLogicalProbeIndices[0];
-		uint32 PreviousIndex = RangeStart;
-		for (int32 Index = 1; Index <= NewLogicalProbeIndices.Num(); ++Index)
+		if (ProbeIndices.Num() == 0)
 		{
-			const bool bEndOfRange = Index == NewLogicalProbeIndices.Num();
-			const uint32 CurrentIndex = bEndOfRange ? MAX_uint32 : NewLogicalProbeIndices[Index];
+			return;
+		}
+
+		uint32 RangeStart = ProbeIndices[0];
+		uint32 PreviousIndex = RangeStart;
+		for (int32 Index = 1; Index <= ProbeIndices.Num(); ++Index)
+		{
+			const bool bEndOfRange = Index == ProbeIndices.Num();
+			const uint32 CurrentIndex = bEndOfRange ? MAX_uint32 : ProbeIndices[Index];
 			if (!bEndOfRange && CurrentIndex == PreviousIndex + 1u)
 			{
 				PreviousIndex = CurrentIndex;
@@ -1736,18 +1741,39 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 				PreviousIndex = CurrentIndex;
 			}
 		}
-	}
-	else
+	};
+
+	// New probes bypass the recurring budget and are completed immediately.
+	DispatchProbeIndexRanges(NewLogicalProbeIndices);
+
+	// Keep the normal dynamic-lighting refresh budget active as well, excluding
+	// probes already processed above so no logical probe is dispatched twice.
+	const uint32 TraceProbeBudget = static_cast<uint32>(FMath::Clamp(
+		CVarDDGITraceProbesPerFrame.GetValueOnRenderThread(), 1, 32768));
+	const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceProbeBudget);
+	const uint32 TraceStartIndex = DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
+		Scene, ProbeCount, TraceProbeCount);
+	if (TraceProbeCount > 0u && TraceStartIndex != MAX_uint32)
 	{
-		const uint32 TraceProbeBudget = static_cast<uint32>(FMath::Clamp(
-			CVarDDGITraceProbesPerFrame.GetValueOnRenderThread(), 1, 32768));
-		const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceProbeBudget);
-		const uint32 TraceStartIndex = DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
-			Scene, ProbeCount, TraceProbeCount);
-		if (TraceProbeCount > 0u && TraceStartIndex != MAX_uint32)
+		TSet<uint32> NewProbeIndexSet;
+		NewProbeIndexSet.Reserve(NewLogicalProbeIndices.Num());
+		for (const uint32 NewProbeIndex : NewLogicalProbeIndices)
 		{
-			DispatchProbeBatch(TraceStartIndex, TraceProbeCount);
+			NewProbeIndexSet.Add(NewProbeIndex);
 		}
+
+		TArray<uint32> RegularProbeIndices;
+		RegularProbeIndices.Reserve(TraceProbeCount);
+		for (uint32 BatchIndex = 0u; BatchIndex < TraceProbeCount; ++BatchIndex)
+		{
+			const uint32 ProbeIndex = (TraceStartIndex + BatchIndex) % ProbeCount;
+			if (!NewProbeIndexSet.Contains(ProbeIndex))
+			{
+				RegularProbeIndices.Add(ProbeIndex);
+			}
+		}
+		RegularProbeIndices.Sort();
+		DispatchProbeIndexRanges(RegularProbeIndices);
 	}
 
 
