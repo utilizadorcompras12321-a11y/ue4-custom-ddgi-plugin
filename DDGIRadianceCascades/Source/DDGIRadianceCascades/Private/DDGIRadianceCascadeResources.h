@@ -110,8 +110,8 @@ bool DDGIGetRadianceCascadeProbePositions_RenderThread(
 	FRDGTextureRef& OutProbePositions,
 	uint32& OutProbeCount);
 
-/** Registers the completed per-probe cascade data with RDG for deferred lighting.
- * OutRadiance is the persistent integrated output; raw trace radiance is separate.
+/** Registers integrated radiance, probe metadata, and precomputed visibility moments with RDG for deferred lighting.
+ * OutRadiance is persistent integrated output; OutVisibilityMoments uses base-ray texels in the gather scratch texture.
  */
 bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     FRDGBuilder& GraphBuilder,
