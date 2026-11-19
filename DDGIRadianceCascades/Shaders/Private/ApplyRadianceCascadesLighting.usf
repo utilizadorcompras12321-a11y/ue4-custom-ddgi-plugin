@@ -39,7 +39,7 @@ float MaxTraceDistance;
 uint CascadeCount;
 float ProbeGridDistance;
 float4 ProbeGridOrigin;
-float4 ActiveWindowCenter;
+float4 ActiveWindowCenterCell;
 float4 BVHWorldOrigin;
 uint ShouldUsePreExposure;
 uint DebugMode;
@@ -152,6 +152,19 @@ uint DDGIGetSpatialLevelStep(uint Level)
     // Keep in sync with DDGIGetSpatialLevelStep in DDGIRadianceCascadeResources.cpp
     // and the deterministic clipmap builder in DDGIMasterSubsystem.cpp.
     return 1u << min(Level, 3u);
+}
+
+int DDGIRoundCellToLevelStep(int Cell, uint LevelStep)
+{
+    // Match std::round in DDGISafeRoundCell: halfway values round away from zero.
+    int Step = (int)LevelStep;
+    int Quotient = Cell / Step;
+    int Remainder = Cell % Step;
+    if (abs(Remainder) * 2 >= Step)
+    {
+        Quotient += Cell < 0 ? -1 : 1;
+    }
+    return Quotient * Step;
 }
 
 float3 DDGISampleProbeLevel(
@@ -407,8 +420,9 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     const float GridRadius = max(ProbeGridDistance, 1.0f);
-    const float3 ClipmapOffset = abs(LocalPosition - ActiveWindowCenter.xyz);
-    const float ClipmapDistance = max(ClipmapOffset.x, max(ClipmapOffset.y, ClipmapOffset.z));
+    // This is the exact integer lattice cell used by DDGIBuildActiveProbePositions.
+    // Each level rounds that shared center independently, just like the CPU clipmap builder.
+    const int3 BaseWindowCell = int3(ActiveWindowCenterCell.xyz);
 
     // Spatial levels are nested clipmaps with 16 cells per axis. Their
     // half-extents double with each level; only the finest level covering the
@@ -419,6 +433,15 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     [loop]
     for (uint ClipmapLevel = 0u; ClipmapLevel < 4u; ++ClipmapLevel)
     {
+        const uint LevelStep = DDGIGetSpatialLevelStep(ClipmapLevel);
+        const int3 LevelCenterCell = int3(
+            DDGIRoundCellToLevelStep(BaseWindowCell.x, LevelStep),
+            DDGIRoundCellToLevelStep(BaseWindowCell.y, LevelStep),
+            DDGIRoundCellToLevelStep(BaseWindowCell.z, LevelStep));
+        const float3 LevelCenterLocal =
+            float3(LevelCenterCell) * max(ProbeSpacing, 1.0f) + ProbeGridOrigin.xyz;
+        const float3 ClipmapOffset = abs(LocalPosition - LevelCenterLocal);
+        const float ClipmapDistance = max(ClipmapOffset.x, max(ClipmapOffset.y, ClipmapOffset.z));
         const float LevelScale = exp2((float)ClipmapLevel);
         const float ClipmapExtent = min(GridRadius, max(1.0f, ProbeSpacing) * 6.0f * LevelScale);
         if (ClipmapExtent <= PreviousClipmapExtent + 0.5f)
