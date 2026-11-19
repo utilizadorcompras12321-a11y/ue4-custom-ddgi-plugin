@@ -273,15 +273,12 @@ float3 DDGISampleLevelValue(
     float3 Normal,
     uint Level,
     out bool OutValid,
-    out float OutConfidence,
     out float OutCoverage)
 {
     float SpatialWeightSum = 0.0f;
     float VisibleWeightSum = 0.0f;
     float3 Value = DDGISampleProbeLevel(
         LocalPosition, Normal, Level, SpatialWeightSum, VisibleWeightSum);
-    OutConfidence = saturate(
-        VisibleWeightSum / max(SpatialWeightSum, 0.00001f));
     // Coverage is geometric support, not receiver-side visibility.
     // VisibleWeightSum includes the per-probe normal fade; using it here
     // makes cascade blending follow individual probe influence lobes and
@@ -303,14 +300,12 @@ float3 DDGIInterpolateLevelPair(
 {
     bool bValidA = false;
     bool bValidB = false;
-    float ConfidenceA = 0.0f;
-    float ConfidenceB = 0.0f;
     float CoverageA = 0.0f;
     float CoverageB = 0.0f;
     float3 ValueA = DDGISampleLevelValue(
-        LocalPosition, Normal, LevelA, bValidA, ConfidenceA, CoverageA);
+        LocalPosition, Normal, LevelA, bValidA, CoverageA);
     float3 ValueB = DDGISampleLevelValue(
-        LocalPosition, Normal, LevelB, bValidB, ConfidenceB, CoverageB);
+        LocalPosition, Normal, LevelB, bValidB, CoverageB);
 
     const float Blend = saturate(T);
     // Geometric coverage controls the relative contribution, but a level
@@ -407,10 +402,9 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     {
         const uint DebugLevel = DebugMode - 4u;
         bool bDebugLevelValid = false;
-        float DebugLevelConfidence = 0.0f;
         float DebugLevelCoverage = 0.0f;
         float3 DebugLevelIrradiance = DDGISampleLevelValue(
-            LocalPosition, Normal, DebugLevel, bDebugLevelValid, DebugLevelConfidence, DebugLevelCoverage);
+            LocalPosition, Normal, DebugLevel, bDebugLevelValid, DebugLevelCoverage);
         if (!bDebugLevelValid)
         {
             SceneColorOutputUAV[BufferPixelIndex] = float4(1.0f, 0.0f, 1.0f, 1.0f);
@@ -500,11 +494,10 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             if (ClipmapDistance <= ClipmapExtent)
             {
                 bool bCurrentLevelValid = false;
-                float CurrentLevelConfidence = 0.0f;
                 float CurrentLevelCoverage = 0.0f;
                 float3 CurrentLevelIrradiance = DDGISampleLevelValue(
                     LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid,
-                    CurrentLevelConfidence, CurrentLevelCoverage);
+                    CurrentLevelCoverage);
                 if (bCurrentLevelValid)
                 {
                     Irradiance = CurrentLevelIrradiance;
