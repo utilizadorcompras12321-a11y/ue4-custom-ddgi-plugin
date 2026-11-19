@@ -1378,6 +1378,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		UE_LOG(LogTemp, Error, TEXT("Radiance Cascades: failed to acquire logical-to-physical probe mapping."));
 		return;
 	}
+	TArray<uint32> NewLogicalProbeIndices;
+	DDGIGetRadianceCascadeNewLogicalProbeIndices_RenderThread(Scene, NewLogicalProbeIndices);
 	FShaderResourceViewRHIRef ProbePositionsSRV = RHICreateShaderResourceView(ProbePositionsTexture, 0);
 	FUnorderedAccessViewRHIRef RadianceUAV = RHICreateUnorderedAccessView(RadianceTexture);
 	FUnorderedAccessViewRHIRef HitDistanceUAV = RHICreateUnorderedAccessView(HitDistanceTexture);
@@ -1487,22 +1489,15 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
-	// Refresh a bounded batch every frame. The round-robin cursor keeps the
-	// complete active clipmap current without tracing every probe in one frame.
-	const uint32 TraceProbeBudget = static_cast<uint32>(FMath::Clamp(
-		CVarDDGITraceProbesPerFrame.GetValueOnRenderThread(), 1, 32768));
-	const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceProbeBudget);
-	if (TraceProbeCount == 0u)
+	// A new physical probe must be fully traced and integrated before it is
+	// exposed to Apply. The regular round-robin budget is used only when there
+	// are no newly allocated probes, preventing duplicate work in this frame.
+	auto DispatchProbeBatch = [&](uint32 TraceStartIndex, uint32 TraceProbeCount)
 	{
-		return;
-	}
-	const uint32 TraceStartIndex = DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
-		Scene, ProbeCount, TraceProbeCount);
-	if (TraceStartIndex == MAX_uint32)
-	{
-		return;
-	}
-
+		if (TraceProbeCount == 0u)
+		{
+			return;
+		}
 	const uint32 ActiveCascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
 	const uint32 BaseRayCount = static_cast<uint32>(FMath::Clamp(Config->RadianceCascades.BaseRayCount, 1, 64));
 	// Each cascade traces independent probe-origin rays; no ancestor mask or
@@ -1718,5 +1713,42 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
             RHICmdList, RadianceScratchTexture,
             ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
     }
+	};
+
+	if (NewLogicalProbeIndices.Num() > 0)
+	{
+		uint32 RangeStart = NewLogicalProbeIndices[0];
+		uint32 PreviousIndex = RangeStart;
+		for (int32 Index = 1; Index <= NewLogicalProbeIndices.Num(); ++Index)
+		{
+			const bool bEndOfRange = Index == NewLogicalProbeIndices.Num();
+			const uint32 CurrentIndex = bEndOfRange ? MAX_uint32 : NewLogicalProbeIndices[Index];
+			if (!bEndOfRange && CurrentIndex == PreviousIndex + 1u)
+			{
+				PreviousIndex = CurrentIndex;
+				continue;
+			}
+
+			DispatchProbeBatch(RangeStart, PreviousIndex - RangeStart + 1u);
+			if (!bEndOfRange)
+			{
+				RangeStart = CurrentIndex;
+				PreviousIndex = CurrentIndex;
+			}
+		}
+	}
+	else
+	{
+		const uint32 TraceProbeBudget = static_cast<uint32>(FMath::Clamp(
+			CVarDDGITraceProbesPerFrame.GetValueOnRenderThread(), 1, 32768));
+		const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceProbeBudget);
+		const uint32 TraceStartIndex = DDGIGetNextRadianceCascadeTraceStartIndex_RenderThread(
+			Scene, ProbeCount, TraceProbeCount);
+		if (TraceProbeCount > 0u && TraceStartIndex != MAX_uint32)
+		{
+			DispatchProbeBatch(TraceStartIndex, TraceProbeCount);
+		}
+	}
+
 
 }
