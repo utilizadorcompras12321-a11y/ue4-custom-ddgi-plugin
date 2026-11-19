@@ -112,7 +112,7 @@ float DDGIProbeVisibility(
     if (!all(isfinite(Histogram0)) || !all(isfinite(Histogram1)) ||
         any(Histogram0 < 0.0f) || any(Histogram1 < 0.0f))
     {
-        return 1.0f;
+        return 0.0f;
     }
 
     const uint SampleCount = 1u << min(CascadeCount - 1u, 7u);
@@ -122,7 +122,7 @@ float DDGIProbeVisibility(
     if (SampleCount < 2u ||
         abs(TotalSamples - (float)SampleCount) > 0.25f)
     {
-        return 1.0f;
+        return 0.0f;
     }
 
     const float SafeMaxTraceDistance = max(MaxTraceDistance, 1.0f);
