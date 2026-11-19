@@ -40,6 +40,7 @@ uint CascadeCount;
 float ProbeGridDistance;
 float4 ProbeGridOrigin;
 float4 ActiveWindowCenterCell;
+float4 ActiveWindowCenterLocal;
 float4 BVHWorldOrigin;
 uint ShouldUsePreExposure;
 uint DebugMode;
@@ -574,15 +575,33 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             DDGIRoundCellToLevelStep(BaseWindowCell.x, LevelStep),
             DDGIRoundCellToLevelStep(BaseWindowCell.y, LevelStep),
             DDGIRoundCellToLevelStep(BaseWindowCell.z, LevelStep));
+        const float LevelScale = exp2((float)ClipmapLevel);
+        const float LevelSpacing = max(ProbeSpacing, 1.0f) * LevelScale;
         const float3 LevelCenterLocal =
             float3(LevelCenterCell) * max(ProbeSpacing, 1.0f) + ProbeGridOrigin.xyz;
-        const float3 ClipmapOffset = LocalPosition - LevelCenterLocal;
-        // Use a radial transition rather than an L-infinity cube boundary.
-        // The latter makes clipmap ownership change on three axis-aligned
-        // planes and projects as polygonal/hexagonal seams on oblique surfaces.
+
+        // Probe positions stay on their immutable, independently snapped
+        // level lattice. Only the ownership boundary follows the continuous
+        // camera center, removing the visible recenter step.
+        const float3 ClipmapOffset = LocalPosition - ActiveWindowCenterLocal.xyz;
         const float ClipmapDistance = length(ClipmapOffset);
-        const float LevelScale = exp2((float)ClipmapLevel);
-        const float ClipmapExtent = min(GridRadius, max(1.0f, ProbeSpacing) * 6.0f * LevelScale);
+
+        // The generated lattice spans [-8,+7] cells around LevelCenterCell.
+        // Limit the radial boundary to the nearest supported face, reserving
+        // one whole level cell for the transition. This guarantees all eight
+        // trilinear corners exist even when the continuous center is offset
+        // from the snapped level lattice.
+        const float3 CenterOffset = ActiveWindowCenterLocal.xyz - LevelCenterLocal;
+        const float3 PositiveSupport = 7.0f * LevelSpacing - CenterOffset;
+        const float3 NegativeSupport = 8.0f * LevelSpacing + CenterOffset;
+        const float3 AxisSupport = min(PositiveSupport, NegativeSupport);
+        const float AvailableOuterRadius = max(0.0f,
+            min(AxisSupport.x, min(AxisSupport.y, AxisSupport.z)));
+        const float NominalClipmapExtent =
+            min(GridRadius, max(1.0f, ProbeSpacing) * 6.0f * LevelScale);
+        const float ClipmapExtent = min(
+            NominalClipmapExtent,
+            max(0.0f, AvailableOuterRadius - LevelSpacing));
         if (ClipmapExtent <= PreviousClipmapExtent + 0.5f)
         {
             break;
