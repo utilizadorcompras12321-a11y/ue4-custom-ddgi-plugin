@@ -224,14 +224,10 @@ namespace
 					static_cast<FEditorViewportClient*>(ActiveViewport->GetClient()))
 				{
 					const FVector CameraLocation = ViewportClient->GetViewLocation();
-					static bool bLoggedEditorViewport = false;
+
 					if (!bLoggedEditorViewport)
 					{
-						UE_LOG(LogTemp, Warning,
-							TEXT("DDGI DIAG: probe window camera source=EditorViewport, camera=(%.1f, %.1f, %.1f), master-root=(%.1f, %.1f, %.1f)."),
-							CameraLocation.X, CameraLocation.Y, CameraLocation.Z,
-							InActor->GetActorLocation().X, InActor->GetActorLocation().Y, InActor->GetActorLocation().Z);
-						bLoggedEditorViewport = true;
+
 					}
 					return CameraLocation;
 				}
@@ -247,15 +243,10 @@ namespace
 				if (APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager)
 				{
 					const FVector CameraLocation = CameraManager->GetCameraLocation();
-					static bool bLoggedCameraManager = false;
+
 					if (!bLoggedCameraManager)
 					{
-						UE_LOG(LogTemp, Warning,
-							TEXT("DDGI DIAG: probe window camera source=PlayerCameraManager, camera=(%.1f, %.1f, %.1f), master-root=(%.1f, %.1f, %.1f), world=%s."),
-							CameraLocation.X, CameraLocation.Y, CameraLocation.Z,
-							InActor->GetActorLocation().X, InActor->GetActorLocation().Y, InActor->GetActorLocation().Z,
-							*GetNameSafe(World));
-						bLoggedCameraManager = true;
+
 					}
 					return CameraLocation;
 				}
@@ -265,26 +256,18 @@ namespace
 				FVector ViewLocation = FVector::ZeroVector;
 				FRotator ViewRotation = FRotator::ZeroRotator;
 				PlayerController->GetPlayerViewPoint(ViewLocation, ViewRotation);
-				static bool bLoggedControllerFallback = false;
+
 				if (!bLoggedControllerFallback)
 				{
-					UE_LOG(LogTemp, Warning,
-						TEXT("DDGI DIAG: PlayerCameraManager unavailable; using PlayerController view location=(%.1f, %.1f, %.1f)."),
-						ViewLocation.X, ViewLocation.Y, ViewLocation.Z);
-					bLoggedControllerFallback = true;
+
 				}
 				return ViewLocation;
 			}
 		}
 
-		static bool bLoggedRootFallback = false;
 		if (!bLoggedRootFallback)
 		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("DDGI DIAG: NO PlayerController/PlayerCameraManager; probe window is falling back to master ROOT=(%.1f, %.1f, %.1f), world=%s, world-type=%d."),
-				InActor->GetActorLocation().X, InActor->GetActorLocation().Y, InActor->GetActorLocation().Z,
-				*GetNameSafe(World), World ? static_cast<int32>(World->WorldType) : -1);
-			bLoggedRootFallback = true;
+
 		}
 		return InActor->GetActorLocation();
 	}
@@ -1129,13 +1112,6 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		Config.SoftwareBVH = NewBVH;
 		CachedSoftwareBVHTriangleLimit = Config.MaxSoftwareTriangles;
 
-		UE_LOG(LogTemp, Log,
-			TEXT("Radiance Cascades software BVH: %d triangles, %d nodes, depth %d, %d leaves (triangles/leaf min %d avg %.2f max %d), normalized leaf cost %.3f, %d static components, %d BSP components. Skipped: %d no CPU access, %d movable, %d instanced, %d invalid, %d masked. %d material slots use default DDGI albedo."),
-			NewBVH->TriangleCount, NewBVH->NodeCount, BuildStats.MaxDepth, BuildStats.LeafCount,
-			BuildStats.MinLeafTriangleCount, BuildStats.AverageLeafTriangleCount,
-			BuildStats.MaxLeafTriangleCount, BuildStats.EstimatedSAHCost,
-			NewBVH->IncludedComponents, BuildStats.IncludedBSPComponents, NewBVH->SkippedNoCPUAccess, NewBVH->SkippedMovable,
-			NewBVH->SkippedInstanced, NewBVH->SkippedInvalidTriangles, BuildStats.SkippedMaskedTriangles, BuildStats.MaterialsUsingDefaultBaseColor);
 		if (BuildStats.SkippedInstanced > 0)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("DDGI: Skipped %d movable ISM/HISM components containing %d instances. Static instances are included in the software BVH; movable instance transforms require a BVH refresh and are currently excluded."),
@@ -1168,24 +1144,11 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 		InitialCameraLocation, Config.MaxActiveProbes, Config.ProbePositions,
 		Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
-	int32 InitialLevel0 = 0, InitialLevel1 = 0, InitialLevel2 = 0, InitialLevel3 = 0;
-	DDGICountSpatialProbeLevels(Config.ProbeLevels,
-		InitialLevel0, InitialLevel1, InitialLevel2, InitialLevel3);
-	UE_LOG(LogTemp, Log,
-		TEXT("DDGI spatial probe levels: L0=%d L1=%d L2=%d L3=%d (total=%d)."),
-		InitialLevel0, InitialLevel1, InitialLevel2, InitialLevel3, Config.ProbeCount);
 	// Estimate the actual generated lattice, not the hard safety cap.
 	Config.EstimatedRadianceStorageBytes = Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
 		Config.ProbeCellCoordinates, Config.ProbeLevels);
 
-	UE_LOG(LogTemp, Log,
-		TEXT("DDGI probe grid: radius %.1f cm, requested spacing %.1f cm, effective spacing %.1f cm, probes %d / %d; ray trace distance %.1f cm; cascades %d / %d active; rays per probe %d."),
-		Config.ProbeGridDistance, RequestedProbeSpacing, Config.ProbeSpacing,
-		Config.ProbeCount, Config.MaxActiveProbes, Config.DynamicGIDistance,
-		Config.RadianceCascades.GetSafeCascadeCount(),
-		Config.RadianceCascades.GetConfiguredCascadeCount(),
-		Config.TotalRaysPerProbe);
 
 	Config.bEnableStaticBackground = InActor->bEnableStaticBackground;
 	Config.StaticBackgroundColor = InActor->StaticBackgroundColor;
@@ -1242,12 +1205,6 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 		CameraLocation, Config.MaxActiveProbes, Config.ProbePositions,
 		Config.ProbeCellCoordinates, Config.ProbeLevels);
 	Config.ProbeCount = Config.ProbePositions.Num();
-	int32 UpdatedLevel0 = 0, UpdatedLevel1 = 0, UpdatedLevel2 = 0, UpdatedLevel3 = 0;
-	DDGICountSpatialProbeLevels(Config.ProbeLevels,
-		UpdatedLevel0, UpdatedLevel1, UpdatedLevel2, UpdatedLevel3);
-	UE_LOG(LogTemp, Log,
-		TEXT("DDGI spatial probe window recentered: L0=%d L1=%d L2=%d L3=%d (total=%d)."),
-		UpdatedLevel0, UpdatedLevel1, UpdatedLevel2, UpdatedLevel3, Config.ProbeCount);
 	Config.EstimatedRadianceStorageBytes =
 		Config.RadianceCascades.GetEstimatedStorageBytes(Config.ProbeCount);
 	Config.ProbeLayoutHash = DDGIComputeProbeLayoutHash(
