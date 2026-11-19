@@ -1619,6 +1619,43 @@ bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
     return true;
 }
 
+bool DDGIGetRadianceCascadeNewLogicalProbeIndices_RenderThread(
+    const FSceneInterface* Scene,
+    TArray<uint32>& OutLogicalProbeIndices)
+{
+    check(IsInRenderingThread() || IsInParallelRenderingThread());
+    OutLogicalProbeIndices.Reset();
+
+    const FDDGIRadianceCascadeGPUStorage* Storage =
+        GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
+    if (!Storage || Storage->NewlyAllocatedPhysicalSlotsCPU.Num() == 0 ||
+        Storage->LogicalToPhysicalSlotCPU.Num() != Storage->UploadedProbeCount)
+    {
+        return false;
+    }
+
+    TSet<uint32> PendingPhysicalSlots;
+    PendingPhysicalSlots.Reserve(Storage->NewlyAllocatedPhysicalSlotsCPU.Num());
+    for (const uint32 PhysicalSlot : Storage->NewlyAllocatedPhysicalSlotsCPU)
+    {
+        PendingPhysicalSlots.Add(PhysicalSlot);
+    }
+
+    // Logical indices are emitted in ascending order so the RHI extension can
+    // coalesce adjacent probes into contiguous dispatch ranges.
+    for (int32 LogicalIndex = 0;
+         LogicalIndex < Storage->LogicalToPhysicalSlotCPU.Num();
+         ++LogicalIndex)
+    {
+        if (PendingPhysicalSlots.Contains(Storage->LogicalToPhysicalSlotCPU[LogicalIndex]))
+        {
+            OutLogicalProbeIndices.Add(static_cast<uint32>(LogicalIndex));
+        }
+    }
+
+    return OutLogicalProbeIndices.Num() > 0;
+}
+
 bool DDGIGetRadianceCascadeProbeSpatialHash_RenderThread(
     const FSceneInterface* Scene,
     FShaderResourceViewRHIRef& OutSpatialHashSRV,
