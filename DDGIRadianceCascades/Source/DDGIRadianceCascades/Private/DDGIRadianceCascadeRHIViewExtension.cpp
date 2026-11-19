@@ -1743,11 +1743,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		}
 	};
 
-	// New probes bypass the recurring budget and are completed immediately.
-	DispatchProbeIndexRanges(NewLogicalProbeIndices);
-
-	// Keep the normal dynamic-lighting refresh budget active as well, excluding
-	// probes already processed above so no logical probe is dispatched twice.
+	// New probes have priority, but never bypass the global per-frame budget.
+	// This bounds the worst-case tracing/shading/gather/integration work when a
+	// clipmap recenters and many physical slots are allocated simultaneously.
 	const uint32 TraceProbeBudget = static_cast<uint32>(FMath::Clamp(
 		CVarDDGITraceProbesPerFrame.GetValueOnRenderThread(), 1, 32768));
 	const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceProbeBudget);
@@ -1755,25 +1753,47 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		Scene, ProbeCount, TraceProbeCount);
 	if (TraceProbeCount > 0u && TraceStartIndex != MAX_uint32)
 	{
-		TSet<uint32> NewProbeIndexSet;
-		NewProbeIndexSet.Reserve(NewLogicalProbeIndices.Num());
+		TSet<uint32> SelectedProbeIndexSet;
+		SelectedProbeIndexSet.Reserve(TraceProbeCount);
+
+		TArray<uint32> ScheduledProbeIndices;
+		ScheduledProbeIndices.Reserve(TraceProbeCount);
+
+		// Consume the budget on newly allocated probes first. Any remaining new
+		// probes stay uninitialized and are picked up by subsequent round-robin
+		// batches after initialization has cleared the one-shot allocation list.
 		for (const uint32 NewProbeIndex : NewLogicalProbeIndices)
 		{
-			NewProbeIndexSet.Add(NewProbeIndex);
-		}
-
-		TArray<uint32> RegularProbeIndices;
-		RegularProbeIndices.Reserve(TraceProbeCount);
-		for (uint32 BatchIndex = 0u; BatchIndex < TraceProbeCount; ++BatchIndex)
-		{
-			const uint32 ProbeIndex = (TraceStartIndex + BatchIndex) % ProbeCount;
-			if (!NewProbeIndexSet.Contains(ProbeIndex))
+			if (ScheduledProbeIndices.Num() >= static_cast<int32>(TraceProbeCount))
 			{
-				RegularProbeIndices.Add(ProbeIndex);
+				break;
+			}
+			if (NewProbeIndex < ProbeCount && !SelectedProbeIndexSet.Contains(NewProbeIndex))
+			{
+				SelectedProbeIndexSet.Add(NewProbeIndex);
+				ScheduledProbeIndices.Add(NewProbeIndex);
 			}
 		}
-		RegularProbeIndices.Sort();
-		DispatchProbeIndexRanges(RegularProbeIndices);
+
+		// Spend any unused budget on the regular round-robin refresh. Exclude
+		// newly selected probes so each logical probe is processed at most once.
+		for (uint32 BatchIndex = 0u;
+			BatchIndex < TraceProbeCount &&
+			ScheduledProbeIndices.Num() < static_cast<int32>(TraceProbeCount);
+			++BatchIndex)
+		{
+			const uint32 ProbeIndex = (TraceStartIndex + BatchIndex) % ProbeCount;
+			if (!SelectedProbeIndexSet.Contains(ProbeIndex))
+			{
+				SelectedProbeIndexSet.Add(ProbeIndex);
+				ScheduledProbeIndices.Add(ProbeIndex);
+			}
+		}
+
+		// Sorted indices let adjacent probes share a dispatch range. The total
+		// probe count remains bounded even if the new probes are spatially sparse.
+		ScheduledProbeIndices.Sort();
+		DispatchProbeIndexRanges(ScheduledProbeIndices);
 	}
 
 
