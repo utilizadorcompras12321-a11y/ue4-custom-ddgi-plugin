@@ -585,22 +585,17 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         const float3 ClipmapOffset = LocalPosition - ActiveWindowCenterLocal.xyz;
         const float ClipmapDistance = length(ClipmapOffset);
 
-        // The generated lattice spans [-7,+7] cells around LevelCenterCell.
-        // Reserve one level cell for the blend and another for the
-        // trilinear upper corner beyond the blend. The CPU builder retains
-        // two cells beyond the nominal radius, while the fixed 15^3 lattice
-        // limits the outermost support to seven cells from its snapped center.
-        const float3 CenterOffset = ActiveWindowCenterLocal.xyz - LevelCenterLocal;
-        const float3 PositiveSupport = 7.0f * LevelSpacing - CenterOffset;
-        const float3 NegativeSupport = 7.0f * LevelSpacing + CenterOffset;
-        const float3 AxisSupport = min(PositiveSupport, NegativeSupport);
-        const float AvailableOuterRadius = max(0.0f,
-            min(AxisSupport.x, min(AxisSupport.y, AxisSupport.z)));
-        const float NominalClipmapExtent =
-            min(GridRadius, max(1.0f, ProbeSpacing) * 6.0f * LevelScale);
-        const float ClipmapExtent = min(
-            NominalClipmapExtent,
-            max(0.0f, AvailableOuterRadius - 2.0f * LevelSpacing));
+        // Keep clipmap radii invariant while the snapped probe lattice moves.
+        // Deriving the radius from the per-axis distance to the lattice edge
+        // makes it jump whenever LevelCenterCell snaps, producing clipped,
+        // broken rings in DebugApply 9 and visible ownership changes.
+        //
+        // The lattice has seven cells of support in every direction. The
+        // continuous window center can be at most half a level cell from the
+        // snapped center; a 5.5-cell outer transition plus one trilinear
+        // upper-corner cell therefore remains inside the [-7,+7] lattice.
+        const float ClipmapExtent =
+            min(GridRadius, LevelSpacing * 5.0f);
         if (ClipmapExtent <= PreviousClipmapExtent + 0.5f)
         {
             break;
@@ -616,13 +611,8 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         // covers this transition; the second keeps its trilinear upper
         // corners inside the generated lattice.
         const float TransitionWidth = min(
-            min(
-                max(ProbeSpacing * 2.0f * LevelScale, ClipmapExtent * 0.08f),
-                max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.30f)),
-            // The CPU clipmap builder retains only one level cell beyond
-            // the nominal extent for trilinear corner support. Never blend
-            // beyond that generated spatial margin.
-            max(1.0f, ProbeSpacing * LevelScale));
+            max(1.0f, LevelSpacing * 0.5f),
+            max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.30f));
 
         if (ClipmapDistance <= ClipmapExtent + TransitionWidth)
         {
