@@ -96,6 +96,99 @@ bool DDGIIsProbeInitialized(uint ProbeIndex)
     return HitTriangleIndexTexture.Load(int3(Pixel, 0)) != 0xFFFFFFFFu;
 }
 
+// Chebyshev visibility for the angular cell facing the receiver. The finest
+// cascade provides several sub-rays inside that cell; their probe-relative
+// first-hit distances form a compact local distance distribution.
+float DDGIProbeChebyshevVisibility(
+    uint PhysicalProbeIndex,
+    uint BaseRayIndex,
+    float ReceiverDistance)
+{
+    if (CascadeCount < 2u || BaseRayCount == 0u ||
+        BaseRayIndex >= BaseRayCount || !isfinite(ReceiverDistance))
+    {
+        // One angular sample cannot define a useful distance distribution.
+        return 1.0f;
+    }
+
+    const uint SafeCascadeIndex = min(CascadeCount - 1u, 7u);
+    const uint ChildCount = 1u << SafeCascadeIndex;
+    const uint CascadeStorageOffset = BaseRayCount * (ChildCount - 1u);
+    const uint FirstChildRay = CascadeStorageOffset + BaseRayIndex * ChildCount;
+    if (ChildCount < 2u ||
+        FirstChildRay >= TotalRaysPerProbe ||
+        ChildCount > TotalRaysPerProbe - FirstChildRay)
+    {
+        return 1.0f;
+    }
+
+    // A miss means no occluder was found before the trace limit. Keep that
+    // sample beyond this receiver instead of creating a MaxTraceDistance
+    // sphere that would darken otherwise unoccluded distant receivers.
+    const float MissDistance = max(
+        MaxTraceDistance,
+        ReceiverDistance + max(ProbeSpacing, 1.0f));
+
+    float DistanceSum = 0.0f;
+    float DistanceSquaredSum = 0.0f;
+    [loop]
+    for (uint ChildIndex = 0u; ChildIndex < ChildCount; ++ChildIndex)
+    {
+        const uint PackedRayIndex = FirstChildRay + ChildIndex;
+        const uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + PackedRayIndex;
+        const uint2 Pixel = uint2(
+            LinearIndex % DDGI_RC_TEXTURE_WIDTH,
+            LinearIndex / DDGI_RC_TEXTURE_WIDTH);
+        const uint HitTriangleTag = HitTriangleIndexTexture.Load(int3(Pixel, 0));
+
+        // A partially traced/recycled probe must not produce transient
+        // visibility from an incomplete set of finest-cascade samples.
+        if (HitTriangleTag == 0xFFFFFFFFu)
+        {
+            return 1.0f;
+        }
+
+        float SampleDistance = MissDistance;
+        if (HitTriangleTag != 0u)
+        {
+            // Negative tagged distances are real hits before this cascade's
+            // interval. Their magnitude remains the probe-relative hit range.
+            const float StoredDistance = HitDistanceTexture.Load(int3(Pixel, 0));
+            SampleDistance = abs(StoredDistance);
+            if (!isfinite(SampleDistance) || SampleDistance <= 0.0f)
+            {
+                return 1.0f;
+            }
+        }
+
+        DistanceSum += SampleDistance;
+        DistanceSquaredSum += SampleDistance * SampleDistance;
+    }
+
+    const float InvSampleCount = rcp((float)ChildCount);
+    const float MeanDistance = DistanceSum * InvSampleCount;
+    const float MeanSquaredDistance = DistanceSquaredSum * InvSampleCount;
+    const float Variance = max(
+        MeanSquaredDistance - MeanDistance * MeanDistance,
+        0.0f);
+
+    // A small receiver bias avoids self-occlusion when the receiver lies
+    // almost exactly on the probe's sampled mean-distance surface.
+    const float ReceiverBias = max(ProbeSpacing * 0.05f, 0.5f);
+    const float BiasedReceiverDistance = max(ReceiverDistance - ReceiverBias, 0.0f);
+    const float DistanceFromMean = BiasedReceiverDistance - MeanDistance;
+    if (DistanceFromMean <= 0.0f)
+    {
+        return 1.0f;
+    }
+
+    const float ChebyshevDenominator =
+        Variance + DistanceFromMean * DistanceFromMean;
+    return ChebyshevDenominator > 1.0e-8f
+        ? saturate(Variance / ChebyshevDenominator)
+        : 0.0f;
+}
+
 float3 DDGIProbeDiffuseIrradiance(
     uint ProbeIndex,
     float3 ProbePosition,
@@ -106,46 +199,63 @@ float3 DDGIProbeDiffuseIrradiance(
     const uint SafeRayCount = min(BaseRayCount, min(TotalRaysPerProbe, 64u));
     if (SafeRayCount == 0u) return Irradiance;
 
-    // The trace range limits how far a probe sees into the scene; it does
-    // not limit how far that probe's captured radiance may illuminate.
-    // Applying MaxTraceDistance to probe-to-receiver distance creates
-    // spherical cutoffs around probes and visible circular GI artifacts.
-    uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
-    // Do not impose a probe-centred visibility radius here. A finite
-    // probe-to-receiver cutoff creates spherical rings around every probe.
+    const uint PhysicalProbeIndex = LogicalToPhysicalSlots[ProbeIndex];
+    const float3 ToReceiver = LocalPosition - ProbePosition;
+    const float ReceiverDistance = length(ToReceiver);
+    const bool bCanEvaluateVisibility =
+        isfinite(ReceiverDistance) && ReceiverDistance > 1.0e-3f;
+    const float3 ReceiverDirection = bCanEvaluateVisibility
+        ? ToReceiver / ReceiverDistance
+        : float3(0.0f, 0.0f, 1.0f);
+    float BestAngularAlignment = -2.0f;
+    uint VisibilityBaseRayIndex = 0u;
 
-    // Integrate the base angular directions. The higher cascades refine the
+    // Integrate the base angular directions. Higher cascades refine the
     // radiance captured along those directions; they are not extra quadrature
-    // samples for the final diffuse irradiance.
+    // samples for final diffuse irradiance.
     [loop]
     for (uint RayIndex = 0u; RayIndex < SafeRayCount; ++RayIndex)
     {
-        uint2 DirectionPixel = uint2(
+        const uint2 DirectionPixel = uint2(
             RayIndex % DDGI_RC_TEXTURE_WIDTH,
             RayIndex / DDGI_RC_TEXTURE_WIDTH);
-        float3 Direction = normalize(
+        const float3 Direction = normalize(
             DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
+
+        if (bCanEvaluateVisibility)
+        {
+            const float AngularAlignment = dot(Direction, ReceiverDirection);
+            if (AngularAlignment > BestAngularAlignment)
+            {
+                BestAngularAlignment = AngularAlignment;
+                VisibilityBaseRayIndex = RayIndex;
+            }
+        }
+
         // DirectionsTexture stores probe-to-scene ray directions. At the
-        // receiver, the direction toward the contributing probe is the inverse.
-        float Cosine = saturate(dot(Normal, -Direction));
+        // receiver, the direction toward the contributing probe is inverse.
+        const float Cosine = saturate(dot(Normal, -Direction));
         if (Cosine > 0.0f)
         {
-            uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
-            uint2 RadiancePixel = uint2(
+            const uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
+            const uint2 RadiancePixel = uint2(
                 LinearIndex % DDGI_RC_TEXTURE_WIDTH,
                 LinearIndex / DDGI_RC_TEXTURE_WIDTH);
-            Irradiance += DDGIUnpackR11G11B10(RadianceTexture.Load(int3(RadiancePixel, 0))) * Cosine;
+            Irradiance += DDGIUnpackR11G11B10(
+                RadianceTexture.Load(int3(RadiancePixel, 0))) * Cosine;
         }
     }
 
-    // Visibility is handled by the receiver-side normal weighting and the
-    // traced radiance. Do not infer visibility from one angular ray: that
-    // approximation produced probe-centred circular cutoffs and rings.
+    // Evaluate visibility only from the angular cell facing this receiver.
+    // This avoids treating unrelated directions around the probe as blockers.
+    const float Visibility = bCanEvaluateVisibility
+        ? DDGIProbeChebyshevVisibility(
+            PhysicalProbeIndex, VisibilityBaseRayIndex, ReceiverDistance)
+        : 1.0f;
 
-    // Each base direction represents 4*PI/N steradians. The 1/PI
-    // Lambertian BRDF normalization cancels PI, so this returns E/PI,
-    // ready to multiply directly by diffuse albedo in the apply pass.
-    return Irradiance * (4.0f / (float)SafeRayCount);
+    // Equal-solid-angle quadrature gives 4*PI/N; Lambertian 1/PI
+    // normalization leaves 4/N for the diffuse irradiance.
+    return Irradiance * (4.0f / (float)SafeRayCount) * Visibility;
 }
 uint DDGIGetSpatialLevelStep(uint Level)
 {
