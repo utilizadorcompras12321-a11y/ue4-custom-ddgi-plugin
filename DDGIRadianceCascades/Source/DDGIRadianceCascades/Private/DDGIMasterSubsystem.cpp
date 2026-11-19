@@ -328,7 +328,7 @@ namespace
 					{
 						const int64 CellX = CenterX + static_cast<int64>(X) * Step;
 
-						// Keep every level as a complete 16^3 lattice. A hollow coarse
+						// Keep every level as a complete 15^3 lattice. A hollow coarse
 						// ring is incompatible with the radial clipmap boundary used by
 						// the apply shader: at diagonal positions the ring's cubical
 						// exclusion removes trilinear corners while the radial transition
