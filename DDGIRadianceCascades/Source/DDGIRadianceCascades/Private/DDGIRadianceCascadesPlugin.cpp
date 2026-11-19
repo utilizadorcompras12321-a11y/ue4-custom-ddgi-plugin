@@ -93,7 +93,6 @@ void FDDGIRadianceCascadesPlugin::RegisterViewExtension()
 	{
 		GDDGIRadianceCascadeViewExtension =
 			FSceneViewExtensions::NewExtension<FDDGIRadianceCascadeRHIViewExtension>();
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: RHI view extension registered after engine initialization."));
 	}
 
 	if (!GDDGIExperimentalGIDelegateHandle.IsValid())
@@ -124,16 +123,13 @@ void FDDGIRadianceCascadesPlugin::RegisterViewExtension()
 
 		if (ExperimentalGICVar->GetInt() == 1)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: UE4.27 experimental GI plugin dispatch is enabled."));
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("DDGI DIAG: r.GlobalIllumination.ExperimentalPlugin is disabled by a higher-priority setting; DDGI apply callback will not run."));
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("DDGI DIAG: r.GlobalIllumination.ExperimentalPlugin was not registered; DDGI apply callback will not run."));
 	}
 }
 
