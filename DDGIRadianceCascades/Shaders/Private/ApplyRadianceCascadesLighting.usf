@@ -461,37 +461,22 @@ float3 DDGIInterpolateLevelPair(
         LocalPosition, Normal, LevelB, bValidB, CoverageB);
 
     const float Blend = saturate(T);
-    // Both supported levels participate according to the spatial transition
-    // and their available trilinear coverage. Receiver-side fading is already
-    // encoded in ValueA/ValueB; do not turn it into a binary validity switch.
-    float WeightA = bValidA ? (1.0f - Blend) * CoverageA : 0.0f;
-    float WeightB = bValidB ? Blend * CoverageB : 0.0f;
-    float TotalWeight = WeightA + WeightB;
+    OutValid = bValidA || bValidB;
 
-    OutValid = TotalWeight > 0.00001f;
-    if (!OutValid)
+    // When both clipmaps have trilinear support, use the actual spatial
+    // transition factor directly. Renormalizing by per-level coverage changes
+    // T according to which lattice corners happen to be initialized/present;
+    // that creates probe-shaped patches instead of a stable clipmap blend.
+    if (bValidA && bValidB)
     {
-        // At an exact endpoint, retain whichever level still has valid support.
-        if (CoverageA >= CoverageB && bValidA)
-        {
-            OutValid = true;
-            return ValueA;
-        }
-        if (bValidB)
-        {
-            OutValid = true;
-            return ValueB;
-        }
-        if (bValidA)
-        {
-            OutValid = true;
-            return ValueA;
-        }
-        return 0.0f;
+        return lerp(ValueA, ValueB, Blend);
     }
 
-    // Normalize across the supported levels while preserving the spatial blend.
-    return (ValueA * WeightA + ValueB * WeightB) / TotalWeight;
+    // Missing support is a startup/layout condition, not a reason to alter
+    // the blend curve when both levels are available.
+    if (bValidA) return ValueA;
+    if (bValidB) return ValueB;
+    return 0.0f;
 }
 
 [numthreads(8, 8, 1)]
@@ -591,8 +576,11 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             DDGIRoundCellToLevelStep(BaseWindowCell.z, LevelStep));
         const float3 LevelCenterLocal =
             float3(LevelCenterCell) * max(ProbeSpacing, 1.0f) + ProbeGridOrigin.xyz;
-        const float3 ClipmapOffset = abs(LocalPosition - LevelCenterLocal);
-        const float ClipmapDistance = max(ClipmapOffset.x, max(ClipmapOffset.y, ClipmapOffset.z));
+        const float3 ClipmapOffset = LocalPosition - LevelCenterLocal;
+        // Use a radial transition rather than an L-infinity cube boundary.
+        // The latter makes clipmap ownership change on three axis-aligned
+        // planes and projects as polygonal/hexagonal seams on oblique surfaces.
+        const float ClipmapDistance = length(ClipmapOffset);
         const float LevelScale = exp2((float)ClipmapLevel);
         const float ClipmapExtent = min(GridRadius, max(1.0f, ProbeSpacing) * 6.0f * LevelScale);
         if (ClipmapExtent <= PreviousClipmapExtent + 0.5f)
