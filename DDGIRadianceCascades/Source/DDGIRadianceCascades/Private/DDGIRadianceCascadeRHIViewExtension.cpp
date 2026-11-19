@@ -27,7 +27,7 @@ static TAutoConsoleVariable<int32> CVarDDGIUsePrecomputedProbeNeighbors(
 static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
     TEXT("r.DDGI.DebugApply"),
     0,
-    TEXT("DDGI apply debug view (0=off, 1=probe coverage, 2=raw irradiance, 3=solid magenta, 4-7=spatial-level irradiance)."),
+    TEXT("DDGI apply debug view (0=off, 1=probe coverage, 2=raw irradiance, 3=solid magenta, 4-7=spatial-level irradiance, 8=clipmap blend weights)."),
     ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarDDGITraceProbesPerFrame(
