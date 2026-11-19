@@ -10,6 +10,7 @@
 #include "SceneInterface.h"
 #include "ScenePrivate.h"
 #include "DeferredShadingRenderer.h"
+#include "PostProcess/SceneRenderTargets.h"
 #include "SceneView.h"
 #include "HAL/IConsoleManager.h"
 #include "ScreenPass.h"
@@ -863,6 +864,8 @@ class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DepthTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, BaseColorTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MetallicTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ScreenSpaceAOTexture)
+		SHADER_PARAMETER(uint32, bHasScreenSpaceAO)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, DirectionsTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, RadianceTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, HitDistanceTexture)
@@ -1030,6 +1033,23 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	PassParameters->DepthTexture = DepthTexture;
 	PassParameters->BaseColorTexture = BaseColorTexture;
 	PassParameters->MetallicTexture = MetallicTexture;
+
+	// The native diffuse-indirect composite uses StaticFraction to decide how
+	// much AO affects SceneColor. At zero, it does not apply AO at all, so
+	// apply the generated SSAO mask directly to the DDGI contribution.
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+	FRDGTextureRef ScreenSpaceAOTexture = nullptr;
+	if (SceneContext.bScreenSpaceAOIsValid &&
+		SceneContext.ScreenSpaceAO.IsValid() &&
+		View.FinalPostProcessSettings.AmbientOcclusionStaticFraction <= SMALL_NUMBER)
+	{
+		ScreenSpaceAOTexture = GraphBuilder.RegisterExternalTexture(
+			SceneContext.ScreenSpaceAO, TEXT("DDGI.ScreenSpaceAO"));
+	}
+	PassParameters->bHasScreenSpaceAO = ScreenSpaceAOTexture != nullptr ? 1u : 0u;
+	PassParameters->ScreenSpaceAOTexture = ScreenSpaceAOTexture != nullptr
+		? ScreenSpaceAOTexture
+		: DepthTexture;
 
 	// The GI delegate runs before the renderer's native diffuse-indirect/AO
 	// composite. Leave AO application to that pass so SSAO/DFAO is applied once.
