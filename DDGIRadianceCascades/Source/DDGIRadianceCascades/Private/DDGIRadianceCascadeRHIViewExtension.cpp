@@ -852,6 +852,131 @@ IMPLEMENT_SHADER_TYPE(
 
 
 
+class FDDGIRadianceCascadeVisibilityMomentsRHI : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FDDGIRadianceCascadeVisibilityMomentsRHI, Global);
+
+public:
+    FDDGIRadianceCascadeVisibilityMomentsRHI() {}
+
+    explicit FDDGIRadianceCascadeVisibilityMomentsRHI(
+        const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+        : FGlobalShader(Initializer)
+    {
+        TextureWidth.Bind(Initializer.ParameterMap, TEXT("TextureWidth"));
+        TotalTexels.Bind(Initializer.ParameterMap, TEXT("TotalTexels"));
+        DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
+        ProbeCount.Bind(Initializer.ParameterMap, TEXT("ProbeCount"));
+        TraceStartIndex.Bind(Initializer.ParameterMap, TEXT("TraceStartIndex"));
+        TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
+        BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
+        CascadeCount.Bind(Initializer.ParameterMap, TEXT("CascadeCount"));
+        HitDistanceTexture.Bind(Initializer.ParameterMap, TEXT("HitDistanceTexture"));
+        HitTriangleIndexTexture.Bind(Initializer.ParameterMap, TEXT("HitTriangleIndexTexture"));
+        LogicalToPhysicalSlots.Bind(Initializer.ParameterMap, TEXT("LogicalToPhysicalSlots"));
+        VisibilityMomentsUAV.Bind(Initializer.ParameterMap, TEXT("VisibilityMomentsUAV"));
+    }
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+
+    template<typename TShaderRHIParamRef>
+    void SetParameters(
+        FRHICommandList& RHICmdList,
+        const TShaderRHIParamRef ShaderRHI,
+        FShaderResourceViewRHIRef HitDistances,
+        FShaderResourceViewRHIRef HitTriangleIndices,
+        FShaderResourceViewRHIRef LogicalToPhysical,
+        FUnorderedAccessViewRHIRef VisibilityMoments,
+        uint32 InTotalTexels,
+        uint32 InDispatchGroupsX,
+        uint32 InProbeCount,
+        uint32 InTraceStartIndex,
+        uint32 InTotalRaysPerProbe,
+        uint32 InBaseRayCount,
+        uint32 InCascadeCount)
+    {
+        const uint32 InTextureWidth = 4096u;
+        SetShaderValue(RHICmdList, ShaderRHI, TextureWidth, InTextureWidth);
+        SetShaderValue(RHICmdList, ShaderRHI, TotalTexels, InTotalTexels);
+        SetShaderValue(RHICmdList, ShaderRHI, DispatchGroupsX, InDispatchGroupsX);
+        SetShaderValue(RHICmdList, ShaderRHI, ProbeCount, InProbeCount);
+        SetShaderValue(RHICmdList, ShaderRHI, TraceStartIndex, InTraceStartIndex);
+        SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
+        SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
+        SetShaderValue(RHICmdList, ShaderRHI, CascadeCount, InCascadeCount);
+        if (HitDistanceTexture.IsBound())
+        {
+            RHICmdList.SetShaderResourceViewParameter(
+                ShaderRHI, HitDistanceTexture.GetBaseIndex(), HitDistances);
+        }
+        if (HitTriangleIndexTexture.IsBound())
+        {
+            RHICmdList.SetShaderResourceViewParameter(
+                ShaderRHI, HitTriangleIndexTexture.GetBaseIndex(), HitTriangleIndices);
+        }
+        if (LogicalToPhysicalSlots.IsBound())
+        {
+            RHICmdList.SetShaderResourceViewParameter(
+                ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), LogicalToPhysical);
+        }
+        if (VisibilityMomentsUAV.IsBound())
+        {
+            RHICmdList.SetUAVParameter(
+                ShaderRHI, VisibilityMomentsUAV.GetBaseIndex(), VisibilityMoments);
+        }
+    }
+
+    template<typename TShaderRHIParamRef>
+    void UnbindResources(FRHICommandList& RHICmdList, const TShaderRHIParamRef ShaderRHI)
+    {
+        if (HitDistanceTexture.IsBound())
+        {
+            RHICmdList.SetShaderResourceViewParameter(
+                ShaderRHI, HitDistanceTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+        }
+        if (HitTriangleIndexTexture.IsBound())
+        {
+            RHICmdList.SetShaderResourceViewParameter(
+                ShaderRHI, HitTriangleIndexTexture.GetBaseIndex(), FShaderResourceViewRHIRef());
+        }
+        if (LogicalToPhysicalSlots.IsBound())
+        {
+            RHICmdList.SetShaderResourceViewParameter(
+                ShaderRHI, LogicalToPhysicalSlots.GetBaseIndex(), FShaderResourceViewRHIRef());
+        }
+        if (VisibilityMomentsUAV.IsBound())
+        {
+            RHICmdList.SetUAVParameter(
+                ShaderRHI, VisibilityMomentsUAV.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+        }
+    }
+
+private:
+    LAYOUT_FIELD(FShaderParameter, TextureWidth);
+    LAYOUT_FIELD(FShaderParameter, TotalTexels);
+    LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
+    LAYOUT_FIELD(FShaderParameter, ProbeCount);
+    LAYOUT_FIELD(FShaderParameter, TraceStartIndex);
+    LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
+    LAYOUT_FIELD(FShaderParameter, BaseRayCount);
+    LAYOUT_FIELD(FShaderParameter, CascadeCount);
+    LAYOUT_FIELD(FShaderResourceParameter, HitDistanceTexture);
+    LAYOUT_FIELD(FShaderResourceParameter, HitTriangleIndexTexture);
+    LAYOUT_FIELD(FShaderResourceParameter, LogicalToPhysicalSlots);
+    LAYOUT_FIELD(FShaderResourceParameter, VisibilityMomentsUAV);
+};
+
+IMPLEMENT_SHADER_TYPE(
+    ,
+    FDDGIRadianceCascadeVisibilityMomentsRHI,
+    TEXT("/Plugin/DDGIRadianceCascades/Private/RadianceCascades/RadianceCascadeVisibilityMomentsCS.usf"),
+    TEXT("RadianceCascadeVisibilityMomentsCS"),
+    SF_Compute);
+
+
 class FDDGIApplyRadianceCascadesLightingCS : public FGlobalShader
 {
 	DECLARE_GLOBAL_SHADER(FDDGIApplyRadianceCascadesLightingCS);
@@ -1535,5 +1660,41 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		DDGITransitionTexture(RHICmdList, RadianceIntegrationScratchTexture,
 			ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
 	}
+
+    // Precompute one hit-distance distribution per base angular cell for this
+    // probe batch. RadianceScratch is no longer needed by integration after
+    // this point; its base-ray texels become persistent visibility moments.
+    const uint32 VisibilityMomentTexels = TraceProbeCount * BaseRayCount;
+    if (ActiveCascadeCount > 1u && VisibilityMomentTexels > 0u)
+    {
+        const uint32 VisibilityMomentGroups =
+            FMath::DivideAndRoundUp(VisibilityMomentTexels, 64u);
+        const uint32 VisibilityMomentGroupsX =
+            FMath::Max(1u, FMath::Min(VisibilityMomentGroups, 65535u));
+        const uint32 VisibilityMomentGroupsY =
+            FMath::DivideAndRoundUp(VisibilityMomentGroups, VisibilityMomentGroupsX);
+
+        DDGITransitionTexture(
+            RHICmdList, RadianceScratchTexture,
+            ERHIAccess::SRVCompute, ERHIAccess::UAVCompute);
+        TShaderMapRef<FDDGIRadianceCascadeVisibilityMomentsRHI> VisibilityMomentsShader(
+            GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+        RHICmdList.SetComputeShader(VisibilityMomentsShader.GetComputeShader());
+        VisibilityMomentsShader->SetParameters(
+            RHICmdList, VisibilityMomentsShader.GetComputeShader(),
+            IntegrationHitDistanceSRV, IntegrationHitTriangleIndexSRV,
+            LogicalToPhysicalSRV, GatherOutputUAV,
+            VisibilityMomentTexels, VisibilityMomentGroupsX,
+            ProbeCount, TraceStartIndex, TotalRaysPerProbe,
+            BaseRayCount, ActiveCascadeCount);
+        DispatchComputeShader(
+            RHICmdList, VisibilityMomentsShader.GetShader(),
+            VisibilityMomentGroupsX, VisibilityMomentGroupsY, 1);
+        VisibilityMomentsShader->UnbindResources(
+            RHICmdList, VisibilityMomentsShader.GetComputeShader());
+        DDGITransitionTexture(
+            RHICmdList, RadianceScratchTexture,
+            ERHIAccess::UAVCompute, ERHIAccess::SRVCompute);
+    }
 
 }
