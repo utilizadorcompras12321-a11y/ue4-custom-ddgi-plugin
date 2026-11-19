@@ -55,6 +55,14 @@ namespace
 		return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y) && FMath::IsFinite(Value.Z);
 	}
 
+	bool HasNegativeTransformDeterminant(const FTransform& Transform)
+	{
+		const FVector Scale = Transform.GetScale3D();
+		// Rotation has a positive determinant. The sign of an FTransform's
+		// linear determinant is therefore the parity of its negative scale axes.
+		return (Scale.X < 0.0f) != (Scale.Y < 0.0f) != (Scale.Z < 0.0f);
+	}
+
 	void IncludePoint(FVector& BoundsMin, FVector& BoundsMax, const FVector& Point)
 	{
 		BoundsMin.X = FMath::Min(BoundsMin.X, Point.X);
@@ -692,8 +700,14 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 				// Transform only the local offset, then add the component translation
 				// relative to the BVH origin. Do not form large absolute world positions.
 				const FVector A = ComponentTransform.TransformVector(FVector(PositionBuffer.VertexPosition(I0))) + ComponentRelativeLocation;
-				const FVector B = ComponentTransform.TransformVector(FVector(PositionBuffer.VertexPosition(I1))) + ComponentRelativeLocation;
-				const FVector C = ComponentTransform.TransformVector(FVector(PositionBuffer.VertexPosition(I2))) + ComponentRelativeLocation;
+				FVector B = ComponentTransform.TransformVector(FVector(PositionBuffer.VertexPosition(I1))) + ComponentRelativeLocation;
+				FVector C = ComponentTransform.TransformVector(FVector(PositionBuffer.VertexPosition(I2))) + ComponentRelativeLocation;
+				// A negative scale reverses triangle winding. Restore the source mesh's
+				// front-face orientation so the shade pass's back-face test remains valid.
+				if (HasNegativeTransformDeterminant(ComponentTransform))
+				{
+					Swap(B, C);
+				}
 				if (!IsFiniteVector(A) || !IsFiniteVector(B) || !IsFiniteVector(C))
 				{
 					++OutStats.SkippedInvalidTriangles;
@@ -876,6 +890,12 @@ bool DDGISoftwareBVH::BuildStaticWorld(
 							if (!IsFiniteVector(P[Corner])) { bValid = false; break; }
 						}
 						if (!bValid) { ++OutStats.SkippedInvalidTriangles; continue; }
+						// BSP components can also carry negative scale; keep their
+						// transformed winding consistent with the static-mesh path.
+						if (HasNegativeTransformDeterminant(ComponentTransform))
+						{
+							Swap(P[1], P[2]);
+						}
 						const FVector E0 = P[1] - P[0];
 						const FVector E1 = P[2] - P[0];
 						const float Scale = FMath::Max(FMath::Max(FMath::Max(FMath::Abs(E0.X),FMath::Abs(E0.Y)),FMath::Abs(E0.Z)),FMath::Max(FMath::Max(FMath::Abs(E1.X),FMath::Abs(E1.Y)),FMath::Abs(E1.Z)));
