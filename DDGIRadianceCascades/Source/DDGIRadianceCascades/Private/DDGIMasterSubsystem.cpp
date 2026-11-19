@@ -361,9 +361,12 @@ namespace
 
 						// Retain one current-level cell beyond the requested
 						// radius so trilinear reconstruction has its outer corners.
-						const double DX = static_cast<double>(CellX - CenterCell.X) * SafeSpacing;
-						const double DY = static_cast<double>(CellY - CenterCell.Y) * SafeSpacing;
-						const double DZ = static_cast<double>(CellZ - CenterCell.Z) * SafeSpacing;
+						// Match the shader's clipmap distance calculation: each level
+						// is centered on its independently snapped lattice center,
+						// not on the finest-level camera cell.
+						const double DX = static_cast<double>(CellX - CenterX) * SafeSpacing;
+						const double DY = static_cast<double>(CellY - CenterY) * SafeSpacing;
+						const double DZ = static_cast<double>(CellZ - CenterZ) * SafeSpacing;
 						const double EffectiveHalfExtent = FMath::Min(HalfExtent, SafeRadius);
 						if (FMath::Max(FMath::Abs(DX), FMath::Max(FMath::Abs(DY), FMath::Abs(DZ))) >
 							EffectiveHalfExtent + SafeSpacing * static_cast<double>(Step) ||
