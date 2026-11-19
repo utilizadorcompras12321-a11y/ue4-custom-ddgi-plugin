@@ -1597,11 +1597,6 @@ bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
     const FDDGIRadianceCascadeGPUStorage* Storage = GDDGIRadianceCascadeStorage_RenderThread.Find(Scene);
     if (!Storage)
     {
-        static bool bLoggedMissingStorage = false;
-        if (!bLoggedMissingStorage)
-        {
-            bLoggedMissingStorage = true;
-        }
         return false;
     }
 
@@ -1617,19 +1612,6 @@ bool DDGIGetRadianceCascadePhysicalSlotResources_RenderThread(
     if (bPendingUpload || bInvalidatingAll || bInitializationWithoutNewSlots ||
         bMissingLogicalSRV || bMissingNewSlotsSRV || bLogicalCountMismatch || bNoPhysicalCapacity)
     {
-        static uint32 LastLoggedFailureMask = MAX_uint32;
-        const uint32 FailureMask =
-            (bPendingUpload ? 1u : 0u) |
-            (bInvalidatingAll ? 2u : 0u) |
-            (bInitializationWithoutNewSlots ? 4u : 0u) |
-            (bMissingLogicalSRV ? 8u : 0u) |
-            (bMissingNewSlotsSRV ? 16u : 0u) |
-            (bLogicalCountMismatch ? 32u : 0u) |
-            (bNoPhysicalCapacity ? 64u : 0u);
-        if (FailureMask != LastLoggedFailureMask)
-        {
-            LastLoggedFailureMask = FailureMask;
-        }
         return false;
     }
 
