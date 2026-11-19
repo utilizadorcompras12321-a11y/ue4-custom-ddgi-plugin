@@ -295,11 +295,11 @@ namespace
 			return;
 		}
 
-		// Four nested full 16^3 clipmaps. Every level is aligned to the
+		// Four nested full 15^3 clipmaps. Every level is aligned to the
 		// immutable world lattice; level spacing doubles. Full coarse lattices
 		// preserve all eight trilinear corners throughout radial transitions.
-		static const int32 ClipmapResolution = 16;
-		static const int32 ClipmapMinOffset = -8;
+		static const int32 ClipmapResolution = 15;
+		static const int32 ClipmapMinOffset = -7;
 		static const int32 ClipmapMaxOffset = 7;
 		static const int32 ClipmapLevelCount = 4;
 
@@ -334,7 +334,7 @@ namespace
 						// exclusion removes trilinear corners while the radial transition
 						// is already blending. That partial support causes probe-shaped
 						// patches and hard fallback snaps. Four full levels are only
-						// 16,384 probes, within the default 32,768-probe budget.
+						// 13,500 probes, within the default 32,768-probe budget.
 
 						// Retain one current-level cell beyond the requested
 						// radius so trilinear reconstruction has its outer corners.
