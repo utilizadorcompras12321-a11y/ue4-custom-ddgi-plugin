@@ -461,22 +461,19 @@ float3 DDGIInterpolateLevelPair(
         LocalPosition, Normal, LevelB, bValidB, CoverageB);
 
     const float Blend = saturate(T);
-    OutValid = bValidA || bValidB;
 
-    // When both clipmaps have trilinear support, use the actual spatial
-    // transition factor directly. Renormalizing by per-level coverage changes
-    // T according to which lattice corners happen to be initialized/present;
-    // that creates probe-shaped patches instead of a stable clipmap blend.
-    if (bValidA && bValidB)
-    {
-        return lerp(ValueA, ValueB, Blend);
-    }
+    // Treat missing initialized probes as missing spatial coverage, not as a
+    // binary level-validity switch. The coarse level fills the fine level's
+    // unavailable fraction, so startup does not jump from coarse-only to a
+    // fully weighted fine sample when the last fine probe becomes initialized.
+    const float FineWeight = (1.0f - Blend) * CoverageA;
+    const float CoarseWeight =
+        (Blend + (1.0f - Blend) * (1.0f - CoverageA)) * CoverageB;
+    const float TotalWeight = FineWeight + CoarseWeight;
+    OutValid = TotalWeight > 0.00001f;
+    if (!OutValid) return 0.0f;
 
-    // Missing support is a startup/layout condition, not a reason to alter
-    // the blend curve when both levels are available.
-    if (bValidA) return ValueA;
-    if (bValidB) return ValueB;
-    return 0.0f;
+    return (ValueA * FineWeight + ValueB * CoarseWeight) / TotalWeight;
 }
 
 [numthreads(8, 8, 1)]
@@ -611,8 +608,8 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         // boundary. The remaining lattice margin contains every non-zero
         // trilinear corner, including the maximum half-cell center offset.
         const float TransitionWidth = min(
-            max(1.0f, LevelSpacing * 0.5f),
-            max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.30f));
+            max(1.0f, LevelSpacing * 1.25f),
+            max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.45f));
 
         if (ClipmapDistance <= ClipmapExtent + TransitionWidth)
         {
@@ -682,10 +679,22 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
                     return;
                 }
                 bool bCurrentLevelValid = false;
-                float CurrentLevelCoverage = 0.0f;
-                float3 CurrentLevelIrradiance = DDGISampleLevelValue(
-                    LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid,
-                    CurrentLevelCoverage);
+                float3 CurrentLevelIrradiance = 0.0f;
+                if (ClipmapLevel < 3u)
+                {
+                    // Even away from the geometric transition, let the next
+                    // coarser level fill probes that have not finished tracing.
+                    CurrentLevelIrradiance = DDGIInterpolateLevelPair(
+                        LocalPosition, Normal, ClipmapLevel, ClipmapLevel + 1u,
+                        0.0f, bCurrentLevelValid);
+                }
+                else
+                {
+                    float CurrentLevelCoverage = 0.0f;
+                    CurrentLevelIrradiance = DDGISampleLevelValue(
+                        LocalPosition, Normal, ClipmapLevel, bCurrentLevelValid,
+                        CurrentLevelCoverage);
+                }
                 if (bCurrentLevelValid)
                 {
                     Irradiance = CurrentLevelIrradiance;
