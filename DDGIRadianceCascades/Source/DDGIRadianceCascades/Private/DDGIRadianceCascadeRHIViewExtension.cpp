@@ -30,6 +30,12 @@ static TAutoConsoleVariable<int32> CVarDDGIDebugApply(
     TEXT("DDGI apply debug view (0=off, 1=probe coverage, 2=raw irradiance, 3=solid magenta, 4-7=spatial-level irradiance)."),
     ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarDDGITraceProbesPerFrame(
+    TEXT("r.DDGI.TraceProbesPerFrame"),
+    128,
+    TEXT("Number of DDGI probes retraced per frame for dynamic lighting updates (default 128)."),
+    ECVF_RenderThreadSafe);
+
 static void DDGITransitionTexture(
 	FRHICommandList& RHICmdList,
 	FRHITexture* Texture,
@@ -1472,10 +1478,11 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		return;
 	}
 
-	// Trace and integrate the complete active clipmap when its layout changes.
-	// The resource-side cursor marks the layout complete, so steady-state frames
-	// do not repeat millions of static-scene rays.
-	const uint32 TraceProbeCount = ProbeCount;
+	// Refresh a bounded batch every frame. The round-robin cursor keeps the
+	// complete active clipmap current without tracing every probe in one frame.
+	const uint32 TraceProbeBudget = static_cast<uint32>(FMath::Clamp(
+		CVarDDGITraceProbesPerFrame.GetValueOnRenderThread(), 1, 32768));
+	const uint32 TraceProbeCount = FMath::Min(ProbeCount, TraceProbeBudget);
 	if (TraceProbeCount == 0u)
 	{
 		return;
