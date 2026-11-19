@@ -462,8 +462,13 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         // geometric overlap. A much wider blend samples levels far outside
         // that shared support and makes the transition drift / smear.
         const float TransitionWidth = min(
-            max(ProbeSpacing * 2.0f * LevelScale, ClipmapExtent * 0.08f),
-            max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.30f));
+            min(
+                max(ProbeSpacing * 2.0f * LevelScale, ClipmapExtent * 0.08f),
+                max(1.0f, (ClipmapExtent - PreviousClipmapExtent) * 0.30f)),
+            // The CPU clipmap builder retains only one level cell beyond
+            // the nominal extent for trilinear corner support. Never blend
+            // beyond that generated spatial margin.
+            max(1.0f, ProbeSpacing * LevelScale));
 
         if (ClipmapDistance <= ClipmapExtent + TransitionWidth)
         {
