@@ -13,7 +13,7 @@ float MaxTraceDistance;
 Texture2D<float> HitDistanceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
 StructuredBuffer<uint> LogicalToPhysicalSlots;
-RWTexture2D<float4> VisibilityHistogramUAV;
+RWTexture2D<float4> VisibilityMomentsUAV;
 
 // Store an empirical hit-distance histogram instead of only its mean and
 // variance. Moments can hide a nearby blocker when most child rays hit much
@@ -119,10 +119,10 @@ void RadianceCascadeVisibilityMomentsCS(uint3 DispatchThreadId : SV_DispatchThre
 
     // A valid histogram sums to ChildCount. Negative values are an explicit
     // invalid sentinel; all counts are small exact integers in half-float.
-    VisibilityHistogramUAV[BasePixel] = bSamplesValid
+    VisibilityMomentsUAV[BasePixel] = bSamplesValid
         ? Histogram0
         : float4(-1.0f, -1.0f, -1.0f, -1.0f);
-    VisibilityHistogramUAV[SecondaryPixel] = bSamplesValid
+    VisibilityMomentsUAV[SecondaryPixel] = bSamplesValid
         ? Histogram1
         : float4(-1.0f, -1.0f, -1.0f, -1.0f);
 }
