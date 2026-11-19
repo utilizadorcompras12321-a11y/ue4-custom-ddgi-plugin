@@ -8,6 +8,7 @@ uint TraceStartIndex;
 uint TotalRaysPerProbe;
 uint BaseRayCount;
 uint CascadeCount;
+float MaxTraceDistance;
 
 Texture2D<float> HitDistanceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
@@ -80,7 +81,8 @@ void RadianceCascadeVisibilityMomentsCS(uint3 DispatchThreadId : SV_DispatchThre
         {
             // A negative tagged distance is a hit before this cascade's
             // interval; abs() restores its probe-relative first-hit distance.
-            const float HitDistance = abs(HitDistanceTexture.Load(int3(Pixel, 0)));
+            const float DistanceScale = max(MaxTraceDistance, 1.0f);
+            const float HitDistance = abs(HitDistanceTexture.Load(int3(Pixel, 0))) / DistanceScale;
             if (!isfinite(HitDistance) || HitDistance <= 0.0f)
             {
                 bSamplesValid = false;
