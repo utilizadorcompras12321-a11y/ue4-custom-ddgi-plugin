@@ -16,7 +16,7 @@ uint bHasScreenSpaceAO;
 Texture2D<float4> DirectionsTexture;
 Texture2D<uint> RadianceTexture;
 Texture2D<uint> HitTriangleIndexTexture;
-Texture2D<float4> VisibilityHistogramTexture;
+Texture2D<float4> VisibilityMomentsTexture;
 Texture2D<float4> ProbePositionsTexture;
 StructuredBuffer<int4> ProbeSpatialHash;
 StructuredBuffer<uint> ProbeNeighborIndices;
@@ -117,7 +117,8 @@ float DDGIProbeVisibility(
 
     const uint SampleCount = 1u << min(CascadeCount - 1u, 7u);
     const float TotalSamples =
-        dot(Histogram0, 1.0f) + dot(Histogram1, 1.0f);
+        dot(Histogram0, float4(1.0f, 1.0f, 1.0f, 1.0f)) +
+        dot(Histogram1, float4(1.0f, 1.0f, 1.0f, 1.0f));
     if (SampleCount < 2u ||
         abs(TotalSamples - (float)SampleCount) > 0.25f)
     {
@@ -161,7 +162,6 @@ float DDGIProbeVisibility(
         }
     }
 
-    const float MissCount = Histogram1.w;
     return saturate(
         ((float)SampleCount - BlockedHitCount) / (float)SampleCount);
 }
@@ -247,9 +247,9 @@ float3 DDGIProbeDiffuseIrradiance(
             BestHistogramLinearIndex % DDGI_RC_TEXTURE_WIDTH,
             BestHistogramLinearIndex / DDGI_RC_TEXTURE_WIDTH);
         const float4 BestHistogram0 =
-            VisibilityHistogramTexture.Load(int3(BestPixel, 0));
+            VisibilityMomentsTexture.Load(int3(BestPixel, 0));
         const float4 BestHistogram1 =
-            VisibilityHistogramTexture.Load(int3(BestHistogramPixel, 0));
+            VisibilityMomentsTexture.Load(int3(BestHistogramPixel, 0));
         const float BestVisibility =
             DDGIProbeVisibility(BestHistogram0, BestHistogram1, ReceiverDistance);
 
@@ -269,9 +269,9 @@ float3 DDGIProbeDiffuseIrradiance(
                 SecondHistogramLinearIndex % DDGI_RC_TEXTURE_WIDTH,
                 SecondHistogramLinearIndex / DDGI_RC_TEXTURE_WIDTH);
             const float4 SecondHistogram0 =
-                VisibilityHistogramTexture.Load(int3(SecondPixel, 0));
+                VisibilityMomentsTexture.Load(int3(SecondPixel, 0));
             const float4 SecondHistogram1 =
-                VisibilityHistogramTexture.Load(int3(SecondHistogramPixel, 0));
+                VisibilityMomentsTexture.Load(int3(SecondHistogramPixel, 0));
             const float SecondVisibility =
                 DDGIProbeVisibility(SecondHistogram0, SecondHistogram1, ReceiverDistance);
             const float BestWeight =
