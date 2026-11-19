@@ -919,7 +919,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	static bool bLoggedApplyCallback = false;
 	if (!bLoggedApplyCallback)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: experimental diffuse-indirect GI callback executed before fog/translucency."));
 		bLoggedApplyCallback = true;
 	}
 
@@ -934,7 +933,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 		static bool bLoggedMissingRendererResources = false;
 		if (!bLoggedMissingRendererResources)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: experimental GI callback received incomplete scene resources."));
 			bLoggedMissingRendererResources = true;
 		}
 		return;
@@ -975,7 +973,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 		static bool bLoggedMissingLightingTextures = false;
 		if (!bLoggedMissingLightingTextures)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback cannot acquire completed radiance/probe textures."));
 			bLoggedMissingLightingTextures = true;
 		}
 		return;
@@ -1000,7 +997,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 		static bool bLoggedMissingHash = false;
 		if (!bLoggedMissingHash)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: apply callback cannot acquire a valid probe spatial hash."));
 			bLoggedMissingHash = true;
 		}
 		return;
@@ -1122,8 +1118,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	static bool bLoggedApplyScheduled = false;
 	if (!bLoggedApplyScheduled)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: pre-fog GI pass scheduled. Probes=%u RaysPerProbe=%u HashCapacity=%u View=%dx%d."),
-			ProbeCount, TotalRaysPerProbe, HashCapacity, ViewSize.X, ViewSize.Y);
 		bLoggedApplyScheduled = true;
 	}
 }
@@ -1146,7 +1140,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	static bool bLoggedPreRenderEntry = false;
 	if (!bLoggedPreRenderEntry)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: PreRenderView_RenderThread executed."));
 		bLoggedPreRenderEntry = true;
 	}
 
@@ -1162,7 +1155,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		static bool bLoggedPreRenderNoConfig = false;
 		if (!bLoggedPreRenderNoConfig)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: PreRenderView has no enabled master config for this scene."));
 			bLoggedPreRenderNoConfig = true;
 		}
 		return;
@@ -1199,7 +1191,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		static bool bLoggedPreRenderNoResources = false;
 		if (!bLoggedPreRenderNoResources)
 		{
-			UE_LOG(LogTemp, Error, TEXT("DDGI DIAG: PreRenderView cannot acquire tracing GPU resources."));
 			bLoggedPreRenderNoResources = true;
 		}
 		return;
@@ -1208,7 +1199,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	static bool bLoggedTraceStart = false;
 	if (!bLoggedTraceStart)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: tracing resources acquired. Probes=%u RaysPerProbe=%u."), ProbeCount, TotalRaysPerProbe);
 		bLoggedTraceStart = true;
 	}
 
@@ -1412,17 +1402,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	static bool bLoggedTraceLightingConfig = false;
 	if (!bLoggedTraceLightingConfig)
 	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("DDGI DIAG: GPU tracing lighting config: HasDirectionalLight=%d Direction=(%.4f, %.4f, %.4f) Color=(%.4f, %.4f, %.4f) Intensity=%.6f; StaticBackground=%d Color=(%.4f, %.4f, %.4f) Intensity=%.4f Transition=(%.1f, %.1f); GIIntensity=%.4f."),
-			Config->bHasDirectionalLight ? 1 : 0,
-			Config->DirectionalLightDirection.X, Config->DirectionalLightDirection.Y, Config->DirectionalLightDirection.Z,
-			Config->DirectionalLightColor.R, Config->DirectionalLightColor.G, Config->DirectionalLightColor.B,
-			Config->DirectionalLightIntensity,
-			Config->bEnableStaticBackground ? 1 : 0,
-			Config->StaticBackgroundColor.R, Config->StaticBackgroundColor.G, Config->StaticBackgroundColor.B,
-			Config->StaticBackgroundIntensity,
-			Config->BackgroundTransitionStart, Config->BackgroundTransitionEnd,
-			Config->GIIntensity);
 		bLoggedTraceLightingConfig = true;
 	}
 
