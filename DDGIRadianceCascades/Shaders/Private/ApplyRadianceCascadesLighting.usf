@@ -619,6 +619,15 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
                     max(2.0f * TransitionWidth, 0.001f));
                 const float T = TransitionU * TransitionU * TransitionU *
                     (TransitionU * (TransitionU * 6.0f - 15.0f) + 10.0f);
+                if (DebugMode == 8u)
+                {
+                    // Red = fine contribution, green = coarse contribution.
+                    // This mode visualizes the actual spatial blend factor,
+                    // independent of radiance values and probe visibility.
+                    SceneColorOutputUAV[BufferPixelIndex] =
+                        float4(1.0f - T, T, 0.0f, 1.0f);
+                    return;
+                }
                 bool bTransitionValid = false;
                 const float3 TransitionIrradiance = DDGIInterpolateLevelPair(
                     LocalPosition, Normal, ClipmapLevel, ClipmapLevel + 1u,
@@ -633,6 +642,13 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
             if (ClipmapDistance <= ClipmapExtent)
             {
+                if (DebugMode == 8u)
+                {
+                    const float LevelCode = (float)ClipmapLevel / 3.0f;
+                    SceneColorOutputUAV[BufferPixelIndex] =
+                        float4(LevelCode, 0.0f, 1.0f - LevelCode, 1.0f);
+                    return;
+                }
                 bool bCurrentLevelValid = false;
                 float CurrentLevelCoverage = 0.0f;
                 float3 CurrentLevelIrradiance = DDGISampleLevelValue(
