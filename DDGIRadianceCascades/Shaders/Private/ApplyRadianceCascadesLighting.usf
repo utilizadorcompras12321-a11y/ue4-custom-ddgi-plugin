@@ -329,11 +329,9 @@ float3 DDGISampleProbeLevel(
     float3 LocalPosition,
     float3 Normal,
     uint Level,
-    out float OutSpatialWeightSum,
-    out float OutVisibleWeightSum)
+    out float OutSpatialWeightSum)
 {
     OutSpatialWeightSum = 0.0f;
-    OutVisibleWeightSum = 0.0f;
     float3 Irradiance = 0.0f;
     uint LevelStep = DDGIGetSpatialLevelStep(Level);
     float LevelSpacing = max(ProbeSpacing, 1.0f) * (float)LevelStep;
@@ -416,7 +414,6 @@ float3 DDGISampleProbeLevel(
 
         Irradiance += DDGIProbeDiffuseIrradiance(
             ProbeIndex, ProbePosition, LocalPosition, Normal) * Weight;
-        OutVisibleWeightSum += Weight;
     }
 
     // Normalize by available geometric support, not by visible support.
@@ -434,9 +431,8 @@ float3 DDGISampleLevelValue(
     out float OutCoverage)
 {
     float SpatialWeightSum = 0.0f;
-    float VisibleWeightSum = 0.0f;
     float3 Value = DDGISampleProbeLevel(
-        LocalPosition, Normal, Level, SpatialWeightSum, VisibleWeightSum);
+        LocalPosition, Normal, Level, SpatialWeightSum);
     // Coverage is geometric support, not receiver-side visibility.
     // VisibleWeightSum includes the per-probe normal fade; using it here
     // makes cascade blending follow individual probe influence lobes and
@@ -444,7 +440,13 @@ float3 DDGISampleLevelValue(
     // SpatialWeightSum still preserves partial trilinear support when a
     // sparse level is missing one or more interpolation corners.
     OutCoverage = saturate(SpatialWeightSum);
-    OutValid = SpatialWeightSum > 0.00001f && VisibleWeightSum > 0.00001f;
+    // A level is supported when its trilinear lattice exists, even if its
+    // probes are currently faded by the receiver-side normal test. Treating
+    // zero visible weight as invalid switches to the other clipmap at full
+    // strength and bypasses T, producing a hard seam instead of a blend.
+    // The side fade is already present in Value and therefore remains part
+    // of the continuous radiance interpolation.
+    OutValid = SpatialWeightSum > 0.00001f;
     return Value;
 }
 
