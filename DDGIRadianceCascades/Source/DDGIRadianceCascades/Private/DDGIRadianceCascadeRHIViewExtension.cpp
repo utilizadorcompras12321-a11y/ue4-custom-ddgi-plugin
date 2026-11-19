@@ -36,6 +36,12 @@ static TAutoConsoleVariable<int32> CVarDDGITraceProbesPerFrame(
     TEXT("Number of DDGI probes retraced per frame for dynamic lighting updates (default 128)."),
     ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<float> CVarDDGITemporalBlend(
+    TEXT("r.DDGI.TemporalBlend"),
+    0.9f,
+    TEXT("Fraction of newly traced DDGI radiance used when refreshing a probe (0=keep history, 1=replace; default 0.9)."),
+    ECVF_RenderThreadSafe);
+
 static void DDGITransitionTexture(
 	FRHICommandList& RHICmdList,
 	FRHITexture* Texture,
@@ -736,6 +742,8 @@ public:
 		TotalIntegrationTexels.Bind(Initializer.ParameterMap, TEXT("TotalIntegrationTexels"));
 		DispatchGroupsX.Bind(Initializer.ParameterMap, TEXT("DispatchGroupsX"));
 		TotalRaysPerProbe.Bind(Initializer.ParameterMap, TEXT("TotalRaysPerProbe"));
+		BaseRayCount.Bind(Initializer.ParameterMap, TEXT("BaseRayCount"));
+		TemporalBlendAlpha.Bind(Initializer.ParameterMap, TEXT("TemporalBlendAlpha"));
 		ProbeCount.Bind(Initializer.ParameterMap, TEXT("ProbeCount"));
 		ProbeStartIndex.Bind(Initializer.ParameterMap, TEXT("ProbeStartIndex"));
 		CascadeStorageOffset.Bind(Initializer.ParameterMap, TEXT("CascadeStorageOffset"));
@@ -766,6 +774,8 @@ public:
 		uint32 InTotalIntegrationTexels,
 		uint32 InDispatchGroupsX,
 		uint32 InTotalRaysPerProbe,
+		uint32 InBaseRayCount,
+		float InTemporalBlendAlpha,
 		uint32 InProbeCount,
 		uint32 InProbeStartIndex,
 		uint32 InCascadeStorageOffset,
@@ -778,6 +788,8 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, TotalIntegrationTexels, InTotalIntegrationTexels);
 		SetShaderValue(RHICmdList, ShaderRHI, DispatchGroupsX, InDispatchGroupsX);
 		SetShaderValue(RHICmdList, ShaderRHI, TotalRaysPerProbe, InTotalRaysPerProbe);
+		SetShaderValue(RHICmdList, ShaderRHI, BaseRayCount, InBaseRayCount);
+		SetShaderValue(RHICmdList, ShaderRHI, TemporalBlendAlpha, InTemporalBlendAlpha);
 		SetShaderValue(RHICmdList, ShaderRHI, ProbeCount, InProbeCount);
 		SetShaderValue(RHICmdList, ShaderRHI, ProbeStartIndex, InProbeStartIndex);
 		SetShaderValue(RHICmdList, ShaderRHI, CascadeStorageOffset, InCascadeStorageOffset);
@@ -836,6 +848,8 @@ private:
 	LAYOUT_FIELD(FShaderParameter, TotalIntegrationTexels);
 	LAYOUT_FIELD(FShaderParameter, DispatchGroupsX);
 	LAYOUT_FIELD(FShaderParameter, TotalRaysPerProbe);
+	LAYOUT_FIELD(FShaderParameter, BaseRayCount);
+	LAYOUT_FIELD(FShaderParameter, TemporalBlendAlpha);
 	LAYOUT_FIELD(FShaderParameter, ProbeCount);
 	LAYOUT_FIELD(FShaderParameter, ProbeStartIndex);
 	LAYOUT_FIELD(FShaderParameter, CascadeStorageOffset);
@@ -1629,6 +1643,7 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		IntegrationHitTriangleIndexSRV,
 		LogicalToPhysicalSRV,
 		TraceTotalTexels, TraceGroupsX, TotalRaysPerProbe,
+		BaseRayCount, 1.0f,
 		ProbeCount, TraceStartIndex, 0u, TotalRaysPerProbe, 0u, 1u);
 	DispatchComputeShader(RHICmdList, IntegrateShader.GetShader(), TraceGroupsX, TraceGroupsY, 1);
 	IntegrateShader->UnbindResources(RHICmdList, IntegrateShader.GetComputeShader());
@@ -1639,6 +1654,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	// pass reads child rays from a disjoint range and writes only its parent
 	// range, so untouched probes retain their prior final radiance.
 	const uint32 CascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
+	const float TemporalBlendAlpha = FMath::Clamp(
+		CVarDDGITemporalBlend.GetValueOnRenderThread(), 0.0f, 1.0f);
 	for (int32 CascadeIndex = static_cast<int32>(CascadeCount) - 2; CascadeIndex >= 0; --CascadeIndex)
 	{
 		const uint32 CurrentCascadeRayCount = static_cast<uint32>(
@@ -1662,6 +1679,8 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 			IntegrationScratchUAV, GatherOutputSRV, IntegrationHitDistanceSRV,
 			IntegrationHitTriangleIndexSRV, LogicalToPhysicalSRV,
 			IntegrationTexels, IntegrationGroups, TotalRaysPerProbe,
+			BaseRayCount,
+			CascadeIndex == 0 ? TemporalBlendAlpha : 1.0f,
 			ProbeCount, TraceStartIndex,
 			static_cast<uint32>(Config->RadianceCascades.GetRayStorageOffset(CascadeIndex)),
 			CurrentCascadeRayCount,
