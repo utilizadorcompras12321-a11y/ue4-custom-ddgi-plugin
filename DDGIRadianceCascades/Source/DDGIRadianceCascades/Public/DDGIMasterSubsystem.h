@@ -63,6 +63,8 @@ struct FDDGIMasterConfig
 	UPROPERTY() FVector ProbeGridOrigin = FVector::ZeroVector;
 	// Continuous camera world-space center used for cascade blending; probe membership remains snapped.
 	UPROPERTY() FVector ActiveProbeWindowCenter = FVector::ZeroVector;
+	// Integer world-lattice center used by the spatial clipmap builder and apply-pass boundaries.
+	UPROPERTY() FIntVector ActiveProbeWindowCenterCell = FIntVector::ZeroValue;
 	// Fingerprint of the integer lattice; unchanged by translating the grid.
 	uint32 ProbeLayoutHash = 0;
 	UPROPERTY() TArray<FVector4> ProbePositions;
