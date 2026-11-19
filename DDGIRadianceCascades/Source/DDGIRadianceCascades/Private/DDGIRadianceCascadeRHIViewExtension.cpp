@@ -916,11 +916,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	FRDGBuilder& GraphBuilder,
 	FGlobalIlluminationExperimentalPluginResources& Resources)
 {
-	static bool bLoggedApplyCallback = false;
-	if (!bLoggedApplyCallback)
-	{
-		bLoggedApplyCallback = true;
-	}
 
 	const FSceneInterface* Scene = static_cast<const FSceneInterface*>(&InScene);
 	if (!Scene ||
@@ -930,11 +925,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 		!Resources.GBufferC.IsValid() ||
 		!Resources.SceneDepthZ.IsValid())
 	{
-		static bool bLoggedMissingRendererResources = false;
-		if (!bLoggedMissingRendererResources)
-		{
-			bLoggedMissingRendererResources = true;
-		}
 		return;
 	}
 
@@ -970,11 +960,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 		GraphBuilder, Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture,
 		HitTriangleIndexTexture, ProbePositionsTexture, ProbeCount, TotalRaysPerProbe))
 	{
-		static bool bLoggedMissingLightingTextures = false;
-		if (!bLoggedMissingLightingTextures)
-		{
-			bLoggedMissingLightingTextures = true;
-		}
 		return;
 	}
 
@@ -994,11 +979,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 		Scene, ProbeSpatialHashSRV, HashCapacity, ProbeSpacing) ||
 		!ProbeSpatialHashSRV.IsValid() || HashCapacity == 0)
 	{
-		static bool bLoggedMissingHash = false;
-		if (!bLoggedMissingHash)
-		{
-			bLoggedMissingHash = true;
-		}
 		return;
 	}
 
@@ -1115,11 +1095,6 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 		View.ViewRect.Min,
 		View.ViewRect.Size());
 
-	static bool bLoggedApplyScheduled = false;
-	if (!bLoggedApplyScheduled)
-	{
-		bLoggedApplyScheduled = true;
-	}
 }
 
 FDDGIRadianceCascadeRHIViewExtension::FDDGIRadianceCascadeRHIViewExtension(const FAutoRegister& AutoRegister)
@@ -1137,11 +1112,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	FSceneView& InView)
 {
 	check(IsInRenderingThread());
-	static bool bLoggedPreRenderEntry = false;
-	if (!bLoggedPreRenderEntry)
-	{
-		bLoggedPreRenderEntry = true;
-	}
 
 	if (!InView.Family || !InView.Family->Scene)
 	{
@@ -1152,11 +1122,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	const FDDGIMasterConfig* Config = DDGIGetMasterConfig_RenderThread(Scene);
 	if (!Config || !Config->bEnableDynamicGI)
 	{
-		static bool bLoggedPreRenderNoConfig = false;
-		if (!bLoggedPreRenderNoConfig)
-		{
-			bLoggedPreRenderNoConfig = true;
-		}
 		return;
 	}
 
@@ -1188,19 +1153,9 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 		Scene, DirectionsTexture, RadianceTexture, HitDistanceTexture, HitTriangleIndexTexture, ProbePositionsTexture,
 		ProbeCount, TotalRaysPerProbe))
 	{
-		static bool bLoggedPreRenderNoResources = false;
-		if (!bLoggedPreRenderNoResources)
-		{
-			bLoggedPreRenderNoResources = true;
-		}
 		return;
 	}
 
-	static bool bLoggedTraceStart = false;
-	if (!bLoggedTraceStart)
-	{
-		bLoggedTraceStart = true;
-	}
 
 	const uint32 TotalTexels = ProbeCount * TotalRaysPerProbe;
 	if (TotalTexels == 0)
@@ -1398,11 +1353,6 @@ void FDDGIRadianceCascadeRHIViewExtension::PreRenderView_RenderThread(
 	if (TraceStartIndex == MAX_uint32)
 	{
 		return;
-	}
-	static bool bLoggedTraceLightingConfig = false;
-	if (!bLoggedTraceLightingConfig)
-	{
-		bLoggedTraceLightingConfig = true;
 	}
 
 	const uint32 ActiveCascadeCount = static_cast<uint32>(Config->RadianceCascades.GetSafeCascadeCount());
