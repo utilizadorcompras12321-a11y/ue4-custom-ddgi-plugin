@@ -101,7 +101,17 @@ bool DDGIIsProbeInitialized(uint ProbeIndex)
 // hit distributions cannot be hidden by a mean that lies behind the receiver.
 float DDGIGetVisibilityHistogramBin(float4 Histogram0, float4 Histogram1, uint BinIndex)
 {
-    return BinIndex < 4u ? Histogram0[BinIndex] : Histogram1[BinIndex - 4u];
+    // Use explicit components instead of dynamic vector indexing. FXC's
+    // literal-loop unroller can evaluate both sides of the old ternary and
+    // diagnose Histogram1[BinIndex - 4] as an out-of-bounds access for bins 0-3.
+    if (BinIndex == 0u) return Histogram0.x;
+    if (BinIndex == 1u) return Histogram0.y;
+    if (BinIndex == 2u) return Histogram0.z;
+    if (BinIndex == 3u) return Histogram0.w;
+    if (BinIndex == 4u) return Histogram1.x;
+    if (BinIndex == 5u) return Histogram1.y;
+    if (BinIndex == 6u) return Histogram1.z;
+    return 0.0f;
 }
 
 float DDGIProbeVisibility(
