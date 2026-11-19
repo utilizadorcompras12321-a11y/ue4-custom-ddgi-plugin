@@ -434,13 +434,12 @@ float3 DDGISampleLevelValue(
     // Coverage is the fraction of the trilinear lattice represented by
     // initialized probes. Partial support is retained for transition weights.
     OutCoverage = saturate(SpatialWeightSum);
-    // A level is supported when its trilinear lattice exists, even if its
-    // probes are currently faded by the receiver-side normal test. Treating
-    // zero visible weight as invalid switches to the other clipmap at full
-    // strength and bypasses T, producing a hard seam instead of a blend.
-    // The side fade is already present in Value and therefore remains part
-    // of the continuous radiance interpolation.
-    OutValid = SpatialWeightSum > 0.00001f;
+    // A level is supported only when every non-zero trilinear corner has
+    // been initialized. Partial lattices are not valid samples: normalizing
+    // their remaining weights amplifies isolated probes into visible patches
+    // and lets the transition snap when the other level becomes available.
+    // Receiver-side normal fading is deliberately excluded from this test.
+    OutValid = SpatialWeightSum >= 0.999f;
     return Value;
 }
 
