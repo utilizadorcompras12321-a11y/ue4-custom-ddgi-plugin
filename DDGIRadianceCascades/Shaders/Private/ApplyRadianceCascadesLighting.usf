@@ -560,7 +560,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     // Each level rounds that shared center independently, just like the CPU clipmap builder.
     const int3 BaseWindowCell = int3(ActiveWindowCenterCell.xyz);
 
-    // Spatial levels are nested clipmaps with 16 cells per axis. Their
+    // Spatial levels are nested clipmaps with 15 lattice points per axis. Their
     // half-extents double with each level; only the finest level covering the
     // receiver is sampled, with a narrow overlap at each clipmap boundary.
     float3 Irradiance = 0.0f;
