@@ -102,71 +102,46 @@ bool DDGIIsProbeInitialized(uint ProbeIndex)
 // Read the precomputed hit-distance moments for the angular cell facing
 // this receiver. Moments live in the otherwise transient gather scratch
 // texture, after integration has finished for the updated probe batch.
-float DDGIProbeChebyshevVisibility(
-    uint PhysicalProbeIndex,
-    uint BaseRayIndex,
-    float ReceiverDistance)
+float DDGIProbeChebyshevVisibility(float4 Moments, float ReceiverDistance)
 {
-    if (CascadeCount < 2u || BaseRayCount == 0u ||
-        BaseRayIndex >= BaseRayCount || !isfinite(ReceiverDistance))
-    {
-        return 1.0f;
-    }
-
-    const uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + BaseRayIndex;
-    const uint2 Pixel = uint2(
-        LinearIndex % DDGI_RC_TEXTURE_WIDTH,
-        LinearIndex / DDGI_RC_TEXTURE_WIDTH);
-    const float4 Moments = VisibilityMomentsTexture.Load(int3(Pixel, 0));
-
     const float SampleCount = Moments.w;
     const float HitCount = Moments.z;
     if (!all(isfinite(Moments)) || SampleCount < 2.0f ||
         HitCount < 0.0f || HitCount > SampleCount)
     {
-        // Uninitialized or incomplete probe history is unoccluded until its
-        // complete finest-cascade distribution has been generated.
         return 1.0f;
     }
-
     if (HitCount <= 0.0f)
     {
         return 1.0f;
     }
 
-    const float MissCount = max(SampleCount - HitCount, 0.0f);
-    // A miss only says that no surface was found within the trace limit.
-    // Place it beyond this receiver so trace range cannot create spherical
-    // cutoffs around probes.
-    const float MissDistance = max(
-        MaxTraceDistance,
-        ReceiverDistance + max(ProbeSpacing, 1.0f));
-    const float DistanceSum = Moments.x + MissCount * MissDistance;
-    const float DistanceSquaredSum =
-        Moments.y + MissCount * MissDistance * MissDistance;
-
-    const float InvSampleCount = rcp(SampleCount);
-    const float MeanDistance = DistanceSum * InvSampleCount;
-    const float MeanSquaredDistance = DistanceSquaredSum * InvSampleCount;
+    // Moments contain only actual hits. Misses contribute through hit
+    // coverage, not an artificial far distance that would bias the mean.
+    const float MeanDistance = Moments.x / HitCount;
+    const float MeanSquaredDistance = Moments.y / HitCount;
+    const float VarianceFloor = max(ProbeSpacing * 0.02f, 0.5f);
     const float Variance = max(
         MeanSquaredDistance - MeanDistance * MeanDistance,
-        0.0f);
+        VarianceFloor * VarianceFloor);
 
-    // A small receiver bias avoids self-occlusion when the receiver lies
-    // almost exactly on the probe's sampled mean-distance surface.
     const float ReceiverBias = max(ProbeSpacing * 0.05f, 0.5f);
     const float BiasedReceiverDistance = max(ReceiverDistance - ReceiverBias, 0.0f);
     const float DistanceFromMean = BiasedReceiverDistance - MeanDistance;
-    if (DistanceFromMean <= 0.0f)
+    float ChebyshevVisibility = 1.0f;
+    if (DistanceFromMean > 0.0f)
     {
-        return 1.0f;
+        const float Denominator =
+            Variance + DistanceFromMean * DistanceFromMean;
+        ChebyshevVisibility = Denominator > 1.0e-8f
+            ? saturate(Variance / Denominator)
+            : 0.0f;
     }
 
-    const float ChebyshevDenominator =
-        Variance + DistanceFromMean * DistanceFromMean;
-    return ChebyshevDenominator > 1.0e-8f
-        ? saturate(Variance / ChebyshevDenominator)
-        : 0.0f;
+    // A partially open angular cell should not behave like a fully blocked
+    // cell. Blend the moment bound with the fraction of child rays that hit.
+    const float HitFraction = saturate(HitCount / SampleCount);
+    return lerp(1.0f, ChebyshevVisibility, HitFraction);
 }
 
 float3 DDGIProbeDiffuseIrradiance(
@@ -188,7 +163,9 @@ float3 DDGIProbeDiffuseIrradiance(
         ? ToReceiver / ReceiverDistance
         : float3(0.0f, 0.0f, 1.0f);
     float BestAngularAlignment = -2.0f;
+    float SecondAngularAlignment = -2.0f;
     uint VisibilityBaseRayIndex = 0u;
+    uint SecondVisibilityBaseRayIndex = 0u;
 
     // Integrate the base angular directions. Higher cascades refine the
     // radiance captured along those directions; they are not extra quadrature
@@ -207,8 +184,15 @@ float3 DDGIProbeDiffuseIrradiance(
             const float AngularAlignment = dot(Direction, ReceiverDirection);
             if (AngularAlignment > BestAngularAlignment)
             {
+                SecondAngularAlignment = BestAngularAlignment;
+                SecondVisibilityBaseRayIndex = VisibilityBaseRayIndex;
                 BestAngularAlignment = AngularAlignment;
                 VisibilityBaseRayIndex = RayIndex;
+            }
+            else if (AngularAlignment > SecondAngularAlignment)
+            {
+                SecondAngularAlignment = AngularAlignment;
+                SecondVisibilityBaseRayIndex = RayIndex;
             }
         }
 
@@ -228,10 +212,40 @@ float3 DDGIProbeDiffuseIrradiance(
 
     // Evaluate visibility only from the angular cell facing this receiver.
     // This avoids treating unrelated directions around the probe as blockers.
-    const float Visibility = bCanEvaluateVisibility
-        ? DDGIProbeChebyshevVisibility(
-            PhysicalProbeIndex, VisibilityBaseRayIndex, ReceiverDistance)
-        : 1.0f;
+    float Visibility = 1.0f;
+    if (bCanEvaluateVisibility && CascadeCount >= 2u)
+    {
+        const uint BestLinearIndex =
+            PhysicalProbeIndex * TotalRaysPerProbe + VisibilityBaseRayIndex;
+        const uint2 BestPixel = uint2(
+            BestLinearIndex % DDGI_RC_TEXTURE_WIDTH,
+            BestLinearIndex / DDGI_RC_TEXTURE_WIDTH);
+        const float4 BestMoments = VisibilityMomentsTexture.Load(int3(BestPixel, 0));
+        const float BestVisibility =
+            DDGIProbeChebyshevVisibility(BestMoments, ReceiverDistance);
+
+        if (SafeRayCount > 1u)
+        {
+            const uint SecondLinearIndex =
+                PhysicalProbeIndex * TotalRaysPerProbe + SecondVisibilityBaseRayIndex;
+            const uint2 SecondPixel = uint2(
+                SecondLinearIndex % DDGI_RC_TEXTURE_WIDTH,
+                SecondLinearIndex / DDGI_RC_TEXTURE_WIDTH);
+            const float4 SecondMoments =
+                VisibilityMomentsTexture.Load(int3(SecondPixel, 0));
+            const float SecondVisibility =
+                DDGIProbeChebyshevVisibility(SecondMoments, ReceiverDistance);
+            const float AlignmentGap =
+                max(BestAngularAlignment - SecondAngularAlignment, 0.0f);
+            const float BestWeight =
+                0.5f + 0.5f * smoothstep(0.0f, 0.25f, AlignmentGap);
+            Visibility = lerp(SecondVisibility, BestVisibility, BestWeight);
+        }
+        else
+        {
+            Visibility = BestVisibility;
+        }
+    }
 
     // Equal-solid-angle quadrature gives 4*PI/N; Lambertian 1/PI
     // normalization leaves 4/N for the diffuse irradiance.
