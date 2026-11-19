@@ -602,16 +602,6 @@ void FCompositionLighting::ProcessAfterBasePass(
 	const bool bCanOverlayRayTracingOutput = CanOverlayRayTracingOutput(View);
 	const uint32 SSAOLevels = FSSAOHelper::ComputeAmbientOcclusionPassCount(View);
 
-	UE_LOG(LogTemp, Warning,
-		TEXT("[SSAO-DIAG] AfterBasePass ENTER: CanOverlay=%d Levels=%u AOValid=%d TextureAllocated=%d Intensity=%.3f Radius=%.3f View=%dx%d"),
-		bCanOverlayRayTracingOutput ? 1 : 0,
-		SSAOLevels,
-		SceneContext.bScreenSpaceAOIsValid ? 1 : 0,
-		SceneContext.ScreenSpaceAO ? 1 : 0,
-		View.FinalPostProcessSettings.AmbientOcclusionIntensity,
-		View.FinalPostProcessSettings.AmbientOcclusionRadius,
-		View.ViewRect.Width(),
-		View.ViewRect.Height());
 
 	if (bCanOverlayRayTracingOutput)
 	{
@@ -703,11 +693,6 @@ void FCompositionLighting::ProcessAfterBasePass(
 				}
 
 				SceneContext.bScreenSpaceAOIsValid = true;
-				UE_LOG(LogTemp, Warning,
-					TEXT("[SSAO-DIAG] AfterBasePass GENERATED: Levels=%u AOValid=%d TextureAllocated=%d"),
-					SSAOLevels,
-					SceneContext.bScreenSpaceAOIsValid ? 1 : 0,
-					SceneContext.ScreenSpaceAO ? 1 : 0);
 			}
 		}
 	}
