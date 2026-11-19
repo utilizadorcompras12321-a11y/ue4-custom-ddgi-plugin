@@ -1199,7 +1199,7 @@ void FDDGIRadianceCascadeRHIViewExtension::RenderDiffuseIndirect(
 	PassParameters->ProbeGridDistance = Config->ProbeGridDistance;
 	PassParameters->ProbeGridOrigin = FVector4(
 		Config->ProbeGridOrigin.X, Config->ProbeGridOrigin.Y, Config->ProbeGridOrigin.Z, 0.0f);
-	// Apply-pass clipmap boundaries must follow the exact snapped lattice center used by the CPU builder.
+	// Preserve the snapped lattice center for support calculations; ownership uses the continuous center below.
 	PassParameters->ActiveWindowCenterCell = FVector4(
 		static_cast<float>(Config->ActiveProbeWindowCenterCell.X),
 		static_cast<float>(Config->ActiveProbeWindowCenterCell.Y),
