@@ -295,9 +295,9 @@ namespace
 			return;
 		}
 
-		// Four nested 16^3 clipmaps. Every level is aligned to the immutable
-		// world lattice; level spacing doubles and each coarser level stores
-		// the outer ring plus one coarse-cell overlap for seamless interpolation.
+		// Four nested full 16^3 clipmaps. Every level is aligned to the
+		// immutable world lattice; level spacing doubles. Full coarse lattices
+		// preserve all eight trilinear corners throughout radial transitions.
 		static const int32 ClipmapResolution = 16;
 		static const int32 ClipmapMinOffset = -8;
 		static const int32 ClipmapMaxOffset = 7;
@@ -332,36 +332,13 @@ namespace
 					{
 						const int64 CellX = CenterX + static_cast<int64>(X) * Step;
 
-						// Coarser clipmaps are rings, not overlapping full volumes.
-						// This preserves a single owner for every world-space region.
-						if (Level > 0)
-						{
-							// Keep one coarse cell of overlap inside the previous
-							// clipmap so trilinear sampling has all eight corners
-							// while blending across the clipmap boundary.
-							// The shader starts fine/coarse blending at roughly four
-							// previous-level cells from the center. Keep the coarse
-							// lattice corners at that boundary; excluding them leaves
-							// the coarse trilinear sample unsupported exactly where
-							// the transition begins.
-							const int64 InnerMinX = PreviousCenterX - 4ll * PreviousStep;
-							const int64 InnerMaxX = PreviousCenterX + 4ll * PreviousStep;
-							const int64 InnerMinY = PreviousCenterY - 4ll * PreviousStep;
-							const int64 InnerMaxY = PreviousCenterY + 4ll * PreviousStep;
-							const int64 InnerMinZ = PreviousCenterZ - 4ll * PreviousStep;
-							const int64 InnerMaxZ = PreviousCenterZ + 4ll * PreviousStep;
-							// Keep the coarse lattice samples exactly on the inner
-							// boundary. They are the one-cell overlap needed by trilinear
-							// interpolation at the fine/coarse clipmap transition.
-							const bool bInsidePreviousClipmap =
-								CellX > InnerMinX && CellX < InnerMaxX &&
-								CellY > InnerMinY && CellY < InnerMaxY &&
-								CellZ > InnerMinZ && CellZ < InnerMaxZ;
-							if (bInsidePreviousClipmap)
-							{
-								continue;
-							}
-						}
+						// Keep every level as a complete 16^3 lattice. A hollow coarse
+						// ring is incompatible with the radial clipmap boundary used by
+						// the apply shader: at diagonal positions the ring's cubical
+						// exclusion removes trilinear corners while the radial transition
+						// is already blending. That partial support causes probe-shaped
+						// patches and hard fallback snaps. Four full levels are only
+						// 16,384 probes, within the default 32,768-probe budget.
 
 						// Retain one current-level cell beyond the requested
 						// radius so trilinear reconstruction has its outer corners.
