@@ -26,6 +26,10 @@ namespace
 {
 	TSharedPtr<FDDGIRadianceCascadeRHIViewExtension, ESPMode::ThreadSafe> GDDGIRadianceCascadeViewExtension;
 	FDelegateHandle GDDGIExperimentalGIDelegateHandle;
+
+	int32 GPreviousExperimentalGIValue = 0;
+	uint32 GPreviousExperimentalGISetBy = 0;
+	bool bDDGIChangedExperimentalGISetting = false;
 }
 
 void FDDGIRadianceCascadesPlugin::StartupModule()
@@ -37,7 +41,6 @@ void FDDGIRadianceCascadesPlugin::StartupModule()
 	FString PluginShaderDir = FPaths::Combine(BaseDir, TEXT("Shaders"));
 	FString PluginMapping = TEXT("/Plugin/") + GetModularFeatureName();
 	AddShaderSourceDirectoryMapping(PluginMapping, PluginShaderDir);
-
 
 	// PostConfigInit runs before GEngine's view-extension registry is guaranteed to exist.
 	// Keep shader mapping early, but defer extension registration until UEngine::Init completes.
@@ -60,6 +63,25 @@ void FDDGIRadianceCascadesPlugin::ShutdownModule()
 	{
 		FGlobalIlluminationExperimentalPluginDelegates::RenderDiffuseIndirectLight().Remove(GDDGIExperimentalGIDelegateHandle);
 		GDDGIExperimentalGIDelegateHandle.Reset();
+	}
+
+	// Undo only the value this module changed. Do not overwrite a setting that
+	// another system or the user changed while DDGI was loaded.
+	if (bDDGIChangedExperimentalGISetting)
+	{
+		if (IConsoleVariable* ExperimentalGICVar =
+			IConsoleManager::Get().FindConsoleVariable(TEXT("r.GlobalIllumination.ExperimentalPlugin")))
+		{
+			const uint32 CurrentSetBy = static_cast<uint32>(ExperimentalGICVar->GetFlags() & ECVF_SetByMask);
+			if (ExperimentalGICVar->GetInt() == 1 &&
+				CurrentSetBy == static_cast<uint32>(ECVF_SetByCode))
+			{
+				ExperimentalGICVar->Set(
+					GPreviousExperimentalGIValue,
+					static_cast<EConsoleVariableFlags>(GPreviousExperimentalGISetBy));
+			}
+		}
+		bDDGIChangedExperimentalGISetting = false;
 	}
 
 	GDDGIRadianceCascadeViewExtension.Reset();
@@ -86,8 +108,28 @@ void FDDGIRadianceCascadesPlugin::RegisterViewExtension()
 	if (IConsoleVariable* ExperimentalGICVar =
 		IConsoleManager::Get().FindConsoleVariable(TEXT("r.GlobalIllumination.ExperimentalPlugin")))
 	{
-		ExperimentalGICVar->Set(1, ECVF_SetByCode);
-		UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: enabled UE4.27 experimental GI plugin dispatch."));
+		if (!bDDGIChangedExperimentalGISetting && ExperimentalGICVar->GetInt() != 1)
+		{
+			GPreviousExperimentalGIValue = ExperimentalGICVar->GetInt();
+			GPreviousExperimentalGISetBy = static_cast<uint32>(
+				ExperimentalGICVar->GetFlags() & ECVF_SetByMask);
+			ExperimentalGICVar->Set(1, ECVF_SetByCode);
+
+			const uint32 CurrentSetBy = static_cast<uint32>(
+				ExperimentalGICVar->GetFlags() & ECVF_SetByMask);
+			bDDGIChangedExperimentalGISetting =
+				ExperimentalGICVar->GetInt() == 1 &&
+				CurrentSetBy == static_cast<uint32>(ECVF_SetByCode);
+		}
+
+		if (ExperimentalGICVar->GetInt() == 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DDGI DIAG: UE4.27 experimental GI plugin dispatch is enabled."));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("DDGI DIAG: r.GlobalIllumination.ExperimentalPlugin is disabled by a higher-priority setting; DDGI apply callback will not run."));
+		}
 	}
 	else
 	{
