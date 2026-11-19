@@ -296,17 +296,18 @@ float3 DDGIInterpolateLevelPair(
         LocalPosition, Normal, LevelB, bValidB, ConfidenceB, CoverageB);
 
     const float Blend = saturate(T);
-    // Blend by continuous visible trilinear support, not a binary validity
-    // flag. Missing corners fade out over their interpolation footprint.
-    float WeightA = (1.0f - Blend) * CoverageA;
-    float WeightB = Blend * CoverageB;
+    // Geometric coverage controls the relative contribution, but a level
+    // with no receiver-visible probes must not contribute a black value.
+    // Keep visibility out of the continuous weight itself: doing so makes
+    // the transition follow per-probe normal-fade lobes and creates rings.
+    float WeightA = bValidA ? (1.0f - Blend) * CoverageA : 0.0f;
+    float WeightB = bValidB ? Blend * CoverageB : 0.0f;
     float TotalWeight = WeightA + WeightB;
 
     OutValid = TotalWeight > 0.00001f;
     if (!OutValid)
     {
-        // At the exact transition endpoint the nominally selected level may
-        // have zero support. Retain whichever level has usable support.
+        // At an exact endpoint, retain whichever level still has valid support.
         if (CoverageA >= CoverageB && bValidA)
         {
             OutValid = true;
@@ -325,7 +326,7 @@ float3 DDGIInterpolateLevelPair(
         return 0.0f;
     }
 
-    // Normalize to avoid dimming when either sparse level has fewer corners.
+    // Normalize only across levels that actually produced receiver-visible data.
     return (ValueA * WeightA + ValueB * WeightB) / TotalWeight;
 }
 
