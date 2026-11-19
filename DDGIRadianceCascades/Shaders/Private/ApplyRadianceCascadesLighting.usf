@@ -594,11 +594,10 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         // stale edge probes into the coarse region and create a visible seam.
         FallbackStartLevel = ClipmapLevel + 1u;
 
-        // Blend across most of the fine/coarse overlap. A narrow transition
-        // exposed confidence changes as a visible clipmap boundary.
-        // The sparse clipmap builder provides roughly one coarse-cell of
-        // geometric overlap. A much wider blend samples levels far outside
-        // that shared support and makes the transition drift / smear.
+        // Blend across the fine/coarse overlap. The CPU builder now keeps
+        // complete 16^3 lattices at every level, so both trilinear samples
+        // retain all eight corners throughout this radial transition. Keep
+        // the transition bounded to one level cell to avoid unnecessary smear.
         const float TransitionWidth = min(
             min(
                 max(ProbeSpacing * 2.0f * LevelScale, ClipmapExtent * 0.08f),
