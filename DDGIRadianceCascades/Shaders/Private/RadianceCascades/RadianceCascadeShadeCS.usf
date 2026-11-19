@@ -492,9 +492,14 @@ void RadianceCascadeShadeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 HitB = BVHTriangles[TriangleBase + 1u].xyz;
     float3 HitC = BVHTriangles[TriangleBase + 2u].xyz;
     float3 GeometricNormal = ComputeTriangleGeometricNormal(HitA, HitB, HitC);
-    if (dot(GeometricNormal, Direction) > 0.0f)
+    // The BVH intersection test is intentionally two-sided, but surface
+    // lighting must not turn a back-face hit into a front-facing surface.
+    // Flipping every normal toward the probe made the character's far side
+    // receive direct GI as if it were independently front-lit.
+    if (dot(GeometricNormal, Direction) >= -1.0e-5f)
     {
-        GeometricNormal = -GeometricNormal;
+        RadianceScratchUAV[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return;
     }
 
     float3 HitBaseColor = max(BVHTriangles[TriangleBase + 3u].xyz, 0.0f);
