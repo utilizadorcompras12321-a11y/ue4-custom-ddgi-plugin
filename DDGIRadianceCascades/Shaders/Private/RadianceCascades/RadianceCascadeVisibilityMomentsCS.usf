@@ -87,7 +87,9 @@ void RadianceCascadeVisibilityMomentsCS(uint3 DispatchThreadId : SV_DispatchThre
         // abs() restores their probe-relative first-hit distance.
         const float HitDistance =
             abs(HitDistanceTexture.Load(int3(Pixel, 0)));
-        if (!isfinite(HitDistance) || HitDistance <= 0.0f)
+        // A tagged zero-distance hit is valid (the probe may touch geometry) and
+        // belongs in the nearest bin; only non-finite or negative distances are invalid.
+        if (!isfinite(HitDistance) || HitDistance < 0.0f)
         {
             bSamplesValid = false;
             break;
