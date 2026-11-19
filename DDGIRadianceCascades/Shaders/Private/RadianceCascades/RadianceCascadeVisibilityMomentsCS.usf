@@ -17,8 +17,8 @@ RWTexture2D<float4> VisibilityMomentsUAV;
 
 // One thread builds the hit-distance distribution for one base angular cell.
 // The finest cascade's child rays all lie inside that base cell. Store
-// hit-only sums and counts so Apply can treat misses as unoccluded at the
-// actual receiver distance without introducing a MaxTraceDistance sphere.
+// hit-only sums and counts so Apply can combine the distance bound with the
+// observed hit fraction, without assigning artificial distances to misses.
 [numthreads(64, 1, 1)]
 void RadianceCascadeVisibilityMomentsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
