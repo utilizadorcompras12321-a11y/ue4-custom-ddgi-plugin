@@ -1097,9 +1097,9 @@ void UDDGIMasterSubsystem::CopyConfigFromActor(const ADDGIMasterActor* InActor, 
 	ActiveWindowCenterCell = DDGIQuantizeWindowCenter(InitialCameraLocation, Config.ProbeSpacing);
 	Config.ActiveProbeWindowCenterCell = ActiveWindowCenterCell;
 	bHasActiveWindowCenterCell = true;
-	// Keep the blend origin continuous with the camera. The snapped cell
-	// remains the deterministic lattice-selection anchor, but must not drive
-	// shader blend distance or the cascade boundaries will jump by ProbeSpacing.
+	// Keep the trace/background-transition center continuous with the camera.
+	// Apply-pass clipmap boundaries use ActiveProbeWindowCenterCell instead,
+	// matching the independently snapped centers generated for each CPU level.
 	Config.ActiveProbeWindowCenter = InitialCameraLocation;
 	DDGIBuildActiveProbePositions(
 		Config.ProbeSpacing, Config.ProbeGridDistance, ActiveWindowCenterCell,
@@ -1137,9 +1137,9 @@ void UDDGIMasterSubsystem::UpdateActiveProbeWindow(const ADDGIMasterActor* InAct
 	const float RecenterThreshold = SafeSpacing * 0.75f;
 	const FVector Delta = CameraLocation - CurrentCenter;
 
-	// The blend origin is continuous and must follow the camera every tick.
-	// Previously it was only assigned after a probe-window rebuild, so the
-	// shader's cascade boundaries remained frozen and then jumped at recenter.
+	// Keep the trace/background-transition center continuous every tick.
+	// The apply pass receives the snapped lattice cell separately, and updates
+	// that center only when the CPU probe window is actually rebuilt.
 	const bool bBlendCenterChanged =
 		!Config.ActiveProbeWindowCenter.Equals(CameraLocation, 0.01f);
 	if (bBlendCenterChanged)
