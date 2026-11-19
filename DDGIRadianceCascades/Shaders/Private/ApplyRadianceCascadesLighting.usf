@@ -125,7 +125,10 @@ float3 DDGIProbeDiffuseIrradiance(
             RayIndex / DDGI_RC_TEXTURE_WIDTH);
         float3 Direction = normalize(
             DirectionsTexture.Load(int3(DirectionPixel, 0)).xyz);
-        float Cosine = saturate(dot(Normal, -Direction));
+        // DirectionsTexture stores probe-to-scene ray directions. The
+        // receiving surface must face the incoming ray, so its cosine is
+        // dot(Normal, Direction), not the negated direction.
+        float Cosine = saturate(dot(Normal, Direction));
         if (Cosine > 0.0f)
         {
             uint LinearIndex = PhysicalProbeIndex * TotalRaysPerProbe + RayIndex;
