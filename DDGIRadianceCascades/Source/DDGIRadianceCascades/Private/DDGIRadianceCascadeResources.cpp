@@ -1746,8 +1746,8 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     const FSceneInterface* Scene,
     FRDGTextureRef& OutDirections,
     FRDGTextureRef& OutRadiance,
-    FRDGTextureRef& OutHitDistance,
     FRDGTextureRef& OutHitTriangleIndex,
+    FRDGTextureRef& OutVisibilityMoments,
     FRDGTextureRef& OutProbePositions,
     uint32& OutProbeCount,
     uint32& OutTotalRaysPerProbe)
@@ -1756,8 +1756,8 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
 
     OutDirections = nullptr;
     OutRadiance = nullptr;
-    OutHitDistance = nullptr;
     OutHitTriangleIndex = nullptr;
+    OutVisibilityMoments = nullptr;
     OutProbePositions = nullptr;
     OutProbeCount = 0;
     OutTotalRaysPerProbe = 0;
@@ -1767,8 +1767,8 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
         !Storage->Directions.IsValid() ||
         !Storage->Radiance.IsValid() ||
         !Storage->RadianceIntegrationScratch.IsValid() ||
-        !Storage->HitDistance.IsValid() ||
         !Storage->HitTriangleIndex.IsValid() ||
+        !Storage->RadianceScratch.IsValid() ||
         !Storage->ProbePositions.IsValid() ||
         Storage->bNeedsInitialization ||
         Storage->UploadedProbeCount <= 0 ||
@@ -1781,14 +1781,16 @@ bool DDGIGetRadianceCascadeLightingTextures_RenderThread(
     // persistent and contains the final first-cascade result for every probe.
     OutDirections = GraphBuilder.RegisterExternalTexture(Storage->Directions);
     OutRadiance = GraphBuilder.RegisterExternalTexture(Storage->RadianceIntegrationScratch);
-    OutHitDistance = GraphBuilder.RegisterExternalTexture(Storage->HitDistance);
     OutHitTriangleIndex = GraphBuilder.RegisterExternalTexture(Storage->HitTriangleIndex);
+    // The gather scratch texture stores per-base-ray visibility moments after
+    // the integration pass; its other texels are not consumed by Apply.
+    OutVisibilityMoments = GraphBuilder.RegisterExternalTexture(Storage->RadianceScratch);
     OutProbePositions = GraphBuilder.RegisterExternalTexture(Storage->ProbePositions);
     OutProbeCount = static_cast<uint32>(Storage->UploadedProbeCount);
     OutTotalRaysPerProbe = static_cast<uint32>(Storage->TotalRaysPerProbe);
 
     return OutDirections != nullptr && OutRadiance != nullptr &&
-        OutHitDistance != nullptr && OutHitTriangleIndex != nullptr &&
+        OutHitTriangleIndex != nullptr && OutVisibilityMoments != nullptr &&
         OutProbePositions != nullptr;
 }
 
